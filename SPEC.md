@@ -43,12 +43,29 @@ service.
 Read from source, 2026-08-07.
 
 Six Go apps ship near-identical OIDC client code: **Nuage, Courrier, Plume, Agenda, Vision,
-Sablier**. Each has 6 files under `apps/api/modules/auth/` plus `internal/authcrypto/`, roughly
-900 lines. Journal has `authcrypto` and sessions but no OIDC at all. Capsule has no auth by
-design.
+Sablier**. Each has the same 6 files under `apps/api/modules/auth/` plus `internal/authcrypto/`.
+Journal has `authcrypto` and sessions but no OIDC at all. Capsule has no auth by design.
+
+Measured 2026-08-07, `modules/auth/` only:
+
+| App | total | `oidc.go` | `service.go` | `types.go` |
+|---|---|---|---|---|
+| Sablier | 664 | 162 | 314 | 27 |
+| Courrier | 766 | 164 | 336 | 27 |
+| Nuage | 761 | 169 | 373 | 35 |
+| Agenda | 779 | 180 | 351 | 27 |
+| Vision | 839 | 161 | 367 | 46 |
+| Plume | 969 | 224 | 390 | 48 |
+
+`types.go` is **byte-identical in three of the six** (Courrier, Agenda and Sablier share one
+hash). `diff Nuage/oidc.go Sablier/oidc.go` is 27 lines out of ~165 — roughly 85% identical,
+which is the number that justifies the extraction. Plume is the outlier at both ends because it
+carries the CLI exchange flow (§5b).
 
 `internal/oidcavatar/` — HTTPS validation, private-IP/SSRF rejection, download, store — is
-copy-pasted in six apps as well.
+copy-pasted in six apps as well, and has drifted **further than the auth code**: six files, six
+distinct hashes, only Courrier and Sablier matching. It is a security guard, so this is the worst
+place in the suite for six divergent copies.
 
 The OIDC surface is **identical across all six**:
 
@@ -336,6 +353,23 @@ different user columns." Read against source, that premise is false: the six `sc
 share **12 byte-identical columns**, plus 0 (Courrier, Agenda, Vision) to 4 (Sablier) business
 columns. The identity/profile split already exists in every app, hand-written.
 
+The shared core, identical in all six: `id`, `email` (uniqueIndex), `name`, `avatar_url`,
+`avatar_source`, `oidc_picture_url`, `password_hash`, `oidc_access_token`, `oidc_refresh_token`,
+`oidc_token_expiry`, `profile_synced_at`, `created_at`. Everything else, per app:
+
+| App | Business columns beyond the core |
+|---|---|
+| Courrier, Agenda | none — **byte-identical files** |
+| Vision | none (roles live in `workspace_members`) |
+| Plume | `reminder_interval_days` |
+| Nuage | `color`, `is_admin` |
+| Sablier | `color`, `rate`, `rate_type`, `workday_hours` |
+
+Note what is *missing* from the core: no `updated_at` anywhere (ROADMAP P4.3), no `facile_id`
+outside Nuage (P4.1), and **no `sub`** (§6.1). Five of the twelve core columns — the `oidc_*`
+group plus `profile_synced_at` — are `porte` plumbing that has no business being in an app's
+domain table at all.
+
 So `porte/pg` ships, as the *default* implementation of the interfaces:
 
 ```
@@ -367,6 +401,12 @@ current implementations write on upsert, as a checklist for `Claims`: subject, p
 email_verified, name, picture URL, plus `avatar_url` / `avatar_source` / `oidc_picture_url` /
 token material / `profile_synced_at`. `profile_synced_at` exists to rate-limit profile
 refreshes — keep it.
+
+**`UpsertFromOIDC` has side effects in real apps, and the interface must tolerate that.** Nuage's
+version assigns a display colour through `usercolor.NextAvailable` and makes the first user ever
+created an admin (`IsAdmin: userCount == 0`). That logic is product behaviour, it stays app-side,
+and it is precisely why the app implements this method rather than `porte` owning the write.
+`porte` calls it once per successful callback and cares only about the returned id.
 
 ### Roles are a hook, not an enum
 
@@ -449,7 +489,10 @@ Dependency rules, following `caisse`:
 - **No GORM.** All six apps use it, but forcing it is a heavier commitment than anything the
   suite shares today, and it is what pushed `tronc` to split `migrate` and `testdb` into
   separate modules. `database/sql` keeps everything in one module.
-- Go floor 1.24, matching `tronc` and `caisse`.
+- Go floor 1.24, matching `caisse` and the `tronc` root module. **Check before committing:**
+  `tronc/migrate` already declares `go 1.25.7`, and Phase 2 moved the apps to Go 1.25, so the
+  floor may need to be 1.25 for consistency. Decide once, and make `.github/workflows/ci.yml`
+  pin the same number.
 
 ---
 
@@ -473,6 +516,15 @@ extra line. Done separately it is a second tour of ten repos.
 Ten backends carry OIDC config in total — six Go, three TS (Glouton, Ardoise, Perception), plus
 Opus on better-auth. The TS siblings are out of scope for this repo but their issuer URL is not.
 
+**Perception is a consumer already waiting.** Its Go rewrite deliberately built a seam for this
+library: `apps/api/internal/identity/` holds an `Authenticator` interface that feature modules
+depend on, `modules/auth` is reachable from `main.go` alone, and `apps/api/seam_test.go` is an
+architecture test that *fails* if any other package imports the auth module. Its `ROADMAP.md` §7
+says the adoption is "delete `modules/auth`, add the dependency, construct it in `main.go`, done."
+Treat it as the third pilot: it is the only repo whose structure will tell you whether the
+interface shape is right, because it was designed against the idea rather than extracted from it.
+(That seam was written under the working name `sésame`; renamed to `porte` on 2026-08-07.)
+
 ---
 
 ## 10. Repo conventions
@@ -495,6 +547,68 @@ Same as `tronc` and `caisse`:
 - Semver from `main`. While on `v0`, a breaking change bumps the minor.
 - Record decisions in `CHANGELOG.md` with their reasoning, as `caisse` does — the reasoning is
   the part that stops a future session from undoing a deliberate choice.
+
+---
+
+## 12. Prior art, and what it actually says
+
+Consulted 2026-08-07. Listed because several of these argue *against* parts of this document,
+and a future session should be able to check the reasoning rather than trust it.
+
+**On owning the identity table.** [Supabase](https://supabase.com/docs/guides/auth/managing-user-data)
+splits `auth.users` (owned by GoTrue) from `public.profiles` (owned by the app) — the same
+boundary as §5, validated at scale. Read its *reasons* critically though: it cites "Supabase does
+not allow adding columns to auth.users" and "the auth schema is not publicly accessible", which
+are constraints of a hosted multi-tenant service, not design conclusions. The shape transfers;
+the argument does not, so §5 makes its own.
+[Ory Kratos](https://www.ory.com/docs/kratos/manage-identities/identity-schema) reaches the same
+boundary from the opposite direction: identity owns traits, and the guidance is to "avoid complex
+identity schemas" and keep app-specific data out.
+[better-auth](https://better-auth.com/docs/concepts/database) tests the other road — one owned
+table extended via `additionalFields` — and the friction is documented: you extend your own schema
+to match, and [custom tables need a plugin](https://github.com/better-auth/better-auth/discussions/6717).
+That is the in-house precedent too, since Opus and Hottake run it.
+
+**The honest counter-argument.** [Beekeeper](https://www.beekeeperstudio.io/blog/one-to-one-database-relationships-complete-guide)
+and [O'Reilly](https://www.oreilly.com/library/view/microsoft-sql-server/9780133408539/ch34lev2sec4.html)
+are firm that needless 1:1 splits of closely-related data are a mistake. They are right, and it is
+why §5 justifies the split as a **module boundary**, never as normalisation — there is no
+performance win in separating 12 columns from 3, and claiming one would be dishonest.
+
+**On account vs identity.** [Red-gate](https://www.red-gate.com/blog/user-authentication-module/) —
+keep account and identities separate so one human can hold several authentication factors. That is
+where `porte_identities` comes from.
+
+**On sessions in the browser.** [OAuth 2.0 for Browser-Based Apps](https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/12/),
+[OAuth 2.1 / RFC 9700](https://aembit.io/blog/oauth-2-1-guide-migration-security/) and the
+[OWASP Session Management cheat sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
+agree: never `localStorage`; `HttpOnly; Secure; SameSite` cookies, or a BFF. The suite's
+mono-container already provides the same-origin backend that pattern needs.
+
+**On CLI login.** [RFC 8628](https://www.rfc-editor.org/info/rfc8628/) plus two practitioner
+write-ups ([abgeo](https://www.abgeo.dev/blog/cli-authentication-the-right-way/),
+[Logto](https://dev.to/logto/getting-cli-authentication-right-the-complete-guide-to-all-4-methods-1mnf)):
+device flow by default, refresh material in the OS keychain rather than a dotfile, `gh auth login`
+as the reference implementation.
+
+**On claims and freshness.**
+[authentik property mappings](https://docs.goauthentik.io/add-secure-apps/providers/property-mappings/)
+— including the trap where a half-configured scope silently denies everyone;
+[authentik back-channel logout / SLO](https://goauthentik.io/blog/2025-10-21-authentik-now-supports-single-logout/)
+— the only mechanism covering administrative termination;
+[Entra continuous access evaluation](https://learn.microsoft.com/en-us/entra/identity/conditional-access/concept-continuous-access-evaluation)
+— why an unrefreshed group membership can be a day stale, and the *group overage* problem that
+server-side claim storage avoids entirely.
+
+**On what not to build.** [AuthZEN Authorization API 1.0](https://openid.github.io/authzen/) went
+Standards Track in March 2026, with [Keycloak shipping experimental support](https://www.keycloak.org/2026/05/authzen-as-experimental-feature).
+If centralised fine-grained authorization is ever needed, `porte` is a PEP against that, never a
+bespoke PDP. And [authentik's SCIM provider](https://docs.goauthentik.io/add-secure-apps/providers/scim/)
+is the answer to the directory problem claims cannot solve — noted, deliberately unbuilt.
+
+**On library design.** [authboss](https://github.com/volatiletech/authboss) ("plug it in, configure
+it, start building") for the ambition, [goth](https://github.com/markbates/goth) for the shape:
+small interfaces, implementations provided.
 
 ---
 
