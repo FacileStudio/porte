@@ -46,9 +46,13 @@ state comparison. Written once here instead of six times in the apps.
 
 | Doc | What's in it |
 |---|---|
-| [Specification](SPEC.md) | What to build, what was decided and why, the contract to freeze |
+| [Specification](SPEC.md) | What to build, what was decided and why, the evidence behind both |
+| [Configuration](docs/configuration.md) | Every environment variable and `Config` field, and their traps |
+| [Development](docs/development.md) | Local setup, the quality gate, versioning |
+| [API](docs/api.md) | Every exported symbol — the frozen contract, package by package |
 
-`docs/` follows the suite standard once there is an implementation to document.
+There is no `docs/architecture.md` yet: the contract is frozen but nothing implements it, so the
+page could only describe a request flow that does not exist. It arrives with v0.1.
 
 ---
 
