@@ -82,7 +82,7 @@ Do not re-litigate these. Each has a reason recorded.
 | Name is `porte`, not `sésame` | Matches the naming convention (the component *in* your app); no accent to lose in the module path; "sésame" names the act of opening, not identity |
 | Authentik keeps its name | Never rename someone else's product; it removes the permanent "Porte is actually Authentik" explanation |
 | `porte.facile.studio` → **`sso.facile.studio`** | Frees the name, and `sso.` survives replacing Authentik whereas `authentik.` would need a second rename |
-| The old `Porte` repo → `authentik-config` | 93 lines of Authentik policy scripts. It frees the name and has no reason to grow. **Done locally 2026-08-07; the GitHub repo still needs renaming.** |
+| The old `Porte` repo → `authentik-config` | 93 lines of Authentik policy scripts. It frees the name and has no reason to grow. **Renamed locally 2026-08-07. There was never a GitHub repo for it — no remote, no commits — so nothing to rename there.** |
 | A future in-house IdP gets a new name, chosen when built | Naming a project you have not decided to build is a free commitment. Right register when it comes: institutions that issue identity papers — `consulat`, `préfecture`, `mairie` |
 | Rebuilding Authentik is **not** decided | `porte`'s value does not depend on it. "Zéro dépendance cloud" does not apply — Authentik is already self-hosted on la ruche. Reopen the question only when `porte` runs on all seven apps, the OIDC contract has been stable for months, and something concrete is blocked by Authentik |
 | Forced logout of production users is acceptable | User decision, 2026-08-07. This removes the whole backward-compatible session migration problem: one canonical session model, no dual-read, no cookie compatibility shims |
