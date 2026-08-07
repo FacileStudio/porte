@@ -82,11 +82,19 @@ Do not re-litigate these. Each has a reason recorded.
 | Name is `porte`, not `sésame` | Matches the naming convention (the component *in* your app); no accent to lose in the module path; "sésame" names the act of opening, not identity |
 | Authentik keeps its name | Never rename someone else's product; it removes the permanent "Porte is actually Authentik" explanation |
 | `porte.facile.studio` → **`sso.facile.studio`** | Frees the name, and `sso.` survives replacing Authentik whereas `authentik.` would need a second rename |
-| The old `Porte` repo → `authentik-config` | 93 lines of Authentik policy scripts. It frees the name and has no reason to grow. **Renamed locally 2026-08-07. There was never a GitHub repo for it — no remote, no commits — so nothing to rename there.** |
+| The old `Porte` repo → `authentik-config` | 93 lines of Authentik policy scripts. It frees the name. **Renamed locally 2026-08-07. There was never a GitHub repo for it — no remote, no commits — so nothing to rename there.** ~~And it has no reason to grow~~ — **wrong, corrected 2026-08-07**: the scope mapping that emits the `roles` claim (§5c) is server-side Authentik Python, so it belongs there next to the two existing expression policies. `authentik-config` is now the home of the claim contract's producing half |
+| **`porte` carries authorization data, owns no policy** | Authentik decides *who has which role*; the app decides *what a role may do*; `porte` owns only the transport and the freshness in between. The three role models in production (`is_admin` + first-user-admin, Vision's workspace roles, the TS `USER`/`ADMIN` enum) are product decisions, not drift — a library that arbitrated them would be routed around by the second app. See §5c |
+| **The claim contract is a flat `roles` array, produced per-provider** | Chosen over parsing group names (`facile-nuage-admin`) and over a nested per-app JSON claim. Each Authentik provider gets a scope mapping emitting `{"roles": ["admin"]}` already filtered and stripped for that app — namespacing and least privilege for free, no parsing in Go, and the one moving part lives in Authentik where it is configuration rather than code. Decided 2026-08-07 |
+| **Back-channel logout is in v0.1** | Authentik has shipped it since 2025-10, and their docs are explicit that it is the *only* way a downstream app learns a session was terminated administratively. One endpoint in `porte`, one URL per Authentik application, and deactivating a user drops them from all seven apps in seconds. Highest value-to-effort item in this document |
 | A future in-house IdP gets a new name, chosen when built | Naming a project you have not decided to build is a free commitment. Right register when it comes: institutions that issue identity papers — `consulat`, `préfecture`, `mairie` |
 | Rebuilding Authentik is **not** decided | `porte`'s value does not depend on it. "Zéro dépendance cloud" does not apply — Authentik is already self-hosted on la ruche. Reopen the question only when `porte` runs on all seven apps, the OIDC contract has been stable for months, and something concrete is blocked by Authentik |
 | Forced logout of production users is acceptable | User decision, 2026-08-07. This removes the whole backward-compatible session migration problem: one canonical session model, no dual-read, no cookie compatibility shims |
-| Password hashing is already settled | All seven Go apps use argon2 today. No hash migration needed. (Journal carries bcrypt *alongside* argon2 — look at it during extraction) |
+| Password hashing is already settled | All seven Go apps use argon2 today. No hash migration needed. (~~Journal carries bcrypt alongside argon2~~ — checked 2026-08-07: the only bcrypt hit is a test fixture string in `crypto_test.go`. Journal is argon2-only. Closed) |
+| **Browser sessions ride an `HttpOnly` cookie, not `localStorage`** | Today the callback hands the token via URL fragment and the SvelteKit apps store it in `localStorage` — one XSS reads every token (RFC 9700, OWASP session cheat sheet). The suite's mono-container topology (P1b: same-origin `/api` behind Traefik, SPA served by `tronc/spa`) makes `HttpOnly; Secure; SameSite=Lax` cookies free. Bearer stays for CLIs and API clients; the middleware accepts both. Forced logout is already accepted, and the frontends are already being rewritten — this train does not pass twice. Decided 2026-08-07 |
+| **`porte/pg` ships default identity tables; `UserStore` stays the escape hatch** | The six `schemas/user.go` share 12 byte-identical columns plus 0–4 business ones — the identity/profile split already exists, hand-written six times. Owning the shape once is what makes `facile_id`, `updated_at` (P4.3) and the `sub` fix land once instead of six times. Supabase (`auth.users`/`public.profiles`) and Ory Kratos both converge on the same boundary. Provided, never imposed — the `caisse` pattern. Decided 2026-08-07 |
+| **OIDC account matching keys on `(provider, subject)`, never on email** | All six apps match by email today (`Where("email = ?")`) and no schema stores `sub`. Email is mutable in Authentik: an email change silently orphans the account in six apps; a deleted-then-recreated IdP account silently inherits the old one. This is a live security bug, wiki: `bugs/facile-oidc-email-matching.md`. Decided 2026-08-07 |
+| **Identities are a separate table from users, from v0.1** | v0.2 explicitly plans local password *and* OIDC on the same human — one credential column set on the user row cannot represent that. `porte_identities(provider, subject)` also models "Login with Google" as a config change instead of a schema break, which client projects will want. Wire a single provider in v0.1; design the table for several. Decided 2026-08-07 |
+| Pilot is the e-commerce demo + Nuage | Comptoir does not exist (checked 2026-08-07 — not locally, not in the org). A greenfield demo forces the works-outside-the-suite test on day one; Nuage is the extraction source, so the most honest feedback on fit |
 
 ---
 
@@ -98,10 +106,32 @@ The identical part, extracted and hardened. No local password: apps that still n
 email/password keep their own code in parallel for now, and lose roughly 60% of their auth
 code rather than 100%.
 
+In scope for v0.1, beyond the routes (all three decided 2026-08-07):
+
+- **`oidcavatar`** — the HTTPS-validation / private-IP / SSRF guard. Six distinct hashes exist
+  across the apps today; this is the file where drift is a security bug rather than cosmetics.
+  The ROADMAP (task 3.4, exit criterion "exists exactly once") already required it; an earlier
+  revision of this spec cited it as evidence but left it out of scope. That was the mistake.
+- **`POST /auth/oidc/exchange`** — Plume's one-time-code CLI flow, generalized. Plume stores
+  pending codes in a `sync.Map`, which dies on redeploy and breaks at two replicas. `porte`
+  stores them in `porte_login_codes` (TTL 60s, single-use, hashed like sessions). Six CLIs
+  need this; see §5b.
+- **Cookie session issuance** — the callback sets the session cookie instead of putting the
+  token in the URL fragment. See §5, Sessions.
+- **Back-channel logout** — `POST /auth/backchannel-logout`, so an administrative deactivation
+  in Authentik actually reaches the apps. See §5c.
+- **Role claims, optional** — the `roles` claim, its startup guard and its refresh TTL. Off
+  unless configured; no app reads claims today, so nothing regresses by leaving it off. See §5c.
+
 ### v0.2 — local password
 
 `register`, `login`, `me`, `password`, argon2 via the extracted `authcrypto`. Blocked on
 reconciling the drift in §2 and the role model in §7.
+
+Note for client projects: v0.2 is where `porte` starts serving **two user populations** — staff
+logs in through SSO, end customers (an e-commerce site's buyers, who will never have an
+Authentik account) through email/password or a second OIDC provider. `porte_identities` is
+designed for that from v0.1 even though v0.1 wires only one provider.
 
 ### v0.3 — `porte/espace`
 
@@ -152,24 +182,179 @@ Authentik application slug convention, unchanged: `sso.facile.studio/application
 ```
 GET  /auth/config          {"sso_only": bool, "oidc_enabled": bool}   no auth
 GET  /auth/oidc            302 to the IdP                             no auth
-GET  /auth/oidc/callback   302 to OIDC_SUCCESS_URL                    no auth
-POST /auth/logout          {"logged_out": true}                       session required
+GET  /auth/oidc/callback   sets session cookie, 302 to OIDC_SUCCESS_URL   no auth
+POST /auth/oidc/exchange   one-time code → bearer token (CLI path)    no auth, code required
+POST /auth/logout          {"logged_out": true}, clears the cookie    session required
 POST /auth/sync-profile    refresh profile from the IdP               session required
+POST /auth/backchannel-logout   IdP-initiated session kill            logout token, no session
 ```
 
-### Sessions
+Scopes requested: `openid email profile offline_access` — unchanged, plus the scope carrying
+`roles` when claims are enabled (§5c). `offline_access` is already requested by every app today,
+which is what makes silent claim refresh possible without a second login.
 
-Opaque bearer token, generated randomly, **stored hashed** (the existing `authcrypto.NewToken`
-/ `HashToken` pair), presented as `Authorization: Bearer …`. Keep this — it is stateful by
-design, revocable, and already what all six do.
+### Sessions — one model, two transports
+
+Opaque token, generated randomly, **stored hashed** (the existing `authcrypto.NewToken` /
+`HashToken` pair). Keep this — it is stateful by design, revocable, and already what all six do.
+
+What changes (2026-08-07) is how the browser carries it:
+
+- **Browser: `HttpOnly; Secure; SameSite=Lax` cookie**, set by the callback. The token never
+  appears in a URL, never touches `localStorage`, and the frontends' token-handling code is
+  deleted rather than migrated — `fetch` gains `credentials: 'include'` and that is all.
+  CSRF: `SameSite=Lax` plus a custom-header check on mutating routes.
+- **CLI and API clients: `Authorization: Bearer …`**, unchanged.
+
+The middleware accepts both, cookie first. Same table, same hash, same revocation.
+
+The sessions table carries `label`, `created_at` and `last_used_at` — absent today, and the
+reason no app can show "your active sessions" or revoke one token without revoking them all.
+`label` is what turns a session row into a named API token (§5b).
 
 `porte` owns the sessions table and ships `porte/pg` for it, following `caisse/pg`: an
 interface plus a `database/sql` implementation, so no ORM is forced on consumers.
 
-### The app owns its users
+### 5b. CLI login and API tokens
 
-`porte` must never own the users table. Apps have genuinely different user columns. `porte`
-gets an interface and calls it after verifying the ID token:
+One flow, one table, both use cases.
+
+**Interactive CLI login** — the pattern `gh auth login` and Claude Code use: the CLI opens
+`/auth/oidc?flow=cli` in a browser, the user logs in through the IdP, and the callback — instead
+of setting a cookie — issues a **one-time code** (stored hashed in `porte_login_codes`, TTL 60s,
+single-use). The success page displays it for copy-paste; a CLI that started a loopback listener
+receives it directly and the paste is the fallback. The CLI exchanges it at
+`POST /auth/oidc/exchange` for a bearer token. This is Plume's existing flow with the `sync.Map`
+replaced by the database, so it survives redeploys and replicas.
+
+**API tokens** are not a separate mechanism: an API token is a session row with a `label`, a
+long or absent expiry, and `last_used_at` for auditability. Courrier and Agenda have already
+each grown their own `ApiToken` types — same drift pattern as everything else in this document.
+`porte`'s session store exposes create/list/revoke-by-id; the HTTP routes for "personal access
+tokens" stay app-side in v0.1 (they are product surface), backed by the store.
+
+Deferred, explicitly: token **scopes** (a `porte` token is currently as powerful as its user)
+and the full RFC 8628 device flow delegated to Authentik, which supports it natively — that
+upgrade replaces the copy-paste UX with `gh`-style `user_code` entry and belongs in v1.x.
+Store refresh material in the OS keychain, never a JSON file — a CLI-side concern, documented
+here because six CLIs will read this spec.
+
+### 5c. Claims, roles, and freshness
+
+Authorization has three layers, and conflating them is how auth libraries turn into frameworks:
+
+| Layer | Question | Owner |
+|---|---|---|
+| Assignment | is saravenpi an admin of Nuage? | **Authentik** — groups and attributes |
+| **Transport + freshness** | how the app learns it, and re-learns it | **`porte`** |
+| Policy | what may an admin actually do? | **the app** |
+
+`porte` is the middle row, exactly as it is for authentication. It decides nothing.
+
+Two facts from source, 2026-08-07, that make this a clean slate: every app requests
+`openid email profile offline_access` and **no app requests or reads a `groups` claim**. Nothing
+to migrate, and refresh tokens are already in hand.
+
+**The claim.** A flat array of opaque strings, in a `roles` claim:
+
+```json
+{ "roles": ["admin"] }
+```
+
+Produced by a per-provider scope mapping in Authentik, already filtered and stripped for that
+application — so Nuage's token never mentions Sablier's roles. The alternatives were parsing
+group names (`facile-nuage-admin` — an implicit contract in strings, which is what drifts) and a
+nested `{"facile": {"apps": {...}}}` claim (explicit but needs parsing in six apps). A flat array
+per provider gets namespacing and least privilege for free while keeping the Go side trivial.
+`porte` exposes the strings; it never assigns them meaning.
+
+The producing half — a small Python scope mapping, parameterised by app slug — lives in
+`authentik-config` alongside the two existing expression policies.
+
+**The startup guard, and why it exists.** authentik's docs carry a specific trap: group-based
+authorization needs the scope attached to the provider's property mappings *and* requested by
+the client, and if either half is missing **the rules silently deny everyone**. A silent deny in
+the auth path is the worst failure mode there is. So when claims are enabled, `porte` verifies at
+startup that the scope was granted and a `roles` claim actually arrived, and refuses to boot with
+a message naming the missing half. Written once, six apps protected.
+
+**Freshness — the part that is actually hard.** Sessions are opaque and long-lived; an Authentik
+group change does not reach them. For comparison, Entra's group-membership changes take up to a
+day to apply without a dedicated mechanism, which is not acceptable for *removing* a right.
+Three mechanisms, and v0.1 ships the first two:
+
+1. **TTL on claims.** `profile_synced_at` already exists to rate-limit profile refreshes; the
+   same pattern covers claims, refreshed lazily against the IdP using the refresh token every app
+   already holds. Short TTL, no new infrastructure, covers the routine case.
+2. **Back-channel logout.** `POST /auth/backchannel-logout` validates the logout token and
+   deletes that user's sessions. This is the security-critical case — deactivation, admin
+   session termination — and per authentik's own documentation it is the only mechanism that
+   covers it. One endpoint here, one URL per application there.
+3. **Nook**, later. A group-change event invalidating cached claims is the suite-native version
+   and composes with P4, but 1 and 2 cover the need; do not build it for this.
+
+Because sessions are opaque and claims are stored server-side (`porte_identities.claims`, JSONB),
+there is no token-size ceiling — the *group overage* problem that forces Entra to invent a
+`hasgroups` claim and a directory round-trip simply does not arise here.
+
+**What `porte` hands the app, and where it stops:**
+
+```go
+id, _ := porte.From(ctx)
+id.HasRole("admin")   // typed, parsed, kept fresh — meaning is the app's business
+```
+
+No `RequireRole` middleware for IdP roles, and no policy engine. The app writes its own guard in
+five lines, which is the smaller of the two options §7 Q4 posed and the one that keeps all three
+production role models working untouched.
+
+**Do not confuse this with `porte/espace` (v0.3).** Space membership is app-local data — the
+spaces live in the app's own database — so `espace.RequireRole(spaceID, role)` resolves
+membership, not IdP claims. Two different axes that must not be merged: a claim says what
+Authentik thinks of you globally; a membership says what this app's data says about you in one
+space.
+
+**What not to build.** If centralised fine-grained authorization ever becomes a real requirement,
+do not invent an API for it: the OpenID **AuthZEN Authorization API 1.0** went Standards Track in
+March 2026 with wide vendor interop, and Keycloak already ships experimental support. `porte`'s
+job in that world is to be a good PEP, never a PDP. That is a v2 conversation, recorded here so
+nobody starts a home-grown authorization service in the meantime.
+
+**The gap claims will never close.** A claim describes only the user who just logged in — it
+never tells an app who *else* exists. Today every app knows only the users who have signed in at
+least once, which is why "share this file with a colleague" and "invite someone to a space" have
+no directory to draw on. The standard answer is authentik's **SCIM provider** (backchannel
+provisioning, pushed on change plus an hourly resync), which would give each app a local, fresh
+copy of users *and* groups. Deliberately **not** in scope: it is a second protocol and an endpoint
+per app, and mechanisms 1–2 already solve freshness. Recorded as the known direction for the day
+an invite screen needs to list people who have never logged in.
+
+### The app owns its *profile* — `porte/pg` offers the identity tables
+
+An earlier revision said "`porte` must never own the users table — apps have genuinely
+different user columns." Read against source, that premise is false: the six `schemas/user.go`
+share **12 byte-identical columns**, plus 0 (Courrier, Agenda, Vision) to 4 (Sablier) business
+columns. The identity/profile split already exists in every app, hand-written.
+
+So `porte/pg` ships, as the *default* implementation of the interfaces:
+
+```
+porte_users        id, facile_id, email (unique), email_verified, name,
+                   avatar_url, avatar_source, created_at, updated_at
+porte_identities   user_id, provider, subject, password_hash,
+                   access_token, refresh_token, token_expiry, synced_at
+                   UNIQUE(provider, subject)
+porte_sessions     token_hash PK, user_id, label, created_at, last_used_at, expires_at
+porte_login_codes  code_hash PK, user_id, expires_at
+```
+
+The app keeps its business columns in its own `user_profiles` (or wherever it likes),
+`user_id PK REFERENCES porte_users(id)` — existing FKs keep pointing at the same `int64`.
+Schemas are constants applied through the app's own migrations, never at boot (`caisse/pg`
+precedent). Matching on callback: `(provider, subject)` lookup; fallback linking by email only
+when `email_verified` is true.
+
+The interface remains the escape hatch, and is all `porte` itself compiles against:
 
 ```go
 type UserStore interface {
@@ -177,16 +362,18 @@ type UserStore interface {
 }
 ```
 
-Fields the current implementations write on upsert, as a checklist for `Claims`: email,
-email_verified, name, picture URL, plus the app's own `avatar_url` / `avatar_source` /
-`oidc_picture_url` / `oidc_access_token` / `oidc_refresh_token` / `oidc_token_expiry` /
-`profile_synced_at`. `profile_synced_at` exists to rate-limit profile refreshes — keep it.
+An app with an exotic user model implements it and ignores `porte/pg` entirely. Fields the
+current implementations write on upsert, as a checklist for `Claims`: subject, provider, email,
+email_verified, name, picture URL, plus `avatar_url` / `avatar_source` / `oidc_picture_url` /
+token material / `profile_synced_at`. `profile_synced_at` exists to rate-limit profile
+refreshes — keep it.
 
 ### Roles are a hook, not an enum
 
 `porte` must not arbitrate the role model. Today: Nuage uses `IsAdmin bool` with first-user-
 admin, Vision uses workspace-scoped roles, the TS family uses a `USER`/`ADMIN` enum. All three
-have to keep working.
+have to keep working. How the IdP's view of a user reaches the app without `porte` interpreting
+it is §5c.
 
 ---
 
@@ -202,12 +389,21 @@ cleared immediately after. The ID token is verified through `go-oidc`'s verifier
 
 **Missing — add:**
 
-1. **PKCE (S256).** `AuthCodeURL(state)` is called with no code challenge. Add
+1. **Match on `sub`, not email — the most severe item on this list.** All six apps upsert with
+   `Where("email = ?", email)` and store no `sub`. Email is mutable in the IdP: a rename orphans
+   the account in six apps silently; a deleted-then-recreated IdP account inherits the old one.
+   Fixed structurally by `porte_identities(provider, subject)` in §5. During extraction, also
+   verify every app actually enforces `email_verified` — unverified email plus email matching is
+   an account-takeover primitive.
+2. **PKCE (S256).** `AuthCodeURL(state)` is called with no code challenge. Add
    `oauth2.S256ChallengeOption`, with the verifier carried in a cookie alongside the state.
-2. **Nonce.** No nonce is generated or checked against the ID token claim. Generate one per
+3. **Nonce.** No nonce is generated or checked against the ID token claim. Generate one per
    request, carry it with the state, and verify it after `Verify` returns.
-3. **Constant-time state comparison.** The check is a plain `!=`. Use
+4. **Constant-time state comparison.** The check is a plain `!=`. Use
    `subtle.ConstantTimeCompare`. Free, and removes the question entirely.
+5. **Kill the `localStorage` token.** Today the callback puts the token in the URL fragment and
+   the frontend stores it in `localStorage` — one XSS reads it (RFC 9700 §the-obvious). The
+   cookie transport in §5 removes both halves at once.
 
 **Non-negotiable:** do not hand-roll protocol or crypto. `go-oidc` for verification,
 `golang.org/x/oauth2` for the flow, `argon2` for hashing. This is the one place custom code is
@@ -217,16 +413,24 @@ unacceptable.
 
 ## 7. Open questions — settle before coding the affected part
 
-1. **CLI token flow.** Plume has a `POST /auth/oidc/exchange` the others lack, believed to be
-   how `plume`'s CLI authenticates. The suite has six CLIs. Does `porte` v0.1 own a device/token
-   flow, or is it deferred? Read Plume's implementation first.
+1. ~~**CLI token flow.**~~ **Settled 2026-08-07** — read Plume's implementation: the callback
+   parks a one-time code in a `sync.Map`, the CLI exchanges it. Right flow, wrong store (dies on
+   redeploy, breaks at two replicas). v0.1 owns it, DB-backed. See §5b.
 2. **`/auth/me` and `/auth/password`** — v0.2 of `porte`, or permanently app-side? They touch
    the app's user columns, which argues app-side.
-3. **Journal's bcrypt**, sitting next to argon2. Legacy path or a dependency? Look before
-   assuming.
-4. **Role hook shape** — an interface the app implements, or claims carried opaquely on the
-   session and interpreted by the app? The second is smaller; the first gives `porte` a usable
-   `Require` middleware.
+3. ~~**Journal's bcrypt.**~~ **Settled 2026-08-07** — the only bcrypt hit in Journal is the
+   fixture string `"$2y$n$nope"` in `authcrypto/crypto_test.go`. Argon2-only. Non-issue.
+4. ~~**Role hook shape.**~~ **Settled 2026-08-07 — the smaller option.** Claims ride typed but
+   uninterpreted on the identity; the app writes its own guard. `porte` ships no `RequireRole`
+   for IdP roles and no policy engine. Full design, including the freshness mechanisms and the
+   startup guard, in §5c.
+5. **CSRF header convention** — which custom header the SvelteKit clients send on mutating
+   requests, so the cookie transport's second lock is uniform across the suite. One name,
+   decided once, before the first frontend adopts the cookie.
+6. **Claim refresh TTL** — a concrete number for §5c mechanism 1. Short enough that a revoked
+   role stops mattering quickly, long enough not to hammer the IdP on every request. Pick it
+   with `profile_synced_at`'s existing interval in view, so there is one refresh cadence and not
+   two.
 
 ---
 
@@ -251,9 +455,16 @@ Dependency rules, following `caisse`:
 
 ## 9. Validation and rollout
 
-**Before tagging v0.1.0:** prove it on **Comptoir** (greenfield, no live sessions to break) and
-**Nuage** (the extraction source, so the most honest feedback on whether the abstraction fits).
-This is the sequence that made `tronc` right — written, proven on one, rolled out after.
+**Before tagging v0.1.0:** prove it on the **e-commerce demo** (greenfield, no live sessions to
+break, and it forces the works-outside-the-suite test — a non-Authentik `OIDC_ISSUER` — on day
+one) and **Nuage** (the extraction source, so the most honest feedback on whether the
+abstraction fits). This is the sequence that made `tronc` right — written, proven on one,
+rolled out after. *(An earlier revision named Comptoir here; Comptoir does not exist.)*
+
+The cookie transport touches the six SvelteKit frontends as well as the six backends — the one
+place this plan costs more than plain extraction. It rides the frontend rewrite (F track), and
+forced logout is already accepted, so the marginal cost is one deleted token-handling file per
+frontend.
 
 **Then** the remaining five, in one pass each. Change `OIDC_ISSUER` to `sso.facile.studio` in
 the same commit that adopts the library: the app's env is already being edited, so it costs one

@@ -14,7 +14,9 @@ the reasoning behind both.
 - Serve `/auth/config` so a frontend knows whether SSO is available and whether it is mandatory
 - Carry the suite's `SSO_ONLY` and `OIDC_*` environment conventions
 - Keep the role model pluggable, so `IsAdmin`, workspace roles and enum roles all still work
-- Store sessions as hashed opaque bearer tokens, with a `database/sql` implementation in `pg/`
+- Store sessions as hashed opaque tokens — `HttpOnly` cookie in browsers, `Bearer` for CLIs and
+  API tokens — with a `database/sql` implementation in `pg/`
+- Give every CLI the same login: browser opens, user signs in, a one-time code comes back
 
 ## Why
 
