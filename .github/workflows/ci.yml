@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Pinned to 1.24, the floor go.mod documents and the oldest Go the suite
+  # still runs. The apps are on 1.25; building only on a newer toolchain is how
+  # a 1.25-only construct reaches a consumer still on the floor unnoticed.
+  check:
+    runs-on: ubuntu-latest
+
+    # porte/pg has no tests yet. The service is here from the first package on
+    # purpose: a database-backed test that skips itself when the URL is unset
+    # passes silently, and a green CI that ran nothing is worse than a red one.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: porte
+          POSTGRES_PASSWORD: porte
+          POSTGRES_DB: porte_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PORTE_TEST_DATABASE_URL: postgres://porte:porte@localhost:5432/porte_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - run: gofmt -l . | tee /dev/stderr | (! read)
+      - run: go vet ./...
+      - run: go test -race -coverprofile=coverage.out ./...
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2

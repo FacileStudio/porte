@@ -1,0 +1,218 @@
+// Package porte is the authentication kit for the Facile Suite: the OIDC
+// plumbing that six Go apps have each written separately.
+//
+// This package is the frozen contract only — types, interfaces and the wire
+// shapes. It deliberately depends on nothing outside the standard library, so
+// that an app implementing [UserStore] never inherits go-oidc, oauth2 or a
+// database driver from it. The implementation lives alongside it and may
+// depend on whatever it needs; the boundary an app sees is here.
+//
+// porte carries authentication and transports authorization. It decides
+// neither: the identity provider assigns roles, the app decides what a role
+// may do, and porte owns only the transport and the freshness in between.
+//
+// See SPEC.md for the reasoning behind every decision expressed here.
+package porte
+
+import (
+	"errors"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+)
+
+// ErrNotFound is what a store returns when a row does not exist. Stores are
+// implemented by consumers, so the contract needs a sentinel of its own rather
+// than leaking sql.ErrNoRows or a GORM error across the boundary.
+var ErrNotFound = errors.New("porte: not found")
+
+// ErrCodeConsumed is returned when a login code was already exchanged. It is
+// distinct from ErrNotFound so a replayed code can be logged as an attack
+// rather than as a typo.
+var ErrCodeConsumed = errors.New("porte: login code already consumed")
+
+// The routes porte mounts. All six apps already serve the first three at these
+// exact paths with these exact response shapes, which is what makes them safe
+// to freeze.
+const (
+	RouteConfig            = "/auth/config"
+	RouteLogin             = "/auth/oidc"
+	RouteCallback          = "/auth/oidc/callback"
+	RouteExchange          = "/auth/oidc/exchange"
+	RouteLogout            = "/auth/logout"
+	RouteSyncProfile       = "/auth/sync-profile"
+	RouteBackchannelLogout = "/auth/backchannel-logout"
+)
+
+// SessionCookieName is the browser session cookie. Courrier and Agenda already
+// ship this exact name; adopting theirs keeps two apps from having to log
+// everyone out twice.
+const SessionCookieName = "session"
+
+// CSRFHeaderName is the second lock on the cookie transport. SameSite=Lax
+// stops cross-site form posts; a header a browser will not attach to a simple
+// request stops the rest. Any non-empty value counts — the header's presence
+// is the whole signal, so there is no token to distribute or rotate.
+const CSRFHeaderName = "X-Facile-CSRF"
+
+// Defaults, each taken from what the apps already do rather than invented.
+const (
+	// DefaultSessionTTL matches the 30 days every app hardcodes today.
+	DefaultSessionTTL = 30 * 24 * time.Hour
+
+	// DefaultLoginCodeTTL matches Plume's existing 60 second window.
+	DefaultLoginCodeTTL = 60 * time.Second
+
+	// DefaultClaimsTTL is deliberately the same number as the profile sync
+	// rate limit below. One refresh cadence, not two: a role revoked in the
+	// IdP stops mattering within five minutes, and the IdP sees at most one
+	// refresh per user per five minutes rather than one per request.
+	DefaultClaimsTTL = 5 * time.Minute
+
+	// DefaultProfileSyncInterval is Nuage's existing profile_synced_at rate
+	// limit, unchanged.
+	DefaultProfileSyncInterval = 5 * time.Minute
+)
+
+// Config is the environment contract. The variable names are the existing
+// suite convention and do not change: OIDC_ISSUER, OIDC_CLIENT_ID,
+// OIDC_CLIENT_SECRET, OIDC_REDIRECT_URL, OIDC_SUCCESS_URL, SSO_ONLY.
+type Config struct {
+	// Issuer is the OIDC issuer URL. Its presence is what enables OIDC —
+	// the existing convention, kept.
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+
+	// RedirectURL must match the redirect URI registered on the provider.
+	RedirectURL string
+
+	// SuccessURL is where the browser lands after a successful callback.
+	SuccessURL string
+
+	// SSOOnly suppresses local password routes entirely. They are not
+	// registered rather than rejected, so there is no endpoint to probe.
+	SSOOnly bool
+
+	// ClaimsScope carries the roles claim. Empty disables claims handling
+	// altogether, which is the state every app is in today, so leaving it
+	// unset regresses nothing.
+	ClaimsScope string
+
+	// SessionTTL, ClaimsTTL and LoginCodeTTL fall back to the Default
+	// constants above when zero.
+	SessionTTL   time.Duration
+	ClaimsTTL    time.Duration
+	LoginCodeTTL time.Duration
+}
+
+// Enabled reports whether OIDC is configured at all.
+func (c Config) Enabled() bool { return c.Issuer != "" }
+
+// ClaimsEnabled reports whether porte should request and verify the roles
+// claim. Off by default: no app reads claims today.
+func (c Config) ClaimsEnabled() bool { return c.ClaimsScope != "" }
+
+// Scopes returns the scopes to request. The first four are what all six apps
+// already request; offline_access is what makes silent claim refresh possible
+// without a second login.
+func (c Config) Scopes() []string {
+	scopes := []string{"openid", "email", "profile", "offline_access"}
+	if c.ClaimsEnabled() {
+		scopes = append(scopes, c.ClaimsScope)
+	}
+	return scopes
+}
+
+// Validate rejects a half-configured provider at startup. A missing client
+// secret must not become a 500 on the first login attempt three days later.
+func (c Config) Validate() error {
+	if !c.Enabled() {
+		return nil
+	}
+	if _, err := url.Parse(c.Issuer); err != nil {
+		return fmt.Errorf("porte: OIDC_ISSUER is not a valid URL: %w", err)
+	}
+	missing := []string{}
+	for name, value := range map[string]string{
+		"OIDC_CLIENT_ID":     c.ClientID,
+		"OIDC_CLIENT_SECRET": c.ClientSecret,
+		"OIDC_REDIRECT_URL":  c.RedirectURL,
+		"OIDC_SUCCESS_URL":   c.SuccessURL,
+	} {
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("porte: OIDC_ISSUER is set but %s %s empty",
+			strings.Join(sorted(missing), ", "), plural(len(missing), "is", "are"))
+	}
+	return nil
+}
+
+// Resolved returns a copy with zero durations replaced by their defaults, so
+// the rest of the implementation never repeats the fallback.
+func (c Config) Resolved() Config {
+	if c.SessionTTL == 0 {
+		c.SessionTTL = DefaultSessionTTL
+	}
+	if c.ClaimsTTL == 0 {
+		c.ClaimsTTL = DefaultClaimsTTL
+	}
+	if c.LoginCodeTTL == 0 {
+		c.LoginCodeTTL = DefaultLoginCodeTTL
+	}
+	return c
+}
+
+// ConfigResponse is the body of GET /auth/config, byte-identical to what all
+// six apps serve today. A frontend reads it to decide whether to show a
+// password form at all.
+type ConfigResponse struct {
+	SSOOnly     bool `json:"sso_only"`
+	OIDCEnabled bool `json:"oidc_enabled"`
+}
+
+// ExchangeRequest is the body of POST /auth/oidc/exchange: a CLI trading its
+// one-time login code for a bearer token.
+type ExchangeRequest struct {
+	Code string `json:"code"`
+}
+
+// ExchangeResponse keeps Plume's existing wire shape, including user_id as a
+// string. The Go side uses int64 throughout, but changing the JSON type would
+// break the CLIs for no gain — the field is an opaque identifier to them.
+type ExchangeResponse struct {
+	UserID string `json:"user_id"`
+	Token  string `json:"token"`
+}
+
+// LogoutResponse is the body of POST /auth/logout.
+type LogoutResponse struct {
+	LoggedOut bool `json:"logged_out"`
+}
+
+// SyncProfileResponse is the body of POST /auth/sync-profile. Synced is false
+// when the call was a no-op because the rate limit had not elapsed.
+type SyncProfileResponse struct {
+	Synced bool `json:"synced"`
+}
+
+func sorted(values []string) []string {
+	out := append([]string(nil), values...)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j] < out[j-1]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}

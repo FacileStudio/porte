@@ -63,9 +63,14 @@ which is the number that justifies the extraction. Plume is the outlier at both 
 carries the CLI exchange flow (§5b).
 
 `internal/oidcavatar/` — HTTPS validation, private-IP/SSRF rejection, download, store — is
-copy-pasted in six apps as well, and has drifted **further than the auth code**: six files, six
-distinct hashes, only Courrier and Sablier matching. It is a security guard, so this is the worst
-place in the suite for six divergent copies.
+copy-pasted in six apps as well, and has drifted **further than the auth code**: six files,
+**five** distinct hashes, only Courrier and Sablier matching. It is a security guard, so this is
+the worst place in the suite for five divergent copies.
+
+`internal/authcrypto/` — the argon2 and token helpers — has drifted less but is not one file
+either: **three** distinct hashes across seven apps (Nuage = Courrier = Agenda = Sablier; Plume =
+Vision; Journal its own). Its API is small and stable — `NewToken`, `HashToken`, `HashPassword`,
+`VerifyPassword` — which is what makes it a clean v0.2 extraction. Measured 2026-08-07.
 
 The OIDC surface is **identical across all six**:
 
@@ -109,7 +114,7 @@ Do not re-litigate these. Each has a reason recorded.
 | Password hashing is already settled | All seven Go apps use argon2 today. No hash migration needed. (~~Journal carries bcrypt alongside argon2~~ — checked 2026-08-07: the only bcrypt hit is a test fixture string in `crypto_test.go`. Journal is argon2-only. Closed) |
 | **Browser sessions ride an `HttpOnly` cookie, not `localStorage`** | Today the callback hands the token via URL fragment and the SvelteKit apps store it in `localStorage` — one XSS reads every token (RFC 9700, OWASP session cheat sheet). The suite's mono-container topology (P1b: same-origin `/api` behind Traefik, SPA served by `tronc/spa`) makes `HttpOnly; Secure; SameSite=Lax` cookies free. Bearer stays for CLIs and API clients; the middleware accepts both. Forced logout is already accepted, and the frontends are already being rewritten — this train does not pass twice. Decided 2026-08-07 |
 | **`porte/pg` ships default identity tables; `UserStore` stays the escape hatch** | The six `schemas/user.go` share 12 byte-identical columns plus 0–4 business ones — the identity/profile split already exists, hand-written six times. Owning the shape once is what makes `facile_id`, `updated_at` (P4.3) and the `sub` fix land once instead of six times. Supabase (`auth.users`/`public.profiles`) and Ory Kratos both converge on the same boundary. Provided, never imposed — the `caisse` pattern. Decided 2026-08-07 |
-| **OIDC account matching keys on `(provider, subject)`, never on email** | All six apps match by email today (`Where("email = ?")`) and no schema stores `sub`. Email is mutable in Authentik: an email change silently orphans the account in six apps; a deleted-then-recreated IdP account silently inherits the old one. This is a live security bug, wiki: `bugs/facile-oidc-email-matching.md`. Decided 2026-08-07 |
+| **OIDC account matching keys on `(provider, subject)`, never on email** | Email is mutable in Authentik: an email change silently orphans the account; a deleted-then-recreated IdP account silently inherits the old one. Wiki: `bugs/facile-oidc-email-matching.md`. Decided 2026-08-07. ~~All six apps match by email today and no schema stores `sub`~~ — **corrected 2026-08-07 after the §11 diff**: the fix already landed in all six (HEAD commit of each `modules/auth/`: *"Match OIDC accounts on sub instead of the mutable email"*). Every `schemas/user.go` now carries `OIDCSubject *string uniqueIndex`, and the lookup is subject-first with an email fallback gated on `email_verified`. So `porte` **preserves** this behaviour rather than introducing it — see §6 |
 | **Identities are a separate table from users, from v0.1** | v0.2 explicitly plans local password *and* OIDC on the same human — one credential column set on the user row cannot represent that. `porte_identities(provider, subject)` also models "Login with Google" as a config change instead of a schema break, which client projects will want. Wire a single provider in v0.1; design the table for several. Decided 2026-08-07 |
 | Pilot is the e-commerce demo + Nuage | Comptoir does not exist (checked 2026-08-07 — not locally, not in the org). A greenfield demo forces the works-outside-the-suite test on day one; Nuage is the extraction source, so the most honest feedback on fit |
 
@@ -216,6 +221,13 @@ Opaque token, generated randomly, **stored hashed** (the existing `authcrypto.Ne
 `HashToken` pair). Keep this — it is stateful by design, revocable, and already what all six do.
 
 What changes (2026-08-07) is how the browser carries it:
+
+**Prior art inside the suite, found 2026-08-07:** Courrier and Agenda **already do this**. Cookie
+name `session`, `Path=/`, `MaxAge=SessionTTL`, `HttpOnly`, `SameSite=Lax`, and `Secure` derived
+from `r.TLS != nil || X-Forwarded-Proto == https` — which is the correct test behind Traefik and
+better than Nuage's `strings.HasPrefix(successURL, "https://")`. Take Courrier's `isSecure(r)`
+and its cookie name verbatim: two of the six then need no logout at all, and there is no third
+spelling of the cookie to reconcile later.
 
 - **Browser: `HttpOnly; Secure; SameSite=Lax` cookie**, set by the callback. The token never
   appears in a URL, never touches `localStorage`, and the frontends' token-handling code is
@@ -365,10 +377,18 @@ The shared core, identical in all six: `id`, `email` (uniqueIndex), `name`, `ava
 | Nuage | `color`, `is_admin` |
 | Sablier | `color`, `rate`, `rate_type`, `workday_hours` |
 
-Note what is *missing* from the core: no `updated_at` anywhere (ROADMAP P4.3), no `facile_id`
-outside Nuage (P4.1), and **no `sub`** (§6.1). Five of the twelve core columns — the `oidc_*`
-group plus `profile_synced_at` — are `porte` plumbing that has no business being in an app's
-domain table at all.
+Note what is *missing* from the core: no `updated_at` anywhere (ROADMAP P4.3) and no `facile_id`
+outside Nuage (P4.1). ~~and **no `sub`**~~ — **corrected 2026-08-07**: `oidc_subject *string`
+with a `uniqueIndex` is now present in all six, so the shared core is **thirteen** columns, not
+twelve. Six of them — the `oidc_*` group plus `profile_synced_at` — are `porte` plumbing that
+has no business being in an app's domain table at all.
+
+**One more delta the earlier reading missed:** Courrier and Agenda **encrypt the OIDC access and
+refresh tokens at rest** (`service.encryptToken` → `crypto.Encrypt` with an app key, falling back
+to plaintext when no key is configured); the other four store them in the clear. `porte` hands
+the store plaintext and the store decides — encryption at rest is a deployment property and
+`porte` has no key management to offer. Recorded so the difference is a choice rather than a
+surprise during extraction.
 
 So `porte/pg` ships, as the *default* implementation of the interfaces:
 
@@ -427,23 +447,30 @@ concrete argument for the library.
 `Secure` when the success URL is https, `SameSite=Lax`, TTL-bounded, compared on callback and
 cleared immediately after. The ID token is verified through `go-oidc`'s verifier.
 
-**Missing — add:**
+**Missing — add:** *(re-measured 2026-08-07 during the §11 diff; the list below is what is
+actually still missing, and two items that were on it are already done.)*
 
-1. **Match on `sub`, not email — the most severe item on this list.** All six apps upsert with
-   `Where("email = ?", email)` and store no `sub`. Email is mutable in the IdP: a rename orphans
-   the account in six apps silently; a deleted-then-recreated IdP account inherits the old one.
-   Fixed structurally by `porte_identities(provider, subject)` in §5. During extraction, also
-   verify every app actually enforces `email_verified` — unverified email plus email matching is
-   an account-takeover primitive.
-2. **PKCE (S256).** `AuthCodeURL(state)` is called with no code challenge. Add
-   `oauth2.S256ChallengeOption`, with the verifier carried in a cookie alongside the state.
-3. **Nonce.** No nonce is generated or checked against the ID token claim. Generate one per
-   request, carry it with the state, and verify it after `Verify` returns.
-4. **Constant-time state comparison.** The check is a plain `!=`. Use
-   `subtle.ConstantTimeCompare`. Free, and removes the question entirely.
-5. **Kill the `localStorage` token.** Today the callback puts the token in the URL fragment and
-   the frontend stores it in `localStorage` — one XSS reads it (RFC 9700 §the-obvious). The
-   cookie transport in §5 removes both halves at once.
+1. ~~**Match on `sub`, not email — the most severe item on this list.**~~ **Already fixed in all
+   six**, and it is the HEAD commit of every `modules/auth/`. The lookup is `oidc_subject` first,
+   with an email fallback taken only when `emailClaimTrusted(claims.EmailVerified)` allows it —
+   an absent claim counts as trusted, an explicit `false` does not, and one app (Plume) rejects
+   unverified email outright before upserting. `porte` **preserves** this logic; do not treat it
+   as new work, and do not regress it. `porte_identities(provider, subject)` in §5 makes it
+   structural rather than conventional, which is still worth doing.
+2. **PKCE (S256).** Still missing everywhere: `AuthCodeURL(state)` is called with no code
+   challenge in all six. Add `oauth2.S256ChallengeOption`, with the verifier carried in a cookie
+   alongside the state.
+3. **Nonce.** Still missing everywhere. No nonce is generated or checked against the ID token
+   claim. Generate one per request, carry it with the state, and verify it after `Verify` returns.
+4. **Constant-time state comparison.** Five of six use a plain `!=`. **Plume already uses
+   `subtle.ConstantTimeCompare`** — copy Plume's line, it is the reference.
+5. **Kill the `localStorage` token.** Three of six still do this — Nuage, Vision and Sablier put
+   the token in the URL fragment. **Courrier and Agenda already ship the cookie** (see §5). The
+   cookie transport removes both halves at once for the remaining three.
+6. **Drop the query-parameter credential paths.** Courrier's middleware still accepts
+   `?token=` (with a deprecation warning) and Vision's accepts `?api_key=`. A credential in a
+   URL lands in access logs, referrers and browser history. `porte`'s middleware reads the
+   cookie and the `Authorization` header, and nothing else. Found 2026-08-07.
 
 **Non-negotiable:** do not hand-roll protocol or crypto. `go-oidc` for verification,
 `golang.org/x/oauth2` for the flow, `argon2` for hashing. This is the one place custom code is
@@ -464,13 +491,16 @@ unacceptable.
    uninterpreted on the identity; the app writes its own guard. `porte` ships no `RequireRole`
    for IdP roles and no policy engine. Full design, including the freshness mechanisms and the
    startup guard, in §5c.
-5. **CSRF header convention** — which custom header the SvelteKit clients send on mutating
-   requests, so the cookie transport's second lock is uniform across the suite. One name,
-   decided once, before the first frontend adopts the cookie.
-6. **Claim refresh TTL** — a concrete number for §5c mechanism 1. Short enough that a revoked
-   role stops mattering quickly, long enough not to hammer the IdP on every request. Pick it
-   with `profile_synced_at`'s existing interval in view, so there is one refresh cadence and not
-   two.
+5. ~~**CSRF header convention.**~~ **Proposed 2026-08-07: `X-Facile-CSRF`, any non-empty value.**
+   No app sends a CSRF header today, so there is nothing to reconcile — the name is free. The
+   header's *presence* is the entire signal: a browser will not attach a custom header to a
+   simple cross-site request without a preflight, so there is no token to mint, distribute or
+   rotate. Frozen as `porte.CSRFHeaderName`. Reject only if a frontend already reserves the name.
+6. ~~**Claim refresh TTL.**~~ **Proposed 2026-08-07: five minutes**, deliberately the same number
+   as the existing `profile_synced_at` rate limit (`time.Since(record.ProfileSyncedAt) < 5*time.Minute`
+   in Nuage). One refresh cadence, not two: a revoked role stops mattering within five minutes,
+   and the IdP sees at most one refresh per user per five minutes instead of one per request.
+   Frozen as `porte.DefaultClaimsTTL`, overridable per app via `Config.ClaimsTTL`.
 
 ---
 
@@ -612,10 +642,27 @@ small interfaces, implementations provided.
 
 ---
 
-## 11. First step
+## 11. First step — done 2026-08-07
 
 Not code. Read the six `modules/auth/` implementations and diff them properly — `oidc.go`,
 `service.go`, `middleware/auth.go` — then write the frozen contract of §5 as Go types and get
 it reviewed before anything is built on top of it.
+
+**Done.** The diff produced the corrections marked *2026-08-07* throughout this document, and
+the contract is `porte.go`, `identity.go` and `session.go` — types, interfaces and wire shapes
+only, **standard library only, zero dependencies**. That constraint is the point: an app
+implementing `UserStore` must not inherit `go-oidc`, `oauth2` or a database driver from `porte`.
+It is why `Claims` carries plain fields and `TokenSet` exists instead of an `*oauth2.Token`.
+
+Two shape changes the contract makes deliberately, both worth arguing about at review:
+
+- **`Identity.UserID` is an `int64`**, not the decimal string every app passes around today.
+  The conversion moves to the edge instead of being repeated per handler, and it matches
+  `porte_users.id` and the existing `int64` foreign keys. The wire keeps `user_id` as a string
+  in `ExchangeResponse`, because to a CLI it is an opaque identifier and breaking it buys
+  nothing.
+- **The middleware yields a typed `Identity`**, replacing the current
+  `Authenticate(ctx, string) (string, any, error)` plus an `interface{ GetEmail() string }`
+  assertion in every app. That assertion is a runtime failure mode sitting in the auth path.
 
 The rest is extraction. This part is the one that is expensive to get wrong.

@@ -3,9 +3,10 @@
 The authentication kit for the [Facile Suite](https://facile.studio). The OIDC plumbing every
 Facile API needs and none of them should be re-writing.
 
-**Nothing is built yet.** This repo currently holds the specification only. Read
-[SPEC.md](SPEC.md) before writing any code — it carries the decisions, the frozen contract, and
-the reasoning behind both.
+**Nothing is implemented yet.** What exists is the specification and the contract it freezes:
+`porte.go`, `identity.go` and `session.go` hold the types, interfaces and wire shapes, with no
+behaviour behind them and no dependency outside the standard library. Read [SPEC.md](SPEC.md)
+before writing any code — it carries the decisions, the contract, and the reasoning behind both.
 
 ## What it will do
 
@@ -37,7 +38,7 @@ state comparison. Written once here instead of six times in the apps.
 
 | Version | Scope |
 |---|---|
-| v0.1 | OIDC only. Proven on Comptoir and Nuage before tagging |
+| v0.1 | OIDC only. Proven on the e-commerce demo and Nuage before tagging |
 | v0.2 | Local email/password, argon2 |
 | v0.3 | `porte/espace` — spaces, membership, `RequireRole` |
 
