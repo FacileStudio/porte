@@ -1,13 +1,19 @@
 # porte — API
 
-Every exported symbol. This is the frozen contract: types, interfaces and wire shapes, with no
-behaviour behind them yet. The reasoning for each decision is in [SPEC.md](../SPEC.md) §5.
+Every exported symbol, package by package. The reasoning for each decision is in
+[SPEC.md](../SPEC.md) §5.
 
-**The package depends on nothing outside the standard library, and that is a constraint rather
-than a coincidence.** An app implementing `UserStore` must not inherit `go-oidc`,
-`golang.org/x/oauth2` or a database driver from `porte`. It is why `Claims` carries plain fields
-and `TokenSet` exists instead of an `*oauth2.Token`. The implementation may depend on whatever
-it needs; the boundary an app sees may not.
+| Package | What it is | Depends on |
+|---|---|---|
+| `porte` | The frozen contract: types, interfaces, wire shapes. No behaviour | the standard library |
+| `porte/oidc` | The engine: the flow, the seven routes, the middleware, the avatar guard | go-oidc, oauth2, tronc, chi |
+| `porte/pg` | The identity tables and the four stores over them | `database/sql` |
+
+**The contract package depends on nothing outside the standard library, and that is a constraint
+rather than a coincidence.** An app's stores and domain code compile against plain types and
+never see `go-oidc`, `golang.org/x/oauth2` or a database driver. It is why `Claims` carries plain
+fields and `TokenSet` exists instead of an `*oauth2.Token`, and it is why the engine is a
+separate package rather than living here: only an app's `main.go` imports `porte/oidc`.
 
 ## Errors
 
@@ -121,6 +127,11 @@ so matching on it lets a rename orphan an account and a delete-then-recreate inh
 carry the profile. `Roles` is absent unless `ClaimsScope` is set and the provider emitted it.
 `Tokens` is a `TokenSet`.
 
+`AvatarURL` is filled by `porte`, not by the provider: when an `AvatarStore` is wired, the
+picture is fetched through the SSRF guard and stored before the upsert runs, so the app writes
+the final URL in the same statement as the name and the email. `AvatarKey() string` is the
+opaque, stable key that avatar was filed under.
+
 `DisplayName() string` is the precedence every app already implements: `name`, then
 `preferred_username`, then given and family names joined. Empty when none was asserted.
 
@@ -201,7 +212,13 @@ otherwise.
 
 ### AvatarStore
 
-`Put(ctx, userID, data, contentType) (avatarURL string, err error)` and `Remove(ctx, avatarURL)`.
+`Put(ctx, key, data, contentType) (avatarURL string, err error)` and `Remove(ctx, avatarURL)`.
+
+`key` is an opaque, stable per-identity string — `Claims.AvatarKey()` — and **not** a user id.
+The avatar is fetched and stored *before* `UpsertFromOIDC` runs, so no user id exists yet, and
+the resulting URL rides into the upsert on `Claims.AvatarURL`. That ordering is what keeps the
+whole callback to one write on the app's side. A stable key also means a re-sync overwrites
+rather than accumulating one file per login, which is what the apps do today.
 
 The fetch itself — HTTPS-only validation, private address rejection, size limit, content type
 check — belongs to `porte` and exists once, because six divergent copies of an SSRF guard is the
@@ -227,6 +244,79 @@ of them can offer "your active sessions".
 | `Expired(now) bool` | A zero `ExpiresAt` never expires — that is what a long-lived API token wants |
 | `IsAPIToken() bool` | Whether the row was created as a named token rather than an interactive login |
 
-`LoginCode` carries `CodeHash`, `UserID`, `SessionID`, `ExpiresAt`, and `Expired(now) bool`. The
-session row is created up front, so the exchange is a lookup rather than a second write path
-that could half-succeed.
+`LoginCode` carries `CodeHash`, `UserID`, `ExpiresAt`, and `Expired(now) bool`.
+
+The session is created **at exchange time**, not at callback time. An earlier revision carried a
+`SessionID` here so the exchange would be a pure lookup; that cannot work, because the session
+row stores only a hash, so handing the CLI a usable token later would mean keeping the plaintext
+at rest. `Consume` is atomic, so a code still yields at most one session.
+
+## Tokens
+
+| Symbol | What it does |
+|---|---|
+| `NewToken() (string, error)` | 32 random bytes, URL-safe. Every credential porte issues |
+| `HashToken(token) string` | The stored form. SHA-256, hex — the encoding all six apps already use, so their existing session rows keep authenticating |
+| `SecureCompare(a, b) bool` | Constant-time comparison. Five of six apps compare the OIDC state with a plain `!=`; this is Plume's line, which was the one that was right |
+
+SHA-256 is right here and argon2 is not: the input is 256 bits of entropy `porte` generated
+itself, so there is no dictionary to slow down, and this runs on every authenticated request.
+
+## porte/oidc
+
+### Kit
+
+`New(ctx, cfg, Deps) (*Kit, error)` performs discovery and returns the engine. A disabled config
+is not an error — it returns a kit that serves `RouteConfig` and authenticates sessions, which is
+what an app running without SSO needs.
+
+`New` is the boot path, so every detectable misconfiguration is detected there: a half-filled
+environment, an unreachable issuer, a missing store, and a roles scope the provider does not
+advertise.
+
+| Method | What it does |
+|---|---|
+| `Mount(chi.Router)` | Registers the routes at the frozen paths, relative to that router |
+| `RequireAuth(http.Handler) http.Handler` | Rejects unauthenticated requests |
+| `Optional(http.Handler) http.Handler` | Attaches an identity when there is one, lets the request through either way |
+| `Config() porte.Config` | The resolved configuration |
+| `Enabled() bool` | Whether the OIDC routes are live |
+
+`Deps` carries `Users`, `Identities`, `Sessions`, `Codes`, an optional `Avatars` and an optional
+`Logger`. `porte/pg` implements all four.
+
+### What the middleware accepts
+
+The session cookie, then `Authorization: Bearer`. **Nothing else** — no query parameter, ever. A
+credential in a URL lands in access logs, referrers and browser history, and the two cases that
+genuinely needed one (`EventSource`, download navigations) are exactly what the cookie transport
+serves for free.
+
+On a cookie-authenticated **mutating** request the `X-Facile-CSRF` header must be present, with
+any value. Bearer callers are exempt: nothing attaches a header on their behalf, so there is no
+CSRF to defend against.
+
+### FetchAvatar
+
+`FetchAvatar(ctx, pictureURL) (data []byte, contentType string, err error)`.
+
+The guard runs **in the dialer**, not before it. Every existing copy resolves the hostname,
+checks the addresses, then calls `http.Get`, which resolves again — a DNS record that answers
+publicly on the first lookup and privately on the second walks straight through. Checking at
+connect time closes that window and covers redirects for free.
+
+## porte/pg
+
+`New(db *sql.DB) *Store`, then `Users()`, `Identities()`, `Sessions()` and `LoginCodes()`.
+
+They are four types rather than one because two interfaces spell the same method differently —
+`SessionStore.Find` takes a token hash, `IdentityStore.Find` takes a provider and a subject — and
+Go cannot carry both on one receiver. Renaming a method to dodge that would leak a storage
+accident into the contract.
+
+`Schema` is a constant. Apply it through the app's own migrations, never at boot: a schema
+applied on startup races every other replica. `EnsureSchema(ctx, db)` exists for tests and local
+development.
+
+`UpsertFromOIDC` runs in one transaction. A login that created a user but failed to link the
+identity would create a second user on the next attempt.

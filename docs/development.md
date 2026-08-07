@@ -10,10 +10,14 @@ cd porte
 mise install
 ```
 
-`mise.toml` pins Go 1.24 — the floor `go.mod` documents, matching `tronc` and `caisse`. The apps
-that will consume `porte` run 1.25; a library floors low so a consumer can be newer. Building
-only on a newer toolchain is how a 1.25-only construct reaches a consumer still on the floor
-without anyone noticing, which is why CI pins 1.24 exactly.
+`mise.toml` pins Go 1.25 — the floor `go.mod` documents, and CI pins the same number exactly.
+Building only on a newer toolchain is how a construct the floor does not have reaches a consumer
+unnoticed.
+
+The floor was meant to be 1.24, matching `tronc` and `caisse`, on the principle that a library
+floors low so a consumer can be newer. `go-oidc` v3.20 requires Go >= 1.25, so the choice was
+made by the dependency. That costs nothing here: the six consuming apps moved to 1.25 in Phase 2
+and `tronc/migrate` already declares 1.25.7.
 
 ## The quality gate
 
@@ -78,20 +82,24 @@ PostgreSQL 16 service rather than trusting them untested.
 porte.go       Config, route paths, wire shapes, the frozen constants
 identity.go    Identity, Claims, TokenSet, StoredIdentity, UserStore, IdentityStore
 session.go     Session, LoginCode, SessionStore, LoginCodeStore, AvatarStore
+token.go       NewToken, HashToken, SecureCompare
+oidc/          the engine: the flow, the seven routes, the middleware, the avatar guard
+pg/            the identity tables and the four stores over them
 docs/          Configuration, development, API
 ```
 
-`porte/pg` (Postgres stores, `database/sql` only) and `porte/espace` (v0.3) arrive as
-subpackages of this repo, sharing its tags — the pattern `tronc/migrate`, `tronc/testdb` and
-`caisse/pg` already use. An app that does not need spaces simply does not import `espace`.
+`porte/espace` (v0.3) arrives the same way, as a subpackage sharing this repo's tags — the
+pattern `tronc/migrate`, `tronc/testdb` and `caisse/pg` already use. An app that does not need
+spaces simply does not import `espace`.
 
 **No GORM.** All six consuming apps use it, but forcing an ORM is a heavier commitment than
 anything the suite shares today, and it is what pushed `tronc` to split `migrate` and `testdb`
 into separate modules. `database/sql` keeps everything in one module.
 
 **No dependencies in the root package.** The contract is standard library only, deliberately —
-see [api.md](api.md). Adding an import there is a decision, not a convenience: it lands in every
-app that implements a store.
+see [api.md](api.md). Adding an import there is a decision, not a convenience: it is what an
+app's stores and domain code compile against, and `porte/oidc` exists as a separate package
+precisely so that code never sees `go-oidc`.
 
 ## Versioning
 

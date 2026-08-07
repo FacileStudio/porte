@@ -1,5 +1,5 @@
 [tools]
-go = "1.24"
+go = "1.25"
 
 [tasks.check]
 description = "Run the full quality gate: gofmt, vet, test, lint"

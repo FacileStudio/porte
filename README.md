@@ -3,21 +3,42 @@
 The authentication kit for the [Facile Suite](https://facile.studio). The OIDC plumbing every
 Facile API needs and none of them should be re-writing.
 
-**Nothing is implemented yet.** What exists is the specification and the contract it freezes:
-`porte.go`, `identity.go` and `session.go` hold the types, interfaces and wire shapes, with no
-behaviour behind them and no dependency outside the standard library. Read [SPEC.md](SPEC.md)
-before writing any code — it carries the decisions, the contract, and the reasoning behind both.
+**Unreleased and unproven.** The engine and the stores are written and tested; nothing has run
+against a real Authentik yet, and no app has adopted it. Read [SPEC.md](SPEC.md) before writing
+any code — it carries the decisions, the contract, and the reasoning behind both.
 
-## What it will do
+## What it does
 
-- Mount `/auth/oidc` and its callback against any OIDC provider, Authentik today
-- Verify the ID token, upsert the user through an interface the app implements, issue a session
-- Serve `/auth/config` so a frontend knows whether SSO is available and whether it is mandatory
-- Carry the suite's `SSO_ONLY` and `OIDC_*` environment conventions
-- Keep the role model pluggable, so `IsAdmin`, workspace roles and enum roles all still work
-- Store sessions as hashed opaque tokens — `HttpOnly` cookie in browsers, `Bearer` for CLIs and
+- Mounts `/auth/oidc` and its callback against any OIDC provider, Authentik today, with PKCE, a
+  nonce and a constant-time state comparison — all three missing from the six apps it replaces
+- Verifies the ID token, upserts the user through an interface the app implements, issues a
+  session
+- Serves `/auth/config` so a frontend knows whether SSO is available and whether it is mandatory
+- Carries the suite's `SSO_ONLY` and `OIDC_*` environment conventions
+- Keeps the role model pluggable, so `IsAdmin`, workspace roles and enum roles all still work
+- Stores sessions as hashed opaque tokens — `HttpOnly` cookie in browsers, `Bearer` for CLIs and
   API tokens — with a `database/sql` implementation in `pg/`
-- Give every CLI the same login: browser opens, user signs in, a one-time code comes back
+- Gives every CLI the same login: browser opens, user signs in, a one-time code comes back
+- Fetches IdP avatars behind an SSRF guard that checks the address at connect time, closing the
+  DNS-rebinding window every existing copy leaves open
+
+## Wiring it
+
+```go
+store := pg.New(db)
+kit, err := oidc.New(ctx, cfg, oidc.Deps{
+	Users:      store.Users(),
+	Identities: store.Identities(),
+	Sessions:   store.Sessions(),
+	Codes:      store.LoginCodes(),
+})
+kit.Mount(router)
+
+router.Group(func(r chi.Router) {
+	r.Use(kit.RequireAuth)
+	r.Get("/things", handler) // porte.From(ctx) inside
+})
+```
 
 ## Why
 
@@ -31,14 +52,14 @@ state comparison. Written once here instead of six times in the apps.
 
 | Layer | Tech |
 |---|---|
-| Runtime | Go 1.24, [go-oidc](https://github.com/coreos/go-oidc), `golang.org/x/oauth2`, [tronc](https://github.com/FacileStudio/tronc) |
+| Runtime | Go 1.25, [go-oidc](https://github.com/coreos/go-oidc), `golang.org/x/oauth2`, [tronc](https://github.com/FacileStudio/tronc) |
 | Storage | Sessions through an interface; `pg/` needs only a `*sql.DB` |
 
 ## Status
 
 | Version | Scope |
 |---|---|
-| v0.1 | OIDC only. Proven on the e-commerce demo and Nuage before tagging |
+| v0.1 | OIDC only. Written; proven on the e-commerce demo and Nuage before tagging |
 | v0.2 | Local email/password, argon2 |
 | v0.3 | `porte/espace` — spaces, membership, `RequireRole` |
 
@@ -51,8 +72,9 @@ state comparison. Written once here instead of six times in the apps.
 | [Development](docs/development.md) | Local setup, the quality gate, versioning |
 | [API](docs/api.md) | Every exported symbol — the frozen contract, package by package |
 
-There is no `docs/architecture.md` yet: the contract is frozen but nothing implements it, so the
-page could only describe a request flow that does not exist. It arrives with v0.1.
+There is no `docs/architecture.md` yet. It arrives once the flow has run against a real
+provider: a page describing a request path nobody has walked is a page that documents an
+intention.
 
 ---
 

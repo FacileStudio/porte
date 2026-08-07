@@ -492,7 +492,7 @@ unacceptable.
    parks a one-time code in a `sync.Map`, the CLI exchanges it. Right flow, wrong store (dies on
    redeploy, breaks at two replicas). v0.1 owns it, DB-backed. See §5b.
 2. **`/auth/me` and `/auth/password`** — v0.2 of `porte`, or permanently app-side? They touch
-   the app's user columns, which argues app-side.
+   the app's user columns, which argues app-side. Still open; it blocks nothing in v0.1.
 3. ~~**Journal's bcrypt.**~~ **Settled 2026-08-07** — the only bcrypt hit in Journal is the
    fixture string `"$2y$n$nope"` in `authcrypto/crypto_test.go`. Argon2-only. Non-issue.
 4. ~~**Role hook shape.**~~ **Settled 2026-08-07 — the smaller option.** Claims ride typed but
@@ -515,10 +515,18 @@ unacceptable.
 ## 8. Package layout
 
 ```
-porte/          the OIDC contract, sessions, middleware. go-oidc + oauth2 + tronc
-porte/pg        Postgres session store. database/sql only, no ORM
-porte/espace     v0.3. Space/SpaceMember, membership, RequireRole
+porte/          the contract. types, interfaces, wire shapes. standard library only
+porte/oidc      the engine: the flow, the seven routes, the middleware, the avatar guard
+porte/pg        the identity tables and the four stores. database/sql only, no ORM
+porte/espace    v0.3. Space/SpaceMember, membership, RequireRole
 ```
+
+**Corrected 2026-08-07.** This section originally put the engine in the root package. That
+contradicts the zero-dependency decision taken with the contract in §11: an app implementing
+`UserStore` would then compile against `go-oidc`. The literal promise is unreachable inside one
+module — `go.mod` requirements are module-scoped, so any import of any `porte` package pulls them
+all — but the *layering* is worth keeping and costs one import line in `main.go`. Only that file
+imports `porte/oidc`.
 
 Dependency rules, following `caisse`:
 
@@ -527,10 +535,10 @@ Dependency rules, following `caisse`:
 - **No GORM.** All six apps use it, but forcing it is a heavier commitment than anything the
   suite shares today, and it is what pushed `tronc` to split `migrate` and `testdb` into
   separate modules. `database/sql` keeps everything in one module.
-- Go floor 1.24, matching `caisse` and the `tronc` root module. **Check before committing:**
-  `tronc/migrate` already declares `go 1.25.7`, and Phase 2 moved the apps to Go 1.25, so the
-  floor may need to be 1.25 for consistency. Decide once, and make `.github/workflows/ci.yml`
-  pin the same number.
+- ~~Go floor 1.24~~ — **settled 2026-08-07: 1.25.** Not by consistency but by `go-oidc` v3.20,
+  which requires `go >= 1.25`. The principle that a library floors low still holds; it just has
+  nothing to bite on here, since the apps moved to 1.25 in Phase 2 and `tronc/migrate` already
+  declares 1.25.7. `mise.toml` and `.github/workflows/ci.yml` pin the same number.
 
 ---
 
@@ -572,13 +580,9 @@ Same as `tronc` and `caisse`:
 - `scripts/check.sh` — gofmt, vet, `go test -race`, golangci-lint. Depends on nothing but a
   `go`, and is not invoked through mise on purpose.
 - `.githooks/pre-push` runs it. Enable with `mise run hooks`.
-- CI on Go 1.24 exactly — the floor the module documents — plus a PostgreSQL service once
-  `porte/pg` has tests. **`.github/workflows/ci.yml` is deliberately not committed yet**: on a
-  module with no packages, `go vet ./...` and `go test ./...` exit non-zero, so it would be red
-  from the first commit for no reason. Copy it from `caisse` with the first package, changing
-  the database env var to `PORTE_TEST_DATABASE_URL`.
-- For the same reason, do not run `mise run hooks` until the first package exists — the
-  pre-push gate would reject every push. The hooks are opt-in and inactive until enabled.
+- CI on Go 1.25 exactly — the floor the module documents — plus the PostgreSQL 16 service that
+  `porte/pg`'s tests need. Both live in `.github/workflows/ci.yml`, with
+  `PORTE_TEST_DATABASE_URL` set so the pg tests never skip there.
 - Docs follow `~/Projects/Facile/Wiki/DOCS-STANDARD.md`: `README.md` plus `docs/` with
   `architecture.md`, `configuration.md`, `development.md`, `api.md`. English, no badges, no
   emoji.
@@ -674,3 +678,41 @@ Two shape changes the contract makes deliberately, both worth arguing about at r
   assertion in every app. That assertion is a runtime failure mode sitting in the auth path.
 
 The rest is extraction. This part is the one that is expensive to get wrong.
+
+### The review the contract asked for — done 2026-08-07, by implementing it
+
+Writing `porte/oidc` and `porte/pg` against the frozen contract was the review, and it is the
+only kind that finds this class of problem. Three shapes were wrong:
+
+- **`LoginCode.SessionID` could not work.** The session row stores only a hash, so a code that
+  pointed at a pre-created session could never yield a usable token at exchange time without
+  keeping the plaintext at rest. Removed; the session is created at exchange time. The stated
+  justification — avoiding a second write path that could half-succeed — assumed a write more
+  complicated than the single insert it actually is.
+- **`AvatarStore.Put(userID, ...)` had an unsolvable ordering problem.** The avatar URL has to
+  reach the app's user row; the app writes that row in `UpsertFromOIDC`; `Put` wanted a user id
+  that does not exist until that call returns. Now keyed on the identity, so the fetch runs
+  first and the URL rides into the upsert on `Claims.AvatarURL`. One write, no second interface.
+- **`Config.Validate`'s issuer check tested nothing.** `url.Parse` accepts almost any string.
+  Tightened to require an absolute http(s) URL.
+
+The two shape changes flagged here for argument — `Identity.UserID` as an `int64` and the typed
+`Identity` from the middleware — both survived. They made the implementation smaller, which is
+the evidence that was being asked for.
+
+## 13. Next — proving it
+
+The engine exists and is tested; it has never spoken to a real Authentik. In order:
+
+1. **Run the flow against `sso.facile.studio`.** PKCE, the nonce and the back-channel logout
+   token are the three paths a unit test cannot honestly cover, because they are assertions
+   about what the *provider* does.
+2. **The roles scope mapping in `authentik-config`** — the producing half of §5c. Until it
+   exists, `ClaimsScope` cannot be enabled anywhere, and the startup guard is untested against
+   the failure it was written for.
+3. **The e-commerce demo**, greenfield and outside the suite, which forces the non-Authentik
+   issuer test on day one.
+4. **Nuage**, the extraction source, then **Perception**, whose `internal/identity/` seam and
+   `seam_test.go` were designed against this idea rather than extracted from it — it is the repo
+   whose structure will say whether the interface shape is right.
+5. **`docs/architecture.md`**, once there is a request flow somebody has actually walked.

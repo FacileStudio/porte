@@ -24,6 +24,66 @@ func TestConfigValidateNamesEveryMissingVariable(t *testing.T) {
 	}
 }
 
+// url.Parse accepts almost any string, so testing its error catches nothing:
+// a bare hostname parses fine as a relative path and then fails discovery at
+// boot with a message naming neither the variable nor the problem.
+func TestConfigValidateRejectsAnIssuerThatIsNotAnAbsoluteURL(t *testing.T) {
+	for _, issuer := range []string{"sso.facile.studio", "/application/o/nuage/", "ftp://sso.test", "https://"} {
+		err := porte.Config{
+			Issuer:       issuer,
+			ClientID:     "id",
+			ClientSecret: "secret",
+			RedirectURL:  "https://app.test/auth/oidc/callback",
+			SuccessURL:   "https://app.test/",
+		}.Validate()
+		if err == nil {
+			t.Errorf("issuer %q was accepted", issuer)
+		}
+	}
+}
+
+// Every app stores session hashes as hex SHA-256 today. Changing the encoding
+// would log out the entire suite on the commit that adopts porte.
+func TestHashTokenKeepsTheEncodingTheAppsAlreadyStore(t *testing.T) {
+	got := porte.HashToken("hello")
+	want := "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+	if got != want {
+		t.Fatalf("HashToken = %q, want %q", got, want)
+	}
+	if porte.HashToken("a") == porte.HashToken("b") {
+		t.Fatal("distinct tokens hashed the same")
+	}
+}
+
+func TestNewTokenIsUnpredictableAndURLSafe(t *testing.T) {
+	seen := map[string]bool{}
+	for range 100 {
+		token, err := porte.NewToken()
+		if err != nil {
+			t.Fatalf("NewToken: %v", err)
+		}
+		if seen[token] {
+			t.Fatal("NewToken repeated itself")
+		}
+		seen[token] = true
+		if len(token) < 40 {
+			t.Fatalf("token is only %d characters", len(token))
+		}
+		if contains(token, "+") || contains(token, "/") || contains(token, "=") {
+			t.Fatalf("token %q needs escaping in a cookie or a URL", token)
+		}
+	}
+}
+
+func TestSecureCompare(t *testing.T) {
+	if !porte.SecureCompare("abc", "abc") {
+		t.Fatal("equal values compared unequal")
+	}
+	if porte.SecureCompare("abc", "abd") || porte.SecureCompare("abc", "ab") || porte.SecureCompare("", "x") {
+		t.Fatal("unequal values compared equal")
+	}
+}
+
 func TestScopesCarryClaimsOnlyWhenConfigured(t *testing.T) {
 	base := porte.Config{Issuer: "https://sso.facile.studio/"}
 	if got := len(base.Scopes()); got != 4 {

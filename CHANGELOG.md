@@ -5,6 +5,56 @@ session from undoing a deliberate choice.
 
 ## Unreleased
 
+### The engine and the stores
+
+`porte/oidc` and `porte/pg`: the flow, the seven routes, the middleware, the SSRF-guarded avatar
+fetch, and the four tables. Tested against a real PostgreSQL, not a fake — every interesting
+behaviour in `pg` is PostgreSQL's own.
+
+- **`porte/oidc` is a separate package, not the root.** SPEC §8 put the implementation in the
+  root package, which contradicts the zero-dependency decision taken with the contract: an app's
+  `UserStore` must not compile against `go-oidc`. The literal promise is unreachable inside one
+  module anyway — `go.mod` requirements are module-scoped — but the layering is worth keeping,
+  and it costs one import line in `main.go`. Only that file sees the engine.
+- **Four store types in `porte/pg`, not one.** `SessionStore.Find` takes a token hash and
+  `IdentityStore.Find` takes a provider and a subject; Go cannot carry both on one receiver.
+  Renaming a method to dodge that would leak a storage accident into the contract.
+- **The Go floor is 1.25, not 1.24.** SPEC §8 left this open and leaned 1.24 on the principle
+  that a library floors low. `go-oidc` v3.20 requires 1.25, so the dependency decided. It costs
+  nothing: the apps are on 1.25 and `tronc/migrate` already declares 1.25.7.
+- **The avatar SSRF guard now runs inside the dialer.** All six existing copies resolve the
+  hostname, check the addresses, then call `http.Get` — which resolves again. A DNS record that
+  answers publicly on the first lookup and privately on the second walks straight through.
+  Checking at connect time closes that window and covers redirects for free.
+- **`UpsertFromOIDC` refuses an unverified email that already belongs to someone**, with a
+  message, instead of hitting the unique index and returning a 500 from the login path.
+- **The startup guard is split in two**, because only half of it is checkable at boot: `New`
+  verifies the roles scope against the discovery document, and the callback fails loudly when
+  the scope was granted but no claim arrived. Between them there is no path where a
+  half-configured provider denies everyone in silence.
+
+### Contract corrections, found by implementing it
+
+SPEC §11 froze the contract and asked for a review before anything was built on it. Writing the
+implementation *was* the review, and it found three things wrong:
+
+- **`LoginCode.SessionID` is gone.** The session is created at exchange time, not at callback
+  time. The old shape could not work: the session row stores only a hash, so handing the CLI a
+  usable token later would have meant keeping the plaintext at rest. The stated reason for
+  creating it up front — avoiding a second write path that could half-succeed — does not survive
+  contact with the fact that creating a session is one insert. `Consume` is atomic, so a code
+  still yields at most one session.
+- **`AvatarStore.Put` takes an opaque key, not a user id**, and `Claims` gained `AvatarURL` and
+  `AvatarKey()`. The old signature had an ordering problem with no solution: the avatar URL must
+  reach the app's user row, the app writes that row in `UpsertFromOIDC`, and `Put` needed a user
+  id that does not exist until that call returns. Keying on the identity instead lets the fetch
+  run first and the URL ride into the upsert. A stable key also means a re-sync overwrites rather
+  than accumulating one file per login.
+- **`Config.Validate` requires an absolute http(s) issuer.** The old check called `url.Parse` and
+  tested the error, which catches almost nothing: `sso.facile.studio` parses fine as a relative
+  path, and the failure surfaces later as an opaque discovery error naming neither the variable
+  nor the problem.
+
 ### The frozen contract, as Go types
 
 `porte.go`, `identity.go` and `session.go`: types, interfaces and wire shapes only, no

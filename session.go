@@ -94,17 +94,18 @@ type SessionStore interface {
 // This is the flow one app already has, with its sync.Map replaced by a table.
 // An in-memory map loses every pending code on redeploy and hands the code to
 // the wrong replica as soon as there are two.
+//
+// The session is created at exchange time, not at callback time. An earlier
+// revision carried a SessionID here so the exchange would be a pure lookup,
+// which cannot work: the session row stores only a hash, so handing the CLI a
+// usable token later would mean keeping the plaintext at rest. Consume is
+// atomic, so a code still yields at most one session.
 type LoginCode struct {
 	// CodeHash is the stored form, hashed exactly like a session token.
 	// The code is short-lived but it is a bearer credential while it lives.
 	CodeHash string
 
 	UserID int64
-
-	// SessionID is the session this code hands over. The session row is
-	// created up front, so the exchange is a lookup rather than a second
-	// write path that could half-succeed.
-	SessionID int64
 
 	ExpiresAt time.Time
 }
@@ -134,9 +135,17 @@ type LoginCodeStore interface {
 // Where the bytes go is not porte's business: one app writes them under a
 // storage dir, another serves them from object storage.
 type AvatarStore interface {
-	// Put stores the avatar for a user and returns the URL the app should
-	// record. contentType is already validated as an image type.
-	Put(ctx context.Context, userID int64, data []byte, contentType string) (avatarURL string, err error)
+	// Put stores the avatar and returns the URL to record. key is an
+	// opaque, stable per-identity string, not a user id: the avatar is
+	// fetched before UpsertFromOIDC runs, so no user id exists yet, and
+	// the resulting URL rides into the upsert on Claims.AvatarURL. That
+	// ordering is what keeps the whole callback to one write.
+	//
+	// A stable key also means a re-sync overwrites rather than
+	// accumulating a new file per login, which is what the apps do today.
+	//
+	// contentType is already validated as an image type.
+	Put(ctx context.Context, key string, data []byte, contentType string) (avatarURL string, err error)
 
 	// Remove drops a previously stored avatar. It must be a no-op when the
 	// avatar is already gone.

@@ -30,6 +30,10 @@ The trap it creates is the half-configured provider: an issuer with no client se
 what `Config.Validate` exists for — it names **every** missing variable at once, so a
 misconfigured deployment takes one fix rather than four boots.
 
+`Validate` also requires the issuer to be an **absolute http(s) URL**. `url.Parse` accepts almost
+any string, so parsing it proves nothing: `sso.facile.studio` parses happily as a relative path
+and then fails discovery at boot with an error that names neither the variable nor the problem.
+
 ### `SSO_ONLY` does not reject, it does not register
 
 When `SSO_ONLY` is true the local password routes are never mounted. They do not return 403 —

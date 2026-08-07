@@ -106,6 +106,12 @@ type Claims struct {
 	FamilyName        string
 	Picture           string
 
+	// AvatarURL is filled by porte, not by the provider: when an
+	// [AvatarStore] is wired, the picture is fetched through the SSRF
+	// guard and stored before the upsert runs, so the app writes the
+	// final URL in the same statement as the name and the email.
+	AvatarURL string
+
 	// Roles is the flat roles claim, absent unless Config.ClaimsScope is
 	// set and the provider actually emitted it.
 	Roles []string
@@ -126,6 +132,13 @@ func (c Claims) DisplayName() string {
 		return c.PreferredUsername
 	}
 	return strings.TrimSpace(c.GivenName + " " + c.FamilyName)
+}
+
+// AvatarKey is the opaque, stable key an [AvatarStore] files this identity's
+// avatar under. It is derived from the account matching key rather than from a
+// user id, because the avatar is fetched before the user exists.
+func (c Claims) AvatarKey() string {
+	return HashToken(c.Provider + "\x00" + c.Subject)
 }
 
 // TokenSet is the OIDC token material for one identity, kept as plain strings

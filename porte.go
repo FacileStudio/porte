@@ -3,9 +3,13 @@
 //
 // This package is the frozen contract only — types, interfaces and the wire
 // shapes. It deliberately depends on nothing outside the standard library, so
-// that an app implementing [UserStore] never inherits go-oidc, oauth2 or a
-// database driver from it. The implementation lives alongside it and may
-// depend on whatever it needs; the boundary an app sees is here.
+// that an app's store and domain code never compiles against go-oidc, oauth2
+// or a database driver. The engine lives in porte/oidc and the default
+// PostgreSQL stores in porte/pg; only an app's main.go imports those.
+//
+//	porte       the contract. standard library only
+//	porte/oidc  the flow, the routes and the middleware. go-oidc, oauth2, tronc, chi
+//	porte/pg    the identity tables. database/sql, no ORM
 //
 // porte carries authentication and transports authorization. It decides
 // neither: the identity provider assigns roles, the app decides what a role
@@ -43,6 +47,15 @@ const (
 	RouteLogout            = "/auth/logout"
 	RouteSyncProfile       = "/auth/sync-profile"
 	RouteBackchannelLogout = "/auth/backchannel-logout"
+)
+
+// The login route's query parameters, frozen because six CLIs will spell them.
+// A CLI asks for the one-time-code flow with ?flow=cli, and adds ?port=N when
+// it is listening on loopback for the code — the pattern gh auth login uses.
+const (
+	FlowParam = "flow"
+	FlowCLI   = "cli"
+	PortParam = "port"
 )
 
 // SessionCookieName is the browser session cookie. Courrier and Agenda already
@@ -131,8 +144,15 @@ func (c Config) Validate() error {
 	if !c.Enabled() {
 		return nil
 	}
-	if _, err := url.Parse(c.Issuer); err != nil {
+	issuer, err := url.Parse(c.Issuer)
+	switch {
+	case err != nil:
 		return fmt.Errorf("porte: OIDC_ISSUER is not a valid URL: %w", err)
+	case issuer.Scheme != "https" && issuer.Scheme != "http", issuer.Host == "":
+		// url.Parse accepts almost any string, so the parse error alone
+		// catches nothing: "sso.facile.studio" parses fine as a relative
+		// path and then fails discovery with an opaque error at boot.
+		return fmt.Errorf("porte: OIDC_ISSUER must be an absolute http(s) URL, got %q", c.Issuer)
 	}
 	missing := []string{}
 	for name, value := range map[string]string{
