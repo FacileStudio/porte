@@ -249,7 +249,11 @@ func TestTouchDoesNotWriteInsideTheInterval(t *testing.T) {
 	sessions := store.Sessions()
 	userID := seedUser(t, store, "sub-1", "camille@facile.studio")
 
-	now := time.Now().UTC()
+	// Truncated to what timestamptz actually stores. Go's clock is
+	// nanosecond on Linux, so an untruncated value comes back different
+	// from what went in and the comparison below fails for a reason that
+	// has nothing to do with what this test is about.
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	mustCreate(t, sessions, porte.Session{TokenHash: "hash-1", UserID: userID, CreatedAt: now, LastUsedAt: now})
 
 	if err := sessions.Touch(ctx, "hash-1", now.Add(30*time.Second)); err != nil {
