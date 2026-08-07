@@ -467,10 +467,18 @@ actually still missing, and two items that were on it are already done.)*
 5. **Kill the `localStorage` token.** Three of six still do this — Nuage, Vision and Sablier put
    the token in the URL fragment. **Courrier and Agenda already ship the cookie** (see §5). The
    cookie transport removes both halves at once for the remaining three.
-6. **Drop the query-parameter credential paths.** Courrier's middleware still accepts
-   `?token=` (with a deprecation warning) and Vision's accepts `?api_key=`. A credential in a
-   URL lands in access logs, referrers and browser history. `porte`'s middleware reads the
-   cookie and the `Authorization` header, and nothing else. Found 2026-08-07.
+6. ~~**Drop the query-parameter credential paths.**~~ **Done 2026-08-07, outside this repo.**
+   Courrier accepted `?token=` (deprecation warning, zero consumers) and Vision an undocumented
+   `?api_key=`; both removed. `porte`'s middleware reads the cookie and the `Authorization`
+   header, and nothing else.
+
+   **The exception that must not be "fixed":** Vision's `?token=` on
+   `GET /events/{siteId}/live` stays, because `EventSource` cannot set headers. Nuage has the
+   same shape for file downloads, where a plain navigation cannot either. These are browser
+   constraints, not shortcuts — and **the cookie transport in §5 retires both for free**, since
+   `EventSource` and download navigations send cookies automatically. That is a second argument
+   for the cookie beyond XSS, and it is why adopting `porte` deletes those paths rather than
+   porting them.
 
 **Non-negotiable:** do not hand-roll protocol or crypto. `go-oidc` for verification,
 `golang.org/x/oauth2` for the flow, `argon2` for hashing. This is the one place custom code is

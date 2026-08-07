@@ -115,8 +115,15 @@ the suite runs.
   `offline_access` is what makes a silent claim refresh possible without a second login, and
   every app already requests all four.
 - **Credentials in query parameters.** `porte` reads the session cookie and the `Authorization`
-  header. Not `?token=`, not `?api_key=` — both exist in the suite today, and both put a
-  credential into access logs, referrer headers and browser history.
+  header, and nothing else. A credential in a URL is copied into access logs, `Referer` headers
+  and browser history.
+
+  The honest objection is that two browser APIs cannot set headers at all: `EventSource` and a
+  plain navigation to a download URL. Both exist in the suite today and both are why a `?token=`
+  was added in the first place. **The cookie transport answers them rather than banning them** —
+  `EventSource` and navigations send cookies automatically, so the query parameter stops being
+  needed the moment the cookie lands. That is a second argument for the cookie beyond XSS, and
+  it means an app adopting `porte` deletes its query-parameter path instead of porting it.
 - **The hash.** Session tokens are random, opaque, and stored hashed. There is no option to
   store them in the clear and no option to issue a self-contained JWT instead: an opaque token
   is revocable by construction, which is the property back-channel logout depends on.
