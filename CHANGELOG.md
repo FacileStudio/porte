@@ -3,7 +3,7 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
-## Unreleased
+## v0.1.1 — 2026-08-08
 
 What the first adoption found. Journal — the one suite app with no OIDC at all, so the
 integration adds rather than replaces — hit three things in the first hour of wiring, and all
