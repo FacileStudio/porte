@@ -80,7 +80,7 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteError(w, errors.Internal("failed to start the login", err))
 		return
 	}
-	setCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
+	k.setCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
 
 	http.Redirect(w, r, k.oauth.AuthCodeURL(state,
 		oauth2.S256ChallengeOption(pending.Verifier),
@@ -101,14 +101,14 @@ func loopbackPort(value string) string {
 }
 
 func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(flowCookie)
-	if err != nil {
+	encoded, ok := readCookie(r, flowCookie)
+	if !ok {
 		httpjson.WriteError(w, errors.Invalid("the login has expired, start again"))
 		return
 	}
-	clearCookie(w, r, flowCookie)
+	k.clearCookie(w, r, flowCookie)
 
-	pending, ok := decodeFlow(cookie.Value)
+	pending, ok := decodeFlow(encoded)
 	if !ok || !porte.SecureCompare(pending.State, r.URL.Query().Get("state")) {
 		httpjson.WriteError(w, errors.Invalid("invalid oauth2 state"))
 		return
@@ -289,8 +289,12 @@ code{display:block;font-size:1.1rem;padding:1rem;margin:1.5rem 0;background:#f4f
 <code>{{.Code}}</code>
 `))
 
-// handleExchange is the CLI's half: one-time code in, bearer token out.
+// handleExchange is the CLI's half: one-time code in, bearer token out. This
+// is porte's token endpoint in everything but name, so it answers under the
+// no-store OAuth 2.1 §7.1 requires of any response carrying a credential.
 func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+
 	var request porte.ExchangeRequest
 	if err := httpjson.DecodeJSON(w, r, &request); err != nil {
 		httpjson.WriteError(w, err)
@@ -343,7 +347,7 @@ func (k *Kit) handleLogout(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteError(w, errors.Internal("failed to end the session", err))
 		return
 	}
-	clearCookie(w, r, porte.SessionCookieName)
+	k.clearCookie(w, r, porte.SessionCookieName)
 	httpjson.WriteJSON(w, http.StatusOK, porte.LogoutResponse{LoggedOut: true})
 }
 
@@ -455,6 +459,18 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		stored.SyncedAt = k.now()
 		_ = k.deps.Identities.Save(r.Context(), stored)
 		httpjson.WriteJSON(w, http.StatusOK, porte.SyncProfileResponse{Synced: false})
+		return
+	}
+
+	// OpenID Connect Core §5.3.2: the sub in a UserInfo response MUST be
+	// compared to the sub of the ID token, and the response rejected when
+	// they differ. go-oidc does not do it — it fetches and parses, nothing
+	// more — so without this line a provider or anything sitting between it
+	// and here can rewrite one user's profile with another user's claims.
+	if !porte.SecureCompare(info.Subject, stored.Subject) {
+		k.logger.Warn("porte: userinfo returned a different subject, refusing the sync",
+			slog.Int64("user_id", identity.UserID))
+		httpjson.WriteError(w, errors.Unauthorized("the userinfo response is for a different subject"))
 		return
 	}
 

@@ -73,7 +73,24 @@ if [ "$mode" = "all" ]; then
   # PATH and resolves, but every invocation of it fails. Probe that the binary
   # actually runs, so an unusable tool skips the pass instead of failing it.
   if golangci-lint version >/dev/null 2>&1; then
-    golangci-lint run ./... || status=1
+    # $GOROOT/bin first, because golangci-lint shells out to `go` and the two
+    # have to come from the same install.
+    lint_output="$(PATH="${GOROOT:+$GOROOT/bin:}$PATH" golangci-lint run ./... 2>&1)" || lint_status=1
+    lint_status="${lint_status:-0}"
+
+    # A golangci-lint whose `go` and whose GOROOT disagree cannot typecheck
+    # anything: every import fails with `compile: version "X" does not match
+    # go tool version "Y"`, which reads like broken code and is not. That is a
+    # broken tool, so it skips like one rather than reporting a false red.
+    # It happens when a global mise config pins one Go and the repo pins
+    # another, and the shim resolves `go` from somewhere else again.
+    if printf '%s' "$lint_output" | grep -q 'does not match go tool version'; then
+      echo "check: golangci-lint and its Go toolchain disagree, skipping the lint pass (CI still runs it)." >&2
+      echo "check: GOROOT=${GOROOT:-unset}, go=$("$GO" version 2>/dev/null)" >&2
+    else
+      printf '%s\n' "$lint_output"
+      [ "$lint_status" -eq 0 ] || status=1
+    fi
   else
     echo "check: no usable 'golangci-lint', skipping the lint pass (CI still runs it)" >&2
   fi

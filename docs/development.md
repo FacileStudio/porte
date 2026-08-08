@@ -67,14 +67,24 @@ matching, a zero `ExpiresAt` never expiring, and a never-synced claim reading as
 The tests live in package `porte_test`, not `porte`. They exercise the package the way a
 consuming app does, which is the only way a contract test proves anything about a contract.
 
-Once `porte/pg` exists it needs a real PostgreSQL:
+`porte/pg` needs a real PostgreSQL:
 
 ```sh
 export PORTE_TEST_DATABASE_URL=postgres://porte:porte@localhost:5432/porte_test?sslmode=disable
 ```
 
 Without it those tests skip themselves, silently and with a passing exit code, so CI provides a
-PostgreSQL 16 service rather than trusting them untested.
+PostgreSQL 16 service rather than trusting them untested. They are worth the service: every
+interesting behaviour in that package is PostgreSQL's own — a conditional `UPDATE` settling a
+race between two exchanges of the same login code, `ON CONFLICT` resolving two first logins into
+one user, an untyped `interval` parameter failing to resolve an operator. A fake would test the
+fake.
+
+`porte/oidc` needs nothing. Its flow tests run against a conformant identity provider built in
+process: it signs RS256 tokens behind a real JWKS, and its token endpoint enforces PKCE, the
+redirect URI and client authentication rather than trusting the client to have sent them. That
+is what makes them worth writing — a fake issuer that echoes whatever it is handed cannot fail a
+kit that dropped its PKCE verifier.
 
 ## Layout
 

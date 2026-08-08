@@ -71,10 +71,12 @@ CREATE INDEX IF NOT EXISTS porte_sessions_expiry_idx ON porte_sessions (expires_
 	WHERE expires_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS porte_login_codes (
-	code_hash  text PRIMARY KEY,
-	user_id    bigint NOT NULL REFERENCES porte_users(id) ON DELETE CASCADE,
-	expires_at timestamptz NOT NULL
+	code_hash   text PRIMARY KEY,
+	user_id     bigint NOT NULL REFERENCES porte_users(id) ON DELETE CASCADE,
+	expires_at  timestamptz NOT NULL,
+	consumed_at timestamptz
 );
+ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS consumed_at timestamptz;
 `
 
 // Store is the entry point: one value over a *sql.DB that hands out the four
@@ -195,12 +197,24 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 		if claims.AvatarURL != "" {
 			avatarSource = "oidc"
 		}
-		if err := tx.QueryRowContext(ctx, `
+		// ON CONFLICT rather than a bare INSERT, because the check above
+		// is a read in a READ COMMITTED transaction and two first logins
+		// for the same new user — a double click, two tabs, a retried
+		// callback — both pass it and both arrive here. Letting the
+		// loser adopt the winner's row turns a unique-violation 500 on
+		// the login path into a second successful login.
+		err := tx.QueryRowContext(ctx, `
 			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source)
 			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (email) DO NOTHING
 			RETURNING id`,
 			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
-		).Scan(&userID); err != nil {
+		).Scan(&userID)
+		if stderrors.Is(err, sql.ErrNoRows) {
+			err = tx.QueryRowContext(ctx,
+				`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
+		}
+		if err != nil {
 			return 0, fmt.Errorf("porte/pg: insert user: %w", err)
 		}
 	default:
@@ -269,6 +283,23 @@ func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity)
 		return fmt.Errorf("porte/pg: save identity: %w", err)
 	}
 	return nil
+}
+
+// MarkRolesSynced moves the roles_synced_at stamp and nothing else.
+//
+// One column, one statement: this runs on the path where a role refresh just
+// failed, and the identity the caller is holding was read before that attempt.
+// Writing it back through Save would restore whatever refresh token it had read
+// over the one a concurrent request may have just rotated in, and a lost
+// rotation means every later refresh for that user fails.
+func (s *IdentityStore) MarkRolesSynced(ctx context.Context, provider, subject string, at time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE porte_identities SET roles_synced_at = $3
+		 WHERE provider = $1 AND subject = $2`, provider, subject, at)
+	if err != nil {
+		return fmt.Errorf("porte/pg: mark roles synced: %w", err)
+	}
+	return requireOne(result, "porte/pg: mark roles synced")
 }
 
 // ListByUser returns every way this human can authenticate.
@@ -421,19 +452,24 @@ func (s *LoginCodeStore) Create(ctx context.Context, code porte.LoginCode) error
 	return nil
 }
 
-// Consume returns the code and deletes it in one statement, so two exchanges
-// racing each other cannot both win and a replay finds nothing.
+// Consume claims the code in one statement, so two exchanges racing each other
+// cannot both win.
+//
+// The row is stamped rather than deleted, and the stamp is what tells a replay
+// from a typo: a code that was valid a moment ago and is being presented a
+// second time means either the CLI retried or somebody else is holding it, and
+// that is worth a distinct error and a log line. Nothing usable survives — what
+// is kept is the SHA-256 of a credential that is already spent, and the sweeper
+// removes it on the same schedule as an unused one.
 func (s *LoginCodeStore) Consume(ctx context.Context, codeHash string) (porte.LoginCode, error) {
 	var code porte.LoginCode
 	err := s.db.QueryRowContext(ctx, `
-		DELETE FROM porte_login_codes WHERE code_hash = $1
-		RETURNING code_hash, user_id, expires_at`, codeHash,
+		UPDATE porte_login_codes SET consumed_at = $2
+		 WHERE code_hash = $1 AND consumed_at IS NULL
+		RETURNING code_hash, user_id, expires_at`, codeHash, time.Now(),
 	).Scan(&code.CodeHash, &code.UserID, &code.ExpiresAt)
 	if stderrors.Is(err, sql.ErrNoRows) {
-		// The row is gone. porte cannot tell a replay from a typo here
-		// without keeping consumed codes around, which would mean
-		// storing spent credentials to improve a log line.
-		return porte.LoginCode{}, porte.ErrNotFound
+		return porte.LoginCode{}, s.whyItFailed(ctx, codeHash)
 	}
 	if err != nil {
 		return porte.LoginCode{}, fmt.Errorf("porte/pg: consume login code: %w", err)
@@ -441,7 +477,26 @@ func (s *LoginCodeStore) Consume(ctx context.Context, codeHash string) (porte.Lo
 	return code, nil
 }
 
-// DeleteExpired sweeps codes nobody exchanged.
+// whyItFailed distinguishes a code that was already spent from one that never
+// existed. Both refuse the exchange; only the first is worth alarming about.
+func (s *LoginCodeStore) whyItFailed(ctx context.Context, codeHash string) error {
+	var consumed sql.NullTime
+	err := s.db.QueryRowContext(ctx,
+		`SELECT consumed_at FROM porte_login_codes WHERE code_hash = $1`, codeHash).Scan(&consumed)
+	switch {
+	case stderrors.Is(err, sql.ErrNoRows):
+		return porte.ErrNotFound
+	case err != nil:
+		return fmt.Errorf("porte/pg: consume login code: %w", err)
+	case consumed.Valid:
+		return porte.ErrCodeConsumed
+	default:
+		return porte.ErrNotFound
+	}
+}
+
+// DeleteExpired sweeps codes nobody exchanged and the spent rows kept to
+// recognise a replay. Both are gone within LoginCodeTTL of being issued.
 func (s *LoginCodeStore) DeleteExpired(ctx context.Context, now time.Time) (int64, error) {
 	result, err := s.db.ExecContext(ctx, `DELETE FROM porte_login_codes WHERE expires_at < $1`, now)
 	if err != nil {

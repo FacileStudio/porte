@@ -99,21 +99,108 @@ func requireHTTPS(rawURL string) error {
 	return nil
 }
 
-// isPublicIP rejects everything an SSRF wants to reach: loopback, the private
-// ranges, link-local — which is where a cloud metadata service lives — and the
-// unspecified, multicast and IPv6 unique-local blocks.
+// blockedNetworks are the ranges net.IP's own predicates do not cover.
+// Together with those predicates this is the deny list an avatar fetch is
+// checked against; anything not named here is treated as public.
+var blockedNetworks = mustParseCIDRs(
+	// IPv4. 169.254.0.0/16 is link-local and already covered — it is where
+	// every cloud metadata service lives, and it is the reason this guard
+	// exists at all.
+	"0.0.0.0/8",          // "this network"
+	"100.64.0.0/10",      // carrier-grade NAT, RFC 6598
+	"192.0.0.0/24",       // IETF protocol assignments
+	"192.0.2.0/24",       // TEST-NET-1
+	"198.18.0.0/15",      // benchmarking, RFC 2544
+	"198.51.100.0/24",    // TEST-NET-2
+	"203.0.113.0/24",     // TEST-NET-3
+	"240.0.0.0/4",        // reserved
+	"255.255.255.255/32", // broadcast
+
+	// IPv6.
+	"100::/64",       // discard-only, RFC 6666
+	"2001::/32",      // Teredo — carries an embedded IPv4 nobody needs to reach
+	"64:ff9b:1::/48", // local-use NAT64, RFC 8215
+	"2001:db8::/32",  // documentation
+	"3fff::/20",      // documentation, RFC 9637
+)
+
+// isPublicIP reports whether an address may be dialled for an avatar fetch.
+//
+// The list is a deny list, and the subtle half is the IPv6 forms that embed an
+// IPv4 address: net.IP's predicates only understand the plain forms and the
+// IPv4-mapped one, so 64:ff9b::a9fe:a9fe (NAT64) and 2002:a9fe:a9fe:: (6to4)
+// both reach 169.254.169.254 while looking like ordinary public IPv6. Those
+// are unwrapped to the address they actually reach and checked again.
 func isPublicIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if embedded := embeddedIPv4(ip); embedded != nil {
+		return isPublicIP(embedded)
+	}
 	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
 		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() ||
 		ip.IsInterfaceLocalMulticast() {
 		return false
 	}
-	// IPv4-mapped and 6to4 forms of a private address are still that
-	// address; net.IP.IsPrivate only understands the plain forms.
-	if mapped := ip.To4(); mapped != nil && !mapped.Equal(ip) {
-		return isPublicIP(mapped)
+	for _, blocked := range blockedNetworks {
+		if blocked.Contains(ip) {
+			return false
+		}
 	}
 	return true
+}
+
+// embeddedIPv4 returns the IPv4 address an IPv6 address actually reaches, or
+// nil when it reaches no IPv4 address. NAT64 is unwrapped rather than blocked
+// outright because on an IPv6-only host every IPv4 destination — including
+// every legitimate avatar host — arrives in that form.
+func embeddedIPv4(ip net.IP) net.IP {
+	if mapped := ip.To4(); mapped != nil {
+		// Either a plain IPv4 or the ::ffff:a.b.c.d form. Only the
+		// second is a different value worth re-checking.
+		if len(ip) == net.IPv6len && !mapped.Equal(ip) {
+			return mapped
+		}
+		return nil
+	}
+	if len(ip) != net.IPv6len {
+		return nil
+	}
+	switch {
+	case ip[0] == 0x00 && ip[1] == 0x64 && ip[2] == 0xff && ip[3] == 0x9b:
+		// NAT64 well-known prefix 64:ff9b::/96, RFC 6052.
+		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
+	case ip[0] == 0x20 && ip[1] == 0x02:
+		// 6to4, 2002::/16, RFC 3056: the IPv4 is bytes 2 through 5.
+		return net.IPv4(ip[2], ip[3], ip[4], ip[5])
+	case isZeros(ip[:12]) && !isZeros(ip[12:]):
+		// The deprecated IPv4-compatible form ::a.b.c.d, which
+		// ::127.0.0.1 uses and net.IP.IsLoopback does not recognise.
+		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
+	}
+	return nil
+}
+
+func isZeros(bytes []byte) bool {
+	for _, b := range bytes {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func mustParseCIDRs(blocks ...string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(blocks))
+	for _, block := range blocks {
+		_, network, err := net.ParseCIDR(block)
+		if err != nil {
+			panic("porte: unparseable blocked network " + block)
+		}
+		networks = append(networks, network)
+	}
+	return networks
 }
 
 func isImageType(contentType string) bool {

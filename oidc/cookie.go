@@ -60,25 +60,89 @@ func isSecure(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-func setCookie(w http.ResponseWriter, r *http.Request, name, value string, maxAge int) {
+// secure decides the Secure attribute. The per-request test above is kept
+// because it is the right one behind a proxy, but the configuration overrides
+// it upward and never downward: an app whose redirect URL is https is served
+// over https, and a proxy that was misconfigured into dropping
+// X-Forwarded-Proto must not be able to talk porte into shipping the session
+// cookie in the clear. The BFF half of the browser-apps BCP is a MUST here.
+func (k *Kit) secure(r *http.Request) bool {
+	return k.cfg.HTTPS() || isSecure(r)
+}
+
+// hostPrefix is the one cookie attribute an attacker on a sibling host cannot
+// forge. A browser accepts a __Host- cookie only from a request that is Secure,
+// with Path=/ and no Domain — so it is necessarily host-locked, and the server
+// can tell it apart from a look-alike.
+//
+// Without it every app in a suite sharing one parent domain is one XSS, one
+// rogue app or one subdomain takeover away from session fixation on all the
+// others: a plain cookie named `session` scoped to Domain=example.com is
+// indistinguishable at the server from the app's own host-only one, and a
+// planted value that the browser happens to send first silently wins. porte
+// puts eight bytes in front of the name instead.
+//
+// The prefix is dropped over plain http, because a browser rejects it there
+// outright and local development would stop working.
+const hostPrefix = "__Host-"
+
+// cookieName is the name porte writes a cookie under. porte.SessionCookieName
+// remains the base — the constant is what Courrier and Agenda already ship, and
+// the reader below still accepts it, so adopting porte does not log their users
+// out. New cookies are always written prefixed.
+func (k *Kit) cookieName(r *http.Request, base string) string {
+	if k.secure(r) {
+		return hostPrefix + base
+	}
+	return base
+}
+
+// readCookie returns a cookie by base name, preferring the prefixed form. The
+// unprefixed one is read for two reasons and neither is permanent: an app
+// migrating from its own pre-porte session cookie, and local http development.
+func readCookie(r *http.Request, base string) (string, bool) {
+	for _, name := range []string{hostPrefix + base, base} {
+		if cookie, err := r.Cookie(name); err == nil && cookie.Value != "" {
+			return cookie.Value, true
+		}
+	}
+	return "", false
+}
+
+func (k *Kit) setCookie(w http.ResponseWriter, r *http.Request, base, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     name,
+		Name:     k.cookieName(r, base),
 		Value:    value,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   isSecure(r),
+		Secure:   k.secure(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
-func clearCookie(w http.ResponseWriter, r *http.Request, name string) {
-	setCookie(w, r, name, "", -1)
+// clearCookie expires both spellings. Clearing only the one porte would write
+// today would leave a legacy cookie behind on the logout that is meant to
+// migrate the user off it.
+func (k *Kit) clearCookie(w http.ResponseWriter, r *http.Request, base string) {
+	k.setCookie(w, r, base, "", -1)
+	if k.secure(r) {
+		http.SetCookie(w, &http.Cookie{
+			Name: base, Value: "", Path: "/", MaxAge: -1,
+			HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		})
+	}
 }
 
 // setSessionCookie is the whole reason the frontends stop touching tokens:
 // HttpOnly puts the credential out of reach of an XSS, and SameSite=Lax with
 // the header check on mutating routes covers the CSRF that a cookie invites.
+//
+// Lax rather than Strict is deliberate and is the one browser-apps BCP
+// deviation porte makes: these apps link to each other and send links by mail,
+// and Strict logs a user out of every inbound link. The custom-header check the
+// BCP offers as the alternative CSRF defence is enforced on every mutating
+// cookie request, so the protection is not weaker, only differently spelled.
 func (k *Kit) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	setCookie(w, r, porte.SessionCookieName, token, int(k.cfg.SessionTTL.Seconds()))
+	k.setCookie(w, r, porte.SessionCookieName, token, int(k.cfg.SessionTTL.Seconds()))
 }

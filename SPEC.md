@@ -702,17 +702,36 @@ the evidence that was being asked for.
 
 ## 13. Next — proving it
 
-The engine exists and is tested; it has never spoken to a real Authentik. In order:
+### The flow has been walked — done 2026-08-08
 
-1. **Run the flow against `sso.facile.studio`.** PKCE, the nonce and the back-channel logout
-   token are the three paths a unit test cannot honestly cover, because they are assertions
-   about what the *provider* does.
-2. **The roles scope mapping in `authentik-config`** — the producing half of §5c. Until it
-   exists, `ClaimsScope` cannot be enabled anywhere, and the startup guard is untested against
-   the failure it was written for.
-3. **The e-commerce demo**, greenfield and outside the suite, which forces the non-Authentik
+This section used to say the three interesting paths could not be covered honestly, because
+PKCE, the nonce and the back-channel logout token are assertions about what the *provider*
+does. That is true of a fake that echoes whatever it is handed, and it is what made the
+statement feel like a law rather than a property of the fake.
+
+`oidc/flow_test.go` is a conformant in-process issuer instead. It signs RS256 tokens behind a
+real JWKS, and its token endpoint **enforces** PKCE, the redirect URI and client authentication
+rather than assuming the client sent them. The browser login, the CLI code exchange, the
+back-channel logout and the roles claim are walked end to end against it; a kit that dropped its
+verifier, reused a nonce or accepted an ID token at the logout endpoint fails. What remains
+untested against a real Authentik is now Authentik's own conformance, not `porte`'s behaviour —
+a much smaller and much later question.
+
+A security review ran against the result and found seven things worth fixing; they are recorded
+in CHANGELOG.md with their reasoning. Three changed the contract and are noted in §5 and §11:
+`Config.SessionIdleTTL` and the seven-day idle window, `IdentityStore.MarkRolesSynced`, and the
+`__Host-` cookie prefix with the bare names still read for migration.
+
+### Still ahead, in order
+
+1. **The roles scope mapping in `authentik-config`** — the producing half of §5c. Until it
+   exists, `ClaimsScope` cannot be enabled against a real provider. The failure it guards
+   against — a granted scope with no claim behind it — is now covered by the flow test, so what
+   is missing is the deployment, not the assurance.
+2. **The e-commerce demo**, greenfield and outside the suite, which forces the non-Authentik
    issuer test on day one.
-4. **Nuage**, the extraction source, then **Perception**, whose `internal/identity/` seam and
+3. **Nuage**, the extraction source, then **Perception**, whose `internal/identity/` seam and
    `seam_test.go` were designed against this idea rather than extracted from it — it is the repo
    whose structure will say whether the interface shape is right.
-5. **`docs/architecture.md`**, once there is a request flow somebody has actually walked.
+4. **`docs/architecture.md`**, once there is a request flow somebody has actually walked in
+   production rather than in a test.

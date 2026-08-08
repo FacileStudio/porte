@@ -16,11 +16,14 @@ any code — it carries the decisions, the contract, and the reasoning behind bo
 - Serves `/auth/config` so a frontend knows whether SSO is available and whether it is mandatory
 - Carries the suite's `SSO_ONLY` and `OIDC_*` environment conventions
 - Keeps the role model pluggable, so `IsAdmin`, workspace roles and enum roles all still work
-- Stores sessions as hashed opaque tokens — `HttpOnly` cookie in browsers, `Bearer` for CLIs and
-  API tokens — with a `database/sql` implementation in `pg/`
+- Stores sessions as hashed opaque tokens — `HttpOnly`, `__Host-` prefixed cookie in browsers,
+  `Bearer` for CLIs and API tokens — with a `database/sql` implementation in `pg/`
+- Retires a browser session nobody has used for a week, inside the thirty-day absolute lifetime,
+  and leaves named API tokens alone because a nightly job is idle by design
 - Gives every CLI the same login: browser opens, user signs in, a one-time code comes back
 - Fetches IdP avatars behind an SSRF guard that checks the address at connect time, closing the
-  DNS-rebinding window every existing copy leaves open
+  DNS-rebinding window every existing copy leaves open, and unwraps the IPv6 forms that smuggle
+  an IPv4 metadata address past `net.IP`'s own predicates
 
 ## Wiring it
 

@@ -74,7 +74,7 @@ func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identi
 	if err != nil {
 		if isErr(err, porte.ErrNotFound) {
 			if fromCookie {
-				clearCookie(w, r, porte.SessionCookieName)
+				k.clearCookie(w, r, porte.SessionCookieName)
 			}
 			return porte.Identity{}, errors.Unauthorized("invalid session")
 		}
@@ -82,9 +82,14 @@ func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identi
 	}
 
 	now := k.now()
-	if session.Expired(now) {
+	if session.Expired(now) || k.idledOut(session, now) {
 		if fromCookie {
-			clearCookie(w, r, porte.SessionCookieName)
+			k.clearCookie(w, r, porte.SessionCookieName)
+		}
+		// The row is dead either way, and leaving it costs a lookup on
+		// every replay of a token that will never authenticate again.
+		if err := k.deps.Sessions.Delete(r.Context(), hash); err != nil && !isErr(err, porte.ErrNotFound) {
+			k.logger.Warn("porte: failed to drop a dead session", slog.Any("error", err))
 		}
 		return porte.Identity{}, errors.Unauthorized("session expired")
 	}
@@ -106,14 +111,30 @@ func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identi
 // first: a browser that has both is a browser, and the cookie is the transport
 // with the CSRF check behind it.
 func credential(r *http.Request) (token string, fromCookie bool) {
-	if cookie, err := r.Cookie(porte.SessionCookieName); err == nil && cookie.Value != "" {
-		return cookie.Value, true
+	if value, ok := readCookie(r, porte.SessionCookieName); ok {
+		return value, true
 	}
 	authorization := r.Header.Get("Authorization")
 	if len(authorization) > 7 && strings.EqualFold(authorization[:7], "bearer ") {
 		return strings.TrimSpace(authorization[7:]), false
 	}
 	return "", false
+}
+
+// idledOut reports whether a session has gone unused for longer than the
+// configured idle window. It reads LastUsedAt, which the touch above keeps to
+// within a minute — coarse enough to be cheap, far finer than a window
+// measured in days.
+//
+// Labelled sessions are exempt: a named API token driving a nightly job is
+// idle by design, and expiring it would break the one credential nobody is
+// present to renew.
+func (k *Kit) idledOut(session porte.Session, now time.Time) bool {
+	idle := k.cfg.IdleTimeout()
+	if idle <= 0 || session.IsAPIToken() || session.LastUsedAt.IsZero() {
+		return false
+	}
+	return now.Sub(session.LastUsedAt) >= idle
 }
 
 func mutating(r *http.Request) bool {
@@ -155,11 +176,14 @@ func (k *Kit) attachClaims(ctx context.Context, identity *porte.Identity) {
 		// Keeping the stale roles is the right failure: an IdP blip
 		// must not silently strip everyone's permissions. The stamp is
 		// still moved so a dead refresh token is not retried on every
-		// single request.
+		// single request — through the narrow write, because `stored`
+		// is a pre-refresh read and saving it whole would roll back a
+		// token another request may have rotated in the meantime.
 		k.logger.Warn("porte: role refresh failed, keeping the cached claim",
 			slog.Int64("user_id", identity.UserID), slog.Any("error", err))
-		stored.RolesSyncedAt = k.now()
-		_ = k.deps.Identities.Save(ctx, stored)
+		if err := k.deps.Identities.MarkRolesSynced(ctx, stored.Provider, stored.Subject, k.now()); err != nil {
+			k.logger.Warn("porte: failed to record the refresh attempt", slog.Any("error", err))
+		}
 		return
 	}
 	identity.Roles = refreshed.Roles

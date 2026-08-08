@@ -50,6 +50,11 @@ apps today, which is what makes them safe to freeze.
 | `Scopes() []string` | The scopes to request, with `ClaimsScope` appended when set |
 | `Validate() error` | Names **every** missing variable at once, so a misconfiguration takes one fix |
 | `Resolved() Config` | A copy with zero durations replaced by their defaults |
+| `HTTPS() bool` | Whether the app is served over TLS, read off `RedirectURL` or `SuccessURL` |
+| `IdleTimeout() time.Duration` | The session idle window: zero `SessionIdleTTL` means the default, negative means disabled |
+
+`HTTPS` exists so the `Secure` cookie attribute has a source that a proxy cannot revoke. It
+overrides the per-request `X-Forwarded-Proto` test upward and never downward.
 
 ## Wire shapes
 
@@ -178,10 +183,22 @@ an unverified email plus email matching is an account takeover primitive.
 
 ### IdentityStore
 
-`Find(ctx, provider, subject)`, `Save(ctx, identity)`, `ListByUser(ctx, userID)`.
+`Find(ctx, provider, subject)`, `Save(ctx, identity)`,
+`MarkRolesSynced(ctx, provider, subject, at)`, `ListByUser(ctx, userID)`.
 
-`Find` returns `ErrNotFound`. `Save` inserts or updates by `(Provider, Subject)`. `ListByUser`
-returns every way a human can authenticate, which is what an account settings screen needs.
+`Find` returns `ErrNotFound`. `Save` inserts or updates by `(Provider, Subject)`. It writes the
+**whole row**, so it must only be called with an identity the caller holds the newest version of.
+`ListByUser` returns every way a human can authenticate, which is what an account settings screen
+needs.
+
+`MarkRolesSynced` moves only the `roles_synced_at` stamp, and it exists because `Save` cannot do
+that safely. When a role refresh fails, `porte` still records the attempt so a dead refresh token
+is not retried on every single request — but the identity it is holding was read *before* the
+refresh, and writing it back whole would restore the refresh token it had read over the one a
+concurrent request may have just rotated in. A lost rotation locks the user out of every later
+refresh. One column, one statement, no read-modify-write.
+
+An app implementing `IdentityStore` over its own tables has to implement this fourth method too.
 
 ### SessionStore
 
@@ -206,9 +223,11 @@ user's session by guessing an integer.
 
 `Create`, `Consume`, `DeleteExpired`.
 
-`Consume` returns the code and deletes it in one operation, so a replay finds nothing. It
-returns `ErrCodeConsumed` when the row is gone but the code was well-formed, and `ErrNotFound`
-otherwise.
+`Consume` claims the code in one operation, so two exchanges racing each other cannot both win.
+It returns `ErrCodeConsumed` when the code was already spent, and `ErrNotFound` when it never
+existed — distinguishing a replay from a typo is worth one error value, because a code that was
+valid a moment ago and is being presented a second time means either the CLI retried or somebody
+else is holding it.
 
 ### AvatarStore
 
@@ -237,12 +256,18 @@ CLIs and API clients. Same table, same hash, same revocation.
 `ApiToken` type and table for exactly this, which is one more mechanism than the problem needs.
 
 `LastUsedAt` is what makes a session list auditable. No app records it today, which is why none
-of them can offer "your active sessions".
+of them can offer "your active sessions". It is also what the idle window reads.
 
 | Method | What it does |
 |---|---|
 | `Expired(now) bool` | A zero `ExpiresAt` never expires — that is what a long-lived API token wants |
 | `IsAPIToken() bool` | Whether the row was created as a named token rather than an interactive login |
+
+`Expired` is the absolute lifetime only. A session that is still inside it but has gone unused
+for longer than `Config.IdleTimeout()` also stops authenticating, and the middleware deletes the
+row on the request that finds it rather than leaving a lookup to be paid on every replay of a
+token that will never authenticate again. Labelled sessions are exempt — see
+[configuration.md](configuration.md).
 
 `LoginCode` carries `CodeHash`, `UserID`, `ExpiresAt`, and `Expired(now) bool`.
 
@@ -296,6 +321,22 @@ On a cookie-authenticated **mutating** request the `X-Facile-CSRF` header must b
 any value. Bearer callers are exempt: nothing attaches a header on their behalf, so there is no
 CSRF to defend against.
 
+The cookie is read under `__Host-session` first and the bare `session` second, and written under
+the prefixed name whenever the connection is secure. The prefix and the reasons for reading both
+spellings are in [configuration.md](configuration.md).
+
+### What the routes answer with
+
+`POST /auth/oidc/exchange` sets `Cache-Control: no-store`. It is `porte`'s token endpoint in
+everything but name, and OAuth 2.1 §7.1 requires it of any response carrying a credential. The
+back-channel logout endpoint and the CLI code page do the same.
+
+`POST /auth/sync-profile` compares the `sub` in the UserInfo response against the stored subject
+and answers 401 without writing anything when they differ. OpenID Connect Core §5.3.2 requires
+that comparison and `go-oidc` does not make it — it fetches and parses, nothing more — so without
+it a provider, or anything sitting between it and the app, can rewrite one user's profile with
+another user's claims.
+
 ### FetchAvatar
 
 `FetchAvatar(ctx, pictureURL) (data []byte, contentType string, err error)`.
@@ -304,6 +345,20 @@ The guard runs **in the dialer**, not before it. Every existing copy resolves th
 checks the addresses, then calls `http.Get`, which resolves again — a DNS record that answers
 publicly on the first lookup and privately on the second walks straight through. Checking at
 connect time closes that window and covers redirects for free.
+
+The subtle half of the address check is the IPv6 forms that embed an IPv4 address. `net.IP`'s own
+predicates understand the plain forms and the IPv4-mapped one, so `64:ff9b::a9fe:a9fe` (NAT64)
+and `2002:a9fe:a9fe::` (6to4) both reach `169.254.169.254` — the cloud metadata service this
+guard exists for — while looking like ordinary public IPv6. So does the deprecated
+IPv4-compatible `::a.b.c.d`. All three are unwrapped to the address they actually reach and
+checked again. NAT64 is unwrapped rather than blocked outright, because on an IPv6-only host
+every IPv4 destination, including every legitimate avatar host, arrives in that form.
+
+The deny list covers the ranges those predicates do not: `100.64.0.0/10` (carrier-grade NAT),
+the three TEST-NETs, `192.0.0.0/24`, `198.18.0.0/15`, `240.0.0.0/4`, `0.0.0.0/8`, the broadcast
+address, and on the IPv6 side Teredo (`2001::/32`, which carries an embedded IPv4 nobody needs to
+reach), `100::/64`, local-use NAT64 and the documentation prefixes. Anything not named is treated
+as public.
 
 ## porte/pg
 
@@ -316,7 +371,19 @@ accident into the contract.
 
 `Schema` is a constant. Apply it through the app's own migrations, never at boot: a schema
 applied on startup races every other replica. `EnsureSchema(ctx, db)` exists for tests and local
-development.
+development. It carries an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for
+`porte_login_codes.consumed_at`, so a deployment that already applied an earlier `Schema`
+migrates by re-applying it.
 
 `UpsertFromOIDC` runs in one transaction. A login that created a user but failed to link the
-identity would create a second user on the next attempt.
+identity would create a second user on the next attempt. The insert is
+`ON CONFLICT (email) DO NOTHING RETURNING id` and re-selects when it returns nothing: the
+existence check before it is a read in a `READ COMMITTED` transaction, so two first logins for
+the same new user — a double click, two tabs, a retried callback — both pass it and both arrive
+at the insert. Letting the loser adopt the winner's row turns a unique-violation 500 on the login
+path into a second successful login.
+
+`Consume` stamps `consumed_at` rather than deleting the row, and the stamp is what tells a replay
+from a typo. Nothing usable survives it: what is kept is the SHA-256 of a credential that is
+already spent, and `DeleteExpired` sweeps those rows on the same schedule as the ones nobody
+exchanged, so both are gone within `LoginCodeTTL` of being issued.

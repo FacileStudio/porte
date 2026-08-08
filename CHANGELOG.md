@@ -5,6 +5,81 @@ session from undoing a deliberate choice.
 
 ## Unreleased
 
+### Proving the flow, and the hardening that came out of it
+
+The engine had never spoken to an identity provider. SPEC §13 called PKCE, the nonce and the
+back-channel logout token "the three paths a unit test cannot honestly cover, because they are
+assertions about what the *provider* does" — which is true of a fake that only echoes what it is
+handed. `oidc/flow_test.go` is a conformant in-process issuer instead: it signs RS256 tokens
+behind a real JWKS, and its token endpoint **enforces** PKCE, the redirect URI and client
+authentication rather than trusting the client to have sent them. The flow, the CLI exchange,
+back-channel logout and the roles claim are now walked end to end, and a kit that dropped its
+verifier or reused a nonce fails.
+
+A parallel security review ran against the result. Seven findings survived adversarial
+verification; four more were raised and refuted, and the refutations are worth as much:
+
+- **The avatar SSRF guard let the IPv6 forms that embed an IPv4 address through.**
+  `64:ff9b::a9fe:a9fe` (NAT64) and `2002:a9fe:a9fe::` (6to4) both reach the cloud metadata
+  service, and every predicate in `net` says they are ordinary public IPv6 — `To4` only unwraps
+  the IPv4-mapped form. They are now unwrapped to the address they actually reach and checked
+  again, along with the deprecated `::a.b.c.d` form, Teredo, and the reserved IPv4 ranges `net`
+  has no predicate for (CGNAT, the TEST-NETs, `240/4`, broadcast). NAT64 wrapping a *public*
+  address still passes: on an IPv6-only host every IPv4 destination arrives in that form, so
+  blocking the prefix outright would break every legitimate fetch.
+- **The UserInfo response was never checked against the subject that asked for it.** OpenID
+  Connect Core §5.3.2 makes this a MUST and `go-oidc` does not do it for you — it fetches and
+  parses, nothing more. Without it a UserInfo response for somebody else rewrites this user's
+  email, which is the key the rest of the suite joins on.
+- **Cookies carry the `__Host-` prefix over https.** Every app in the suite sits on a subdomain
+  of one parent, and a plain cookie named `session` scoped to the parent domain is
+  indistinguishable at the server from the app's own host-only one — so one XSS, one rogue app or
+  one subdomain takeover next door is enough to plant a look-alike and fix a victim into the
+  attacker's session. The prefix is the one cookie property that cannot be forged: a browser
+  accepts it only when the cookie is `Secure`, `Path=/` and carries no `Domain`. The bare names
+  are still *read*, so an app migrating from its own pre-porte cookie does not log everyone out,
+  and local http development still works.
+- **`Secure` is derived from the configuration as well as the request.** The per-request test is
+  right behind Traefik and stays, but `Config.HTTPS()` now overrides it upward and never
+  downward: a proxy that stops sending `X-Forwarded-Proto` must not be able to talk `porte` into
+  shipping the session cookie in the clear.
+- **Sessions gained an idle window.** `DefaultSessionIdleTTL` is seven days inside the thirty-day
+  absolute lifetime, and it is the one default `porte` does not inherit from the apps — none of
+  them can age out an unused session at all. Active users never meet it; a borrowed laptop stops
+  being a month-long credential. Labelled sessions are exempt, because an API token driving a
+  nightly job is idle by design. A negative `SessionIdleTTL` disables it.
+- **`porte/pg` can finally tell a replayed login code from a typo.** The contract has always
+  specified `ErrCodeConsumed` for the first case, and the shipped store returned `ErrNotFound`
+  for both, so the replay branch in the engine was unreachable. `Consume` now stamps
+  `consumed_at` under a conditional `UPDATE` rather than deleting: still exactly-once, still
+  atomic, and what survives is the hash of a credential that is already spent. `DeleteExpired`
+  sweeps those rows on the same schedule as the unused ones.
+- **`IdentityStore.MarkRolesSynced` replaces a read-modify-write that could lose a token
+  rotation.** When a role refresh fails, `porte` still records the attempt so a dead refresh
+  token is not retried on every request — but it was doing that by saving back the whole identity
+  it had read *before* the attempt, which would restore the old refresh token over one a
+  concurrent request had just rotated in, and a lost rotation means every later refresh fails.
+  One column, one statement, no read-modify-write. Apps implementing `IdentityStore` themselves
+  gain a fourth method.
+- **Concurrent first logins resolve to one user.** The pre-insert email check is a read in a
+  `READ COMMITTED` transaction, so a double click, two tabs or a retried callback both passed it
+  and one died on the unique index — the raw 500 on the login path that the check exists to
+  prevent. The insert is now `ON CONFLICT (email) DO NOTHING RETURNING id` with a re-select, so
+  the loser adopts the winner's row.
+- `POST /auth/oidc/exchange` answers with `Cache-Control: no-store`. It is the token endpoint of
+  the CLI flow in everything but name.
+- An expired or idled-out session row is deleted when it is presented, rather than left to the
+  sweeper to find.
+
+Refuted, and recorded so they are not re-litigated: `SameSite=Strict` is not deployable here —
+the `oidc_state` cookie has to survive the top-level cross-site redirect back from the provider,
+and `Strict` would withhold it and break every login at the callback. The custom-header check the
+browser-apps BCP offers as the sanctioned alternative is enforced on every mutating cookie
+request, so `Lax` is compliance rather than a gap. Clearing the stored IdP tokens on logout was
+also refused: they are user-scoped and shared across a user's other live sessions, and
+Back-Channel Logout §2.7 explicitly exempts `offline_access` refresh tokens, which is exactly
+what the CLI and the role refresh need.
+
 ### The engine and the stores
 
 `porte/oidc` and `porte/pg`: the flow, the seven routes, the middleware, the SSRF-guarded avatar

@@ -51,11 +51,38 @@ they are not there. There is no endpoint to probe and no handler to reach by mis
 | `SSOOnly` | `false` | Local password routes are not registered |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
 | `SessionTTL` | `30 days` | Browser session lifetime |
+| `SessionIdleTTL` | `7 days` | How long a session may go unused before it stops authenticating |
 | `ClaimsTTL` | `5 minutes` | How long a cached role claim is trusted |
 | `LoginCodeTTL` | `60 seconds` | Window for a CLI to exchange its one-time code |
 
 `Config.Resolved()` returns a copy with zero durations replaced by their defaults, so the rest
-of the implementation never repeats the fallback. Call it once at construction.
+of the implementation never repeats the fallback. Call it once at construction. `SessionIdleTTL`
+is not among them, because zero and negative mean different things there — `Config.IdleTimeout()`
+resolves it instead.
+
+| Method | Returns |
+|---|---|
+| `HTTPS() bool` | Whether the app is served over TLS, according to `RedirectURL` or `SuccessURL` rather than a proxy header |
+| `IdleTimeout() time.Duration` | The idle window, or zero when it is disabled |
+
+### The idle window
+
+`SessionIdleTTL` is the one default `porte` does not inherit from the apps, because none of them
+has an idle window at all. A session nobody has used for a week stops authenticating and its row
+is deleted on the request that finds it, inside the thirty-day absolute lifetime. Active users
+never meet it: `LastUsedAt` is refreshed on every request, coalesced to a minute of resolution,
+which is far finer than a window measured in days.
+
+Zero selects the seven-day default. A **negative** value disables the window and restores the
+behaviour the apps have today, which is an absolute expiry and nothing else. That is the escape
+hatch, and it is spelled negative rather than zero so that turning the protection off is
+something a deployment says on purpose.
+
+Labelled sessions — named API tokens — are exempt. A token wired into a nightly job is idle by
+design, and expiring it would break the one credential nobody is present to renew.
+
+A thirty-day credential that nothing can age out is the difference between a borrowed laptop
+being a bad afternoon and a bad month.
 
 ### The defaults are measurements, not taste
 
@@ -67,6 +94,9 @@ Each number is what the apps already do, not a preference:
   One refresh cadence is easier to reason about than two, and it means a role revoked in the IdP
   stops mattering within five minutes while the IdP sees at most one refresh per user per five
   minutes rather than one per request.
+
+**7 days** is the exception, and the only number here that was chosen rather than measured. No
+app has an idle window today, so there was nothing to inherit — see above for why one exists.
 
 ### `ClaimsScope` and the silent-deny trap
 
@@ -89,11 +119,13 @@ These are frozen, not configurable. One spelling across the suite is the entire 
 
 | Constant | Value | What it does |
 |---|---|---|
-| `SessionCookieName` | `session` | The browser session cookie |
+| `SessionCookieName` | `session` | The base name of the browser session cookie |
 | `CSRFHeaderName` | `X-Facile-CSRF` | Second lock on the cookie transport |
 
 `SessionCookieName` is taken from the two apps that already ship the cookie transport, so
-adopting `porte` does not log their users out a second time.
+adopting `porte` does not log their users out a second time. It is the **base** name: over https
+the cookie is written as `__Host-session`, and both spellings are read. See the cookie flags
+below.
 
 `CSRFHeaderName` carries **any non-empty value** — its presence is the whole signal. A browser
 will not attach a custom header to a simple cross-site request without a preflight, so there is
@@ -105,13 +137,37 @@ the rest.
 Set by the implementation, not configurable:
 
 ```
-Name=session  Path=/  MaxAge=SessionTTL  HttpOnly  SameSite=Lax  Secure=<derived>
+Name=__Host-session  Path=/  MaxAge=SessionTTL  HttpOnly  SameSite=Lax  Secure=<derived>
 ```
 
-`Secure` is derived from `r.TLS != nil || X-Forwarded-Proto == https` rather than from the
-success URL's scheme. Behind Traefik the request reaching the Go process is plain HTTP while the
-browser's connection is not, so testing the URL gets it wrong in exactly the deployment topology
-the suite runs.
+`Secure` is derived from `Config.HTTPS() || r.TLS != nil || X-Forwarded-Proto == https`. The
+per-request half is there because behind Traefik the request reaching the Go process is plain
+HTTP while the browser's connection is not, so testing the success URL alone gets it wrong in
+exactly the deployment topology the suite runs. The configuration half overrides it **upward and
+never downward**: an app whose redirect URL is https is served over https, and a proxy that was
+misconfigured into dropping `X-Forwarded-Proto` must not be able to talk `porte` into shipping
+the session cookie in the clear.
+
+### The `__Host-` prefix
+
+Both cookies `porte` writes — the session and the short-lived `oidc_state` flow cookie — are
+written under `__Host-session` and `__Host-oidc_state` whenever the connection is secure. A
+browser accepts a `__Host-` cookie only from a request that is Secure, with `Path=/` and no
+`Domain`, so such a cookie is necessarily host-locked and the server can tell it apart from a
+look-alike.
+
+That is the only cookie attribute an attacker on a sibling host cannot forge, and this suite is
+exactly the shape that needs it: every app sits under one parent domain, so without the prefix a
+plain cookie named `session` scoped to `Domain=facile.studio` is indistinguishable at the server
+from the app's own host-only one. One XSS, one rogue app or one subdomain takeover then fixes a
+victim into an attacker's session on all the others. Eight bytes in front of the name close it.
+
+The prefix is dropped over plain http, because a browser rejects it there outright and local
+development would stop working. The bare names are still **read**, preferring the prefixed form,
+for two reasons and neither is permanent: an app migrating from its own pre-`porte` session
+cookie, and that same local http development. A logout expires both spellings — clearing only
+the one `porte` writes today would leave a legacy cookie behind on the very request meant to
+migrate the user off it.
 
 ## What is not configurable, on purpose
 

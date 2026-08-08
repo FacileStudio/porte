@@ -419,3 +419,88 @@ func quote(value string) string {
 	encoded, _ := json.Marshal(value)
 	return string(encoded)
 }
+
+// A thirty-day session that nothing can age out is the difference between a
+// borrowed laptop being a bad afternoon and a bad month. The window is the one
+// default porte does not inherit from the apps.
+func TestASessionIdleForTooLongIsRefused(t *testing.T) {
+	store := newMemory()
+	issued := time.Now()
+	kit := testKit(store, issued)
+	token := issue(t, kit, 1)
+
+	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + time.Minute) }
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("an idle session authenticated: %d", recorder.Code)
+	}
+
+	// And the dead row is gone, so replaying the token costs nothing.
+	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
+		t.Fatal("the idled-out session row survived")
+	}
+}
+
+func TestASessionUsedInsideTheIdleWindowSurvives(t *testing.T) {
+	issued := time.Now()
+	kit := testKit(newMemory(), issued)
+	token := issue(t, kit, 1)
+
+	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL - time.Hour) }
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("a session used inside the window = %d, want 200", recorder.Code)
+	}
+}
+
+// A named API token driving a nightly job is idle by design, and expiring it
+// would break the one credential nobody is present to renew.
+func TestANamedAPITokenIsNeverIdledOut(t *testing.T) {
+	issued := time.Now()
+	store := newMemory()
+	kit := testKit(store, issued)
+
+	// What an app minting a named token writes: no expiry, a label.
+	token, err := porte.NewToken()
+	if err != nil {
+		t.Fatalf("NewToken: %v", err)
+	}
+	if _, err := store.Create(context.Background(), porte.Session{
+		TokenHash: porte.HashToken(token), UserID: 1, Label: "deploy bot",
+		CreatedAt: issued, LastUsedAt: issued,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	kit.now = func() time.Time { return issued.Add(10 * porte.DefaultSessionIdleTTL) }
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("a labelled token was idled out: %d", recorder.Code)
+	}
+}
+
+func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
+	issued := time.Now()
+	kit := testKit(newMemory(), issued)
+	kit.cfg.SessionIdleTTL = -1
+	token := issue(t, kit, 1)
+
+	// Well past the idle window, well inside the absolute one.
+	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 24*time.Hour) }
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the idle window fired although it was disabled: %d", recorder.Code)
+	}
+}

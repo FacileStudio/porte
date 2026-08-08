@@ -27,6 +27,50 @@ func TestPrivateAddressesAreNotPublic(t *testing.T) {
 	}
 }
 
+// The IPv6 forms that embed an IPv4 address are the interesting half: they look
+// like ordinary public IPv6 to every predicate in net, and they reach the
+// metadata service anyway.
+func TestIPv6FormsEmbeddingAPrivateIPv4AreNotPublic(t *testing.T) {
+	disguised := map[string]string{
+		"64:ff9b::a9fe:a9fe":      "NAT64 wrapping the metadata service",
+		"64:ff9b::7f00:1":         "NAT64 wrapping loopback",
+		"64:ff9b::a00:1":          "NAT64 wrapping 10.0.0.1",
+		"2002:a9fe:a9fe::":        "6to4 wrapping the metadata service",
+		"2002:7f00:1::":           "6to4 wrapping loopback",
+		"::7f00:1":                "the deprecated IPv4-compatible form of loopback",
+		"::a9fe:a9fe":             "the IPv4-compatible form of the metadata service",
+		"2001:0:53aa:64c:0:0:0:1": "Teredo",
+		"64:ff9b:1::a9fe:a9fe":    "local-use NAT64",
+	}
+	for address, why := range disguised {
+		if isPublicIP(net.ParseIP(address)) {
+			t.Errorf("%s (%s) was treated as public", address, why)
+		}
+	}
+}
+
+// NAT64 is unwrapped rather than blocked outright: on an IPv6-only host every
+// IPv4 destination arrives in that form, including the legitimate ones.
+func TestNAT64WrappingAPublicAddressStaysPublic(t *testing.T) {
+	if !isPublicIP(net.ParseIP("64:ff9b::101:101")) {
+		t.Error("NAT64 wrapping 1.1.1.1 was refused, which breaks every avatar fetch from an IPv6-only host")
+	}
+}
+
+func TestReservedIPv4RangesAreNotPublic(t *testing.T) {
+	for _, address := range []string{
+		"100.64.0.1",      // carrier-grade NAT
+		"192.0.2.1",       // TEST-NET-1
+		"198.18.0.1",      // benchmarking
+		"240.0.0.1",       // reserved
+		"255.255.255.255", // broadcast
+	} {
+		if isPublicIP(net.ParseIP(address)) {
+			t.Errorf("%s was treated as public", address)
+		}
+	}
+}
+
 func TestAvatarFetchRefusesPlainHTTP(t *testing.T) {
 	_, _, err := FetchAvatar(context.Background(), "http://example.com/a.png")
 	if err == nil || !strings.Contains(err.Error(), "https") {

@@ -86,6 +86,14 @@ const (
 	// DefaultProfileSyncInterval is Nuage's existing profile_synced_at rate
 	// limit, unchanged.
 	DefaultProfileSyncInterval = 5 * time.Minute
+
+	// DefaultSessionIdleTTL retires a browser session nobody has used for a
+	// week, inside the thirty-day absolute lifetime. No app has an idle
+	// window today, so this is the one default porte does not inherit: a
+	// month-long credential that nothing can age out is the difference
+	// between a borrowed laptop being a bad afternoon and a bad month.
+	// Active users never meet it, and Config.SessionIdleTTL turns it off.
+	DefaultSessionIdleTTL = 7 * 24 * time.Hour
 )
 
 // Config is the environment contract. The variable names are the existing
@@ -118,6 +126,35 @@ type Config struct {
 	SessionTTL   time.Duration
 	ClaimsTTL    time.Duration
 	LoginCodeTTL time.Duration
+
+	// SessionIdleTTL retires a browser session that has gone unused for this
+	// long, independently of SessionTTL. Zero means DefaultSessionIdleTTL;
+	// a negative value disables the idle window and restores the behaviour
+	// the apps have today, which is an absolute expiry and nothing else.
+	//
+	// Labelled sessions — named API tokens — are never idled out. A token
+	// wired into a nightly job is idle by design.
+	SessionIdleTTL time.Duration
+}
+
+// HTTPS reports whether this app is served over TLS, according to its own
+// configuration rather than a proxy header. It decides the Secure attribute on
+// porte's cookies, so that a proxy which stops sending X-Forwarded-Proto
+// downgrades nothing.
+func (c Config) HTTPS() bool {
+	return strings.HasPrefix(strings.ToLower(c.RedirectURL), "https://") ||
+		strings.HasPrefix(strings.ToLower(c.SuccessURL), "https://")
+}
+
+// IdleTimeout returns the idle window, or zero when it is disabled.
+func (c Config) IdleTimeout() time.Duration {
+	if c.SessionIdleTTL < 0 {
+		return 0
+	}
+	if c.SessionIdleTTL == 0 {
+		return DefaultSessionIdleTTL
+	}
+	return c.SessionIdleTTL
 }
 
 // Enabled reports whether OIDC is configured at all.

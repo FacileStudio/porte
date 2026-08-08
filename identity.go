@@ -211,8 +211,20 @@ type IdentityStore interface {
 	// Find returns the identity for a provider and subject, or ErrNotFound.
 	Find(ctx context.Context, provider, subject string) (StoredIdentity, error)
 
-	// Save inserts or updates by (Provider, Subject).
+	// Save inserts or updates by (Provider, Subject). It writes the whole
+	// row, so it must only be called with an identity the caller actually
+	// holds the newest version of.
 	Save(ctx context.Context, identity StoredIdentity) error
+
+	// MarkRolesSynced moves only the roles_synced_at stamp.
+	//
+	// It exists because Save cannot do this safely. When a role refresh
+	// fails, porte still records the attempt so a dead refresh token is not
+	// retried on every request — but the identity it holds was read before
+	// the refresh, and writing it back whole would undo a token rotation a
+	// concurrent request had just persisted, locking the user out of every
+	// later refresh. One column, one statement, no read-modify-write.
+	MarkRolesSynced(ctx context.Context, provider, subject string, at time.Time) error
 
 	// ListByUser returns every way this human can authenticate, which is
 	// what an account settings screen needs and what v0.2 lists.
