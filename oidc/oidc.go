@@ -37,6 +37,18 @@ type Deps struct {
 	Codes      porte.LoginCodeStore
 	Avatars    porte.AvatarStore
 	Logger     *slog.Logger
+
+	// ConfigExtra adds fields to GET /auth/config. Every app in the suite
+	// serves a superset of porte's two keys there — one carries
+	// allow_registration, another a legacy password_auth — and porte owns
+	// the route, so without this an adopting app either loses its key or
+	// registers the path a second time and chi panics at boot.
+	//
+	// porte's own sso_only and oidc_enabled are written over the returned
+	// map. An app cannot use this to claim SSO is optional when it is
+	// mandatory: the frontend decides whether to draw a password form on
+	// those two keys, and they answer to the configuration alone.
+	ConfigExtra func() map[string]any
 }
 
 // Kit serves porte's routes and authenticates requests.

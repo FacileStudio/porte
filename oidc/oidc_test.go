@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/FacileStudio/porte"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // memory is every store porte needs, in a map. It exists so the middleware and
@@ -412,6 +414,64 @@ func TestConfigResponseIsServedWithOIDCDisabled(t *testing.T) {
 	}
 	if !response.SSOOnly || response.OIDCEnabled {
 		t.Fatalf("unexpected config response %+v", response)
+	}
+}
+
+// Every app in the suite serves a superset of porte's two keys at
+// /auth/config, and porte owns the route, so an adopting app has to be able to
+// keep its own key without registering the path a second time.
+func TestConfigExtraAddsTheAppsOwnKeysAndCannotOverridePortes(t *testing.T) {
+	kit := testKit(newMemory(), time.Now())
+	kit.cfg.SSOOnly = true
+	kit.deps.ConfigExtra = func() map[string]any {
+		return map[string]any{"allow_registration": true, "sso_only": false, "oidc_enabled": true}
+	}
+
+	recorder := httptest.NewRecorder()
+	kit.handleConfig(recorder, httptest.NewRequest(http.MethodGet, porte.RouteConfig, nil))
+
+	var body map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["allow_registration"] != true {
+		t.Fatalf("the app's own key did not survive: %+v", body)
+	}
+	if body["sso_only"] != true || body["oidc_enabled"] != false {
+		t.Fatalf("the app overrode porte's own keys: %+v", body)
+	}
+}
+
+// Ending a session is session management, not OIDC. An app running without a
+// provider still has sessions to end, and mounting this only alongside the
+// OIDC routes forced it to keep a second logout handler and a second response
+// shape until the day it switched SSO on.
+func TestLogoutIsMountedWithOIDCDisabled(t *testing.T) {
+	store := newMemory()
+	kit := testKit(store, time.Now())
+	token := issue(t, kit, 7)
+
+	router := chi.NewRouter()
+	kit.Mount(router)
+
+	request := httptest.NewRequest(http.MethodPost, porte.RouteLogout, nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("logout returned %d: %s", recorder.Code, recorder.Body)
+	}
+	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
+		t.Fatal("the session survived the logout")
+	}
+	for _, route := range []string{porte.RouteLogin, porte.RouteSyncProfile} {
+		probe := httptest.NewRequest(http.MethodGet, route, nil)
+		result := httptest.NewRecorder()
+		router.ServeHTTP(result, probe)
+		if result.Code != http.StatusMethodNotAllowed && result.Code != http.StatusNotFound {
+			t.Fatalf("%s answered %d with OIDC disabled", route, result.Code)
+		}
 	}
 }
 

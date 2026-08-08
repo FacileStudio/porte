@@ -27,11 +27,22 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 // They are relative to wherever router itself is mounted, so an app serving
 // its API under /api gets /api/auth/config and the frontends do not move.
 //
-// RouteConfig is always served. The rest appear only when OIDC is enabled: an
-// unconfigured provider means no endpoint to probe rather than an endpoint
-// that 500s.
+// RouteConfig and RouteLogout are always served: reporting the configuration
+// and ending a session are session management, and both work against the
+// SessionStore that New requires whether or not a provider is configured. The
+// OIDC routes appear only when one is — an unconfigured provider means no
+// endpoint to probe rather than an endpoint that 500s.
 func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteConfig, k.handleConfig)
+	router.Group(func(authenticated chi.Router) {
+		authenticated.Use(k.RequireAuth)
+		authenticated.Post(porte.RouteLogout, k.handleLogout)
+		if k.Enabled() {
+			// Refreshing a profile against an identity provider means
+			// nothing without one.
+			authenticated.Post(porte.RouteSyncProfile, k.handleSyncProfile)
+		}
+	})
 	if !k.Enabled() {
 		return
 	}
@@ -39,19 +50,23 @@ func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteCallback, k.handleCallback)
 	router.Post(porte.RouteExchange, k.handleExchange)
 	router.Post(porte.RouteBackchannelLogout, k.handleBackchannelLogout)
-
-	router.Group(func(authenticated chi.Router) {
-		authenticated.Use(k.RequireAuth)
-		authenticated.Post(porte.RouteLogout, k.handleLogout)
-		authenticated.Post(porte.RouteSyncProfile, k.handleSyncProfile)
-	})
 }
 
 func (k *Kit) handleConfig(w http.ResponseWriter, _ *http.Request) {
-	httpjson.WriteJSON(w, http.StatusOK, porte.ConfigResponse{
-		SSOOnly:     k.cfg.SSOOnly,
-		OIDCEnabled: k.Enabled(),
-	})
+	if k.deps.ConfigExtra == nil {
+		httpjson.WriteJSON(w, http.StatusOK, porte.ConfigResponse{
+			SSOOnly:     k.cfg.SSOOnly,
+			OIDCEnabled: k.Enabled(),
+		})
+		return
+	}
+	body := map[string]any{}
+	for key, value := range k.deps.ConfigExtra() {
+		body[key] = value
+	}
+	body["sso_only"] = k.cfg.SSOOnly
+	body["oidc_enabled"] = k.Enabled()
+	httpjson.WriteJSON(w, http.StatusOK, body)
 }
 
 // handleLogin starts the flow. Beyond what the apps do today it adds PKCE and

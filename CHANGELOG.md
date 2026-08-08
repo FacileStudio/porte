@@ -3,6 +3,35 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## Unreleased
+
+What the first adoption found. Journal — the one suite app with no OIDC at all, so the
+integration adds rather than replaces — hit three things in the first hour of wiring, and all
+three are the same shape: `porte` had decided something on the app's behalf that was not its to
+decide.
+
+- **`Mount` owned `/auth/config` outright, so an app could not keep its own key there.** Every
+  Facile app serves a superset of `sso_only` and `oidc_enabled` at that path — Journal adds
+  `allow_registration`, Mycelium a legacy `password_auth` — and registering the route a second
+  time makes chi panic at boot. `Deps.ConfigExtra func() map[string]any` merges the app's fields
+  in, and `porte` writes its own two keys over the result: the frontend decides whether to draw
+  a password form on those two, so they answer to the configuration and nothing else. Nil is
+  today's behaviour byte for byte.
+- **`/auth/logout` was mounted only when OIDC was enabled.** It is session management: it needs
+  the `SessionStore` that `New` already demands whether or not a provider is configured. An app
+  with SSO switched off therefore had to keep its own logout handler and a second response
+  shape, and inherited a route collision on the day it switched SSO on — which is precisely the
+  day nobody is looking at logout. It is now always mounted. `/auth/sync-profile` stays
+  OIDC-only; refreshing a profile against an identity provider means nothing without one.
+- **`attachClaims` documented itself as filling `Identity.Email` and `Identity.Name`. It never
+  did.** No store on the authenticated path holds either — `StoredIdentity` carries no email —
+  so the fields were silently empty for every consumer that trusted the comment. The comment now
+  says what the code does, and `Identity` records that hydrating a profile is the app's job:
+  `porte` authenticates a session, which tells it a user id and nothing else, and going to the
+  app's user table for a name would double the cost of every authenticated request to serve the
+  handlers that do not need one. Journal reads its own row into its own context, which is the
+  query it was already making.
+
 ## v0.1.0 — 2026-08-08
 
 OIDC only, as SPEC §4 scopes it: no local password, no `porte/espace`. The contract, the engine,
