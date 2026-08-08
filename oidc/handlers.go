@@ -101,7 +101,7 @@ func loopbackPort(value string) string {
 }
 
 func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
-	encoded, ok := readCookie(r, flowCookie)
+	encoded, ok := k.readCookie(r, flowCookie)
 	if !ok {
 		httpjson.WriteError(w, errors.Invalid("the login has expired, start again"))
 		return

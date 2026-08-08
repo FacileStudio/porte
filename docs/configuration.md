@@ -51,9 +51,10 @@ they are not there. There is no endpoint to probe and no handler to reach by mis
 | `SSOOnly` | `false` | Local password routes are not registered |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
 | `SessionTTL` | `30 days` | Browser session lifetime |
-| `SessionIdleTTL` | `7 days` | How long a session may go unused before it stops authenticating |
+| `SessionIdleTTL` | `7 days` | How long a browser session may go unused before it stops authenticating |
 | `ClaimsTTL` | `5 minutes` | How long a cached role claim is trusted |
 | `LoginCodeTTL` | `60 seconds` | Window for a CLI to exchange its one-time code |
+| `AcceptLegacyCookie` | `false` | Also read the session cookie under its unprefixed name over https, for one migration |
 
 `Config.Resolved()` returns a copy with zero durations replaced by their defaults, so the rest
 of the implementation never repeats the fallback. Call it once at construction. `SessionIdleTTL`
@@ -78,8 +79,11 @@ behaviour the apps have today, which is an absolute expiry and nothing else. Tha
 hatch, and it is spelled negative rather than zero so that turning the protection off is
 something a deployment says on purpose.
 
-Labelled sessions — named API tokens — are exempt. A token wired into a nightly job is idle by
-design, and expiring it would break the one credential nobody is present to renew.
+The window applies to the **cookie transport only**. Everything arriving as a bearer is a CLI or
+an API token, and those are idle by design: a deploy script nobody runs for a fortnight, a
+nightly job. They are also the one class of credential with no human present to renew it, so
+expiring them would break exactly the callers who cannot recover. The risk the window addresses
+is the browser left signed in on a machine somebody else can reach, which is a cookie.
 
 A thirty-day credential that nothing can age out is the difference between a borrowed laptop
 being a bad afternoon and a bad month.
@@ -122,10 +126,10 @@ These are frozen, not configurable. One spelling across the suite is the entire 
 | `SessionCookieName` | `session` | The base name of the browser session cookie |
 | `CSRFHeaderName` | `X-Facile-CSRF` | Second lock on the cookie transport |
 
-`SessionCookieName` is taken from the two apps that already ship the cookie transport, so
-adopting `porte` does not log their users out a second time. It is the **base** name: over https
-the cookie is written as `__Host-session`, and both spellings are read. See the cookie flags
-below.
+`SessionCookieName` is taken from the two apps that already ship the cookie transport. It is the
+**base** name: over https the cookie is written and read as `__Host-session`, and the bare
+spelling is read only during a migration. See the cookie flags below — adopting their name buys
+a shorter migration, not a free one.
 
 `CSRFHeaderName` carries **any non-empty value** — its presence is the whole signal. A browser
 will not attach a custom header to a simple cross-site request without a preflight, so there is
@@ -163,11 +167,20 @@ from the app's own host-only one. One XSS, one rogue app or one subdomain takeov
 victim into an attacker's session on all the others. Eight bytes in front of the name close it.
 
 The prefix is dropped over plain http, because a browser rejects it there outright and local
-development would stop working. The bare names are still **read**, preferring the prefixed form,
-for two reasons and neither is permanent: an app migrating from its own pre-`porte` session
-cookie, and that same local http development. A logout expires both spellings — clearing only
-the one `porte` writes today would leave a legacy cookie behind on the very request meant to
-migrate the user off it.
+development would stop working. Over http the bare name is therefore the only name read.
+
+**Over https the unprefixed name is not read at all**, unless `AcceptLegacyCookie` is set. This
+is the part that is easy to get wrong: a reader that always falls back to the bare name accepts
+precisely the cookie the attack plants, and the prefix becomes decoration. It is worst against a
+user who is *not* signed in, who has no prefixed cookie for a preference order to prefer, and
+who is therefore silently signed in as the attacker.
+
+`AcceptLegacyCookie` exists because an app adopting `porte` has users holding its own pre-`porte`
+`session` cookie. Turn it on for one `SessionTTL` — after that every surviving session was issued
+by `porte` and carries the prefix — then turn it off. There is no shorter honest migration: a
+reader cannot tell a legacy cookie from a forged one, which is the whole reason the prefix is
+worth having. A logout expires both spellings regardless, so it never leaves a legacy cookie
+behind on the request meant to migrate the user off it.
 
 ## What is not configurable, on purpose
 

@@ -97,11 +97,27 @@ func (k *Kit) cookieName(r *http.Request, base string) string {
 	return base
 }
 
-// readCookie returns a cookie by base name, preferring the prefixed form. The
-// unprefixed one is read for two reasons and neither is permanent: an app
-// migrating from its own pre-porte session cookie, and local http development.
-func readCookie(r *http.Request, base string) (string, bool) {
-	for _, name := range []string{hostPrefix + base, base} {
+// readCookie returns a cookie by base name.
+//
+// Over https it reads the prefixed name and, unless the app opted in to the
+// migration, only the prefixed name. An unconditional fallback would make the
+// prefix decoration: the attack it exists to stop is a sibling planting a
+// look-alike, and a reader that accepts the unprefixed name accepts exactly
+// that cookie from exactly that attacker. It is worse against a victim who is
+// *not* signed in, who has no prefixed cookie for the preference order to
+// prefer.
+//
+// Over plain http the bare name is the only name a browser will keep, so it is
+// what local development reads.
+func (k *Kit) readCookie(r *http.Request, base string) (string, bool) {
+	names := []string{base}
+	if k.secure(r) {
+		names = []string{hostPrefix + base}
+		if k.cfg.AcceptLegacyCookie {
+			names = append(names, base)
+		}
+	}
+	for _, name := range names {
 		if cookie, err := r.Cookie(name); err == nil && cookie.Value != "" {
 			return cookie.Value, true
 		}

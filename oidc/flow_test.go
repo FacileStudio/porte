@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -975,23 +976,6 @@ func TestSessionCookieDropsThePrefixWithoutTLS(t *testing.T) {
 	}
 }
 
-// An app adopting porte has users holding its old `session` cookie. They keep
-// authenticating; only what porte writes changes.
-func TestALegacySessionCookieStillAuthenticates(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	token := issue(t, kit, 7)
-
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("a legacy session cookie = %d, want 200", recorder.Code)
-	}
-}
-
 // The Secure attribute is derived from the configuration as well as the
 // request, so a proxy that stops sending X-Forwarded-Proto cannot downgrade
 // the session cookie to plaintext.
@@ -1005,5 +989,92 @@ func TestConfiguredHTTPSForcesTheSecureAttribute(t *testing.T) {
 
 	if cookie := recorder.Result().Cookies()[0]; !cookie.Secure {
 		t.Fatal("the session cookie was written without Secure although the app is configured for https")
+	}
+}
+
+func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
+	h := newHarness(t, nil)
+	client := h.client(t)
+	_ = h.login(t, client, "")
+
+	request, _ := http.NewRequest(http.MethodPost, h.app.URL+porte.RouteLogout, nil)
+	request.Header.Set(porte.CSRFHeaderName, "1")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("POST logout: %v", err)
+	}
+	var body porte.LogoutResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decoding the logout response: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || !body.LoggedOut {
+		t.Fatalf("logout = %d %+v", response.StatusCode, body)
+	}
+
+	// The harness is plain http, so the prefixed name is neither written nor
+	// accepted by a browser here; the bare one is what must be expired.
+	// Clearing both spellings over https is asserted separately.
+	cleared := false
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == porte.SessionCookieName && cookie.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Errorf("logout did not expire the %q cookie", porte.SessionCookieName)
+	}
+
+	// And the session is genuinely gone server-side, not merely forgotten
+	// by the browser.
+	request, _ = http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
+	response, err = client.Do(request)
+	if err != nil {
+		t.Fatalf("GET whoami: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("whoami after logout = %d, want 401", response.StatusCode)
+	}
+}
+
+// Optional serves a route that has both a signed-in and an anonymous caller —
+// a public share link that shows an edit button to its owner.
+func TestOptionalAttachesAnIdentityWhenThereIsOneAndLetsAnonymousThrough(t *testing.T) {
+	store := newMemory()
+	kit := testKit(store, time.Now())
+	token := issue(t, kit, 42)
+
+	handler := kit.Optional(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		identity, ok := porte.From(r.Context())
+		if !ok {
+			_, _ = w.Write([]byte("anonymous"))
+			return
+		}
+		_, _ = w.Write([]byte(strconv.FormatInt(identity.UserID, 10)))
+	}))
+
+	anonymous := httptest.NewRecorder()
+	handler.ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/", nil))
+	if anonymous.Code != http.StatusOK || anonymous.Body.String() != "anonymous" {
+		t.Fatalf("anonymous request = %d %q, want 200 anonymous", anonymous.Code, anonymous.Body.String())
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	signedIn := httptest.NewRecorder()
+	handler.ServeHTTP(signedIn, request)
+	if signedIn.Code != http.StatusOK || signedIn.Body.String() != "42" {
+		t.Fatalf("signed-in request = %d %q, want 200 42", signedIn.Code, signedIn.Body.String())
+	}
+
+	// A bad credential is not a 401 here, but it must not authenticate
+	// either — the route is public, the caller is simply not identified.
+	bad := httptest.NewRequest(http.MethodGet, "/", nil)
+	bad.Header.Set("Authorization", "Bearer not-a-real-token")
+	rejected := httptest.NewRecorder()
+	handler.ServeHTTP(rejected, bad)
+	if rejected.Body.String() != "anonymous" {
+		t.Fatalf("an invalid token yielded %q, want anonymous", rejected.Body.String())
 	}
 }

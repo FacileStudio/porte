@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	stderrors "errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -520,5 +521,28 @@ func TestConcurrentFirstLoginsResolveToOneUser(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("porte_users holds %d rows, want 1", count)
+	}
+}
+
+// The conflict path must re-apply the guard it raced past. Two first logins
+// with different subjects and the same email both find no row, and the loser
+// arrives at the insert to find the email taken — adopting it there would be
+// the account takeover the unverified-email rule exists to refuse.
+func TestTheConflictPathStillRefusesAnUnverifiedEmail(t *testing.T) {
+	store, _ := open(t)
+	ctx := context.Background()
+	users := store.Users()
+
+	if _, err := users.UpsertFromOIDC(ctx, claims("s1", "shared@example.test", true)); err != nil {
+		t.Fatalf("the first login failed: %v", err)
+	}
+	// A different subject, same address, and the provider will not vouch
+	// for it. This is the takeover attempt.
+	_, err := users.UpsertFromOIDC(ctx, claims("s2", "shared@example.test", false))
+	if err == nil {
+		t.Fatal("an unverified email was linked to an account it does not own")
+	}
+	if !strings.Contains(err.Error(), "did not verify") {
+		t.Fatalf("err = %v, want the unverified-email refusal", err)
 	}
 }

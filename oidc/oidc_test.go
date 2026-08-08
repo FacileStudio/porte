@@ -125,6 +125,16 @@ func testKit(store *memory, now time.Time) *Kit {
 	}
 }
 
+// sessionCookie is the cookie a browser would actually send back to this kit:
+// the __Host- prefixed name over https, the bare one otherwise.
+func sessionCookie(kit *Kit, token string) *http.Cookie {
+	name := porte.SessionCookieName
+	if kit.cfg.HTTPS() {
+		name = "__Host-" + name
+	}
+	return &http.Cookie{Name: name, Value: token}
+}
+
 // issue puts a live session in the store and returns its plaintext token.
 func issue(t *testing.T, kit *Kit, userID int64) string {
 	t.Helper()
@@ -161,7 +171,7 @@ func TestCookieTransportRequiresTheCSRFHeaderOnMutatingRequests(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			request := httptest.NewRequest(testCase.method, "/x", nil)
-			request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
+			request.AddCookie(sessionCookie(kit, token))
 			if testCase.header {
 				request.Header.Set(porte.CSRFHeaderName, "1")
 			}
@@ -217,7 +227,7 @@ func TestExpiredSessionIsRefusedAndTheCookieCleared(t *testing.T) {
 	kit.now = func() time.Time { return now.Add(porte.DefaultSessionTTL + time.Second) }
 
 	request := httptest.NewRequest(http.MethodGet, "/x", nil)
-	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
+	request.AddCookie(sessionCookie(kit, token))
 	recorder := httptest.NewRecorder()
 	authenticated(kit).ServeHTTP(recorder, request)
 
@@ -240,7 +250,7 @@ func TestSessionUseIsRecordedAtMostOncePerInterval(t *testing.T) {
 
 	send := func() {
 		request := httptest.NewRequest(http.MethodGet, "/x", nil)
-		request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
+		request.AddCookie(sessionCookie(kit, token))
 		authenticated(kit).ServeHTTP(httptest.NewRecorder(), request)
 	}
 	send()
@@ -430,10 +440,8 @@ func TestASessionIdleForTooLongIsRefused(t *testing.T) {
 	token := issue(t, kit, 1)
 
 	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + time.Minute) }
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
+	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("an idle session authenticated: %d", recorder.Code)
 	}
@@ -450,42 +458,19 @@ func TestASessionUsedInsideTheIdleWindowSurvives(t *testing.T) {
 	token := issue(t, kit, 1)
 
 	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL - time.Hour) }
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
+	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("a session used inside the window = %d, want 200", recorder.Code)
 	}
 }
 
-// A named API token driving a nightly job is idle by design, and expiring it
-// would break the one credential nobody is present to renew.
-func TestANamedAPITokenIsNeverIdledOut(t *testing.T) {
-	issued := time.Now()
-	store := newMemory()
-	kit := testKit(store, issued)
-
-	// What an app minting a named token writes: no expiry, a label.
-	token, err := porte.NewToken()
-	if err != nil {
-		t.Fatalf("NewToken: %v", err)
-	}
-	if _, err := store.Create(context.Background(), porte.Session{
-		TokenHash: porte.HashToken(token), UserID: 1, Label: "deploy bot",
-		CreatedAt: issued, LastUsedAt: issued,
-	}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	kit.now = func() time.Time { return issued.Add(10 * porte.DefaultSessionIdleTTL) }
+// cookieRequest is a browser GET carrying the session cookie, which is the
+// transport the idle window applies to.
+func cookieRequest(kit *Kit, token string) *http.Request {
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("a labelled token was idled out: %d", recorder.Code)
-	}
+	request.AddCookie(sessionCookie(kit, token))
+	return request
 }
 
 func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
@@ -496,11 +481,74 @@ func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
 
 	// Well past the idle window, well inside the absolute one.
 	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 24*time.Hour) }
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the idle window fired although it was disabled: %d", recorder.Code)
+	}
+}
+
+// The whole point of the prefix is that a cookie which does not carry it is not
+// trusted. A reader that falls back unconditionally accepts exactly the cookie
+// a compromised sibling host plants, so the fallback is opt-in.
+func TestAnUnprefixedCookieIsRefusedOverHTTPSByDefault(t *testing.T) {
+	store := newMemory()
+	kit := testKit(store, time.Now())
+	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
+	token := issue(t, kit, 1)
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("an unprefixed cookie authenticated over https: %d", recorder.Code)
+	}
+
+	// The prefixed one, same token, is accepted.
+	request = httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.AddCookie(&http.Cookie{Name: "__Host-" + porte.SessionCookieName, Value: token})
+	recorder = httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the prefixed cookie was refused: %d", recorder.Code)
+	}
+}
+
+// An app migrating off its own pre-porte cookie opts in for one SessionTTL.
+func TestAcceptLegacyCookieReopensTheUnprefixedName(t *testing.T) {
+	store := newMemory()
+	kit := testKit(store, time.Now())
+	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
+	kit.cfg.AcceptLegacyCookie = true
+	token := issue(t, kit, 1)
+
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
+	recorder := httptest.NewRecorder()
+	authenticated(kit).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("the legacy cookie was refused although the migration is on: %d", recorder.Code)
+	}
+}
+
+// A CLI's token is a bearer, and a CLI nobody runs for a fortnight must not be
+// silently signed out — it is the one credential with no human present to
+// renew it. The idle window is for the browser transport.
+func TestABearerIsNeverIdledOut(t *testing.T) {
+	issued := time.Now()
+	kit := testKit(newMemory(), issued)
+	token := issue(t, kit, 1)
+
+	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 48*time.Hour) }
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
 	authenticated(kit).ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("the idle window fired although it was disabled: %d", recorder.Code)
+		t.Fatalf("a CLI bearer was idled out: %d", recorder.Code)
 	}
 }

@@ -19,7 +19,7 @@ any code — it carries the decisions, the contract, and the reasoning behind bo
 - Stores sessions as hashed opaque tokens — `HttpOnly`, `__Host-` prefixed cookie in browsers,
   `Bearer` for CLIs and API tokens — with a `database/sql` implementation in `pg/`
 - Retires a browser session nobody has used for a week, inside the thirty-day absolute lifetime,
-  and leaves named API tokens alone because a nightly job is idle by design
+  and leaves CLI and API tokens alone because a nightly job is idle by design
 - Gives every CLI the same login: browser opens, user signs in, a one-time code comes back
 - Fetches IdP avatars behind an SSRF guard that checks the address at connect time, closing the
   DNS-rebinding window every existing copy leaves open, and unwraps the IPv6 forms that smuggle

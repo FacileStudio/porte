@@ -36,9 +36,13 @@ verification; four more were raised and refuted, and the refutations are worth a
   indistinguishable at the server from the app's own host-only one — so one XSS, one rogue app or
   one subdomain takeover next door is enough to plant a look-alike and fix a victim into the
   attacker's session. The prefix is the one cookie property that cannot be forged: a browser
-  accepts it only when the cookie is `Secure`, `Path=/` and carries no `Domain`. The bare names
-  are still *read*, so an app migrating from its own pre-porte cookie does not log everyone out,
-  and local http development still works.
+  accepts it only when the cookie is `Secure`, `Path=/` and carries no `Domain`. Over https the
+  unprefixed name is **not read** unless `Config.AcceptLegacyCookie` is set: an unconditional
+  fallback accepts precisely the cookie the attack plants, which would make the prefix
+  decoration, and it is worst against a user who is not signed in and has no prefixed cookie for
+  a preference order to prefer. The migration switch is meant to be on for one `SessionTTL` and
+  then off. Over plain http the bare name is the only one a browser keeps, so it is the only one
+  read there.
 - **`Secure` is derived from the configuration as well as the request.** The per-request test is
   right behind Traefik and stays, but `Config.HTTPS()` now overrides it upward and never
   downward: a proxy that stops sending `X-Forwarded-Proto` must not be able to talk `porte` into
@@ -46,8 +50,9 @@ verification; four more were raised and refuted, and the refutations are worth a
 - **Sessions gained an idle window.** `DefaultSessionIdleTTL` is seven days inside the thirty-day
   absolute lifetime, and it is the one default `porte` does not inherit from the apps — none of
   them can age out an unused session at all. Active users never meet it; a borrowed laptop stops
-  being a month-long credential. Labelled sessions are exempt, because an API token driving a
-  nightly job is idle by design. A negative `SessionIdleTTL` disables it.
+  being a month-long credential. It applies to the **cookie transport only**: everything arriving
+  as a bearer is a CLI or an API token, which is idle by design and is the one class of
+  credential with no human present to renew it. A negative `SessionIdleTTL` disables it.
 - **`porte/pg` can finally tell a replayed login code from a typo.** The contract has always
   specified `ErrCodeConsumed` for the first case, and the shipped store returned `ErrNotFound`
   for both, so the replay branch in the engine was unreachable. `Consume` now stamps
@@ -65,7 +70,9 @@ verification; four more were raised and refuted, and the refutations are worth a
   `READ COMMITTED` transaction, so a double click, two tabs or a retried callback both passed it
   and one died on the unique index — the raw 500 on the login path that the check exists to
   prevent. The insert is now `ON CONFLICT (email) DO NOTHING RETURNING id` with a re-select, so
-  the loser adopts the winner's row.
+  the loser adopts the winner's row — and the conflict path re-applies the unverified-email
+  guard rather than assuming it, because two *different* subjects can reach it with the same
+  address, and adopting there would be the takeover the guard exists to refuse.
 - `POST /auth/oidc/exchange` answers with `Cache-Control: no-store`. It is the token endpoint of
   the CLI flow in everything but name.
 - An expired or idled-out session row is deleted when it is presented, rather than left to the

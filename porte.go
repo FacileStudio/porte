@@ -135,6 +135,20 @@ type Config struct {
 	// Labelled sessions — named API tokens — are never idled out. A token
 	// wired into a nightly job is idle by design.
 	SessionIdleTTL time.Duration
+
+	// AcceptLegacyCookie makes porte also read the session cookie under its
+	// unprefixed name over https, so an app adopting porte does not log out
+	// everyone holding its own pre-porte `session` cookie.
+	//
+	// It is off by default and it is not free: while it is on, a cookie
+	// named `session` scoped to the parent domain is accepted, which is the
+	// cookie a compromised sibling host plants and precisely what the
+	// __Host- prefix exists to refuse. Turn it on for one SessionTTL — after
+	// that every surviving session was issued by porte and carries the
+	// prefix — then turn it off. There is no shorter honest migration: a
+	// reader cannot tell a legacy cookie from a forged one, which is the
+	// whole reason the prefix is worth having.
+	AcceptLegacyCookie bool
 }
 
 // HTTPS reports whether this app is served over TLS, according to its own

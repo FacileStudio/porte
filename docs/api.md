@@ -51,7 +51,7 @@ apps today, which is what makes them safe to freeze.
 | `Validate() error` | Names **every** missing variable at once, so a misconfiguration takes one fix |
 | `Resolved() Config` | A copy with zero durations replaced by their defaults |
 | `HTTPS() bool` | Whether the app is served over TLS, read off `RedirectURL` or `SuccessURL` |
-| `IdleTimeout() time.Duration` | The session idle window: zero `SessionIdleTTL` means the default, negative means disabled |
+| `IdleTimeout() time.Duration` | The browser session idle window: zero `SessionIdleTTL` means the default, negative means disabled |
 
 `HTTPS` exists so the `Secure` cookie attribute has a source that a proxy cannot revoke. It
 overrides the per-request `X-Forwarded-Proto` test upward and never downward.
@@ -266,7 +266,8 @@ of them can offer "your active sessions". It is also what the idle window reads.
 `Expired` is the absolute lifetime only. A session that is still inside it but has gone unused
 for longer than `Config.IdleTimeout()` also stops authenticating, and the middleware deletes the
 row on the request that finds it rather than leaving a lookup to be paid on every replay of a
-token that will never authenticate again. Labelled sessions are exempt — see
+token that will never authenticate again. The window applies to the cookie transport only —
+bearers are CLIs and API tokens, which are idle by design. See
 [configuration.md](configuration.md).
 
 `LoginCode` carries `CodeHash`, `UserID`, `ExpiresAt`, and `Expired(now) bool`.
@@ -321,9 +322,10 @@ On a cookie-authenticated **mutating** request the `X-Facile-CSRF` header must b
 any value. Bearer callers are exempt: nothing attaches a header on their behalf, so there is no
 CSRF to defend against.
 
-The cookie is read under `__Host-session` first and the bare `session` second, and written under
-the prefixed name whenever the connection is secure. The prefix and the reasons for reading both
-spellings are in [configuration.md](configuration.md).
+Over https the cookie is written and read under `__Host-session`, and the bare `session` is read
+only when `Config.AcceptLegacyCookie` is set for a migration. Over plain http the bare name is
+the only one a browser keeps, so it is the only one read. The reasoning is in
+[configuration.md](configuration.md).
 
 ### What the routes answer with
 

@@ -211,6 +211,17 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
 		).Scan(&userID)
 		if stderrors.Is(err, sql.ErrNoRows) {
+			// Somebody else inserted this email between the check above
+			// and here. Adopting their row is right when the provider
+			// verified the address — that is the same rule the fallback
+			// at the top of this method applies — and is the account
+			// takeover it refuses when the provider did not, so the
+			// guard is applied again rather than assumed.
+			if !claims.EmailVerified {
+				return 0, fmt.Errorf(
+					"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
+					claims.Email)
+			}
 			err = tx.QueryRowContext(ctx,
 				`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
 		}

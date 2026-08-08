@@ -54,7 +54,7 @@ func (k *Kit) Optional(next http.Handler) http.Handler {
 // needed one, EventSource and download navigations, are exactly what the
 // cookie transport serves for free.
 func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identity, error) {
-	token, fromCookie := credential(r)
+	token, fromCookie := k.credential(r)
 	if token == "" {
 		return porte.Identity{}, errors.Unauthorized("missing auth")
 	}
@@ -82,7 +82,7 @@ func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identi
 	}
 
 	now := k.now()
-	if session.Expired(now) || k.idledOut(session, now) {
+	if session.Expired(now) || k.idledOut(session, fromCookie, now) {
 		if fromCookie {
 			k.clearCookie(w, r, porte.SessionCookieName)
 		}
@@ -110,8 +110,8 @@ func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identi
 // credential returns the token and whether it came from the cookie. Cookie
 // first: a browser that has both is a browser, and the cookie is the transport
 // with the CSRF check behind it.
-func credential(r *http.Request) (token string, fromCookie bool) {
-	if value, ok := readCookie(r, porte.SessionCookieName); ok {
+func (k *Kit) credential(r *http.Request) (token string, fromCookie bool) {
+	if value, ok := k.readCookie(r, porte.SessionCookieName); ok {
 		return value, true
 	}
 	authorization := r.Header.Get("Authorization")
@@ -121,17 +121,20 @@ func credential(r *http.Request) (token string, fromCookie bool) {
 	return "", false
 }
 
-// idledOut reports whether a session has gone unused for longer than the
-// configured idle window. It reads LastUsedAt, which the touch above keeps to
-// within a minute — coarse enough to be cheap, far finer than a window
+// idledOut reports whether a browser session has gone unused for longer than
+// the configured idle window. It reads LastUsedAt, which the touch above keeps
+// to within a minute — coarse enough to be cheap, far finer than a window
 // measured in days.
 //
-// Labelled sessions are exempt: a named API token driving a nightly job is
-// idle by design, and expiring it would break the one credential nobody is
-// present to renew.
-func (k *Kit) idledOut(session porte.Session, now time.Time) bool {
+// The window applies to the cookie transport only. Everything arriving as a
+// bearer is a CLI or an API token, which is idle by design: a deploy script
+// nobody runs for a fortnight, a nightly job. Expiring those would break the
+// one class of credential with no human present to renew it, and it is not
+// where the risk is — the window exists for the browser left signed in on a
+// machine somebody else can reach.
+func (k *Kit) idledOut(session porte.Session, fromCookie bool, now time.Time) bool {
 	idle := k.cfg.IdleTimeout()
-	if idle <= 0 || session.IsAPIToken() || session.LastUsedAt.IsZero() {
+	if !fromCookie || idle <= 0 || session.LastUsedAt.IsZero() {
 		return false
 	}
 	return now.Sub(session.LastUsedAt) >= idle
