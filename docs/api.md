@@ -293,8 +293,8 @@ itself, so there is no dictionary to slow down, and this runs on every authentic
 ### Kit
 
 `New(ctx, cfg, Deps) (*Kit, error)` performs discovery and returns the engine. A disabled config
-is not an error — it returns a kit that serves `RouteConfig` and authenticates sessions, which is
-what an app running without SSO needs.
+is not an error — it returns a kit that serves `RouteConfig` and `RouteLogout` and authenticates
+sessions, which is what an app running without SSO needs.
 
 `New` is the boot path, so every detectable misconfiguration is detected there: a half-filled
 environment, an unreachable issuer, a missing store, and a roles scope the provider does not
@@ -310,6 +310,18 @@ advertise.
 
 `Deps` carries `Users`, `Identities`, `Sessions`, `Codes`, an optional `Avatars` and an optional
 `Logger`. `porte/pg` implements all four.
+
+`Mount` always registers `GET /auth/config` and `POST /auth/logout`; the OIDC routes and
+`POST /auth/sync-profile` appear only when a provider is configured. Ending a session needs the
+`SessionStore` that `New` requires either way, so gating it behind OIDC only forced an app
+without SSO to keep a second logout handler answering a second response shape.
+
+`Deps.ConfigExtra func() map[string]any` adds fields to `GET /auth/config`. Every app in the
+suite serves a superset there — `allow_registration` in Journal, a legacy `password_auth` in
+Jardin — and `porte` owns the path, so without this the app either drops its key or registers
+the route twice and chi panics. `sso_only` and `oidc_enabled` are written over whatever the map
+contains: the frontend decides on those two whether to draw a password form at all, and they
+answer to the configuration alone.
 
 ### What the middleware accepts
 

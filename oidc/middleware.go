@@ -149,8 +149,11 @@ func mutating(r *http.Request) bool {
 	}
 }
 
-// attachClaims fills Email, Name and Roles from the stored identity, and
-// refreshes the roles when they have gone stale.
+// attachClaims fills Roles from the stored identity and refreshes them when
+// they have gone stale. It does not fill Email or Name: no store porte reads
+// on this path holds either, and going to the app's user table for them would
+// double the cost of every authenticated request to serve the handlers that
+// do not need them.
 //
 // It costs a query per request, so it runs only when claims are configured —
 // which no app does today. An app that never sets OIDC_CLAIMS_SCOPE pays

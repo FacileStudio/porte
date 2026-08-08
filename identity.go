@@ -14,6 +14,14 @@ import (
 // UserID is an int64, matching porte_users.id and the int64 foreign keys every
 // app already has. The apps pass a decimal string around today; that
 // conversion moves to the edge and stops being repeated per handler.
+//
+// Email, EmailVerified and Name are not populated by the middleware. porte
+// authenticates a session, which tells it a user id and nothing else; the
+// profile lives in the app's own user table. An app that needs the address on
+// every request reads its row and puts it in its own context — one query it
+// was already making — rather than porte making that query for every handler
+// that does not care. They are here because a UserStore fills them in tests
+// and because v0.2's local login has them in hand at the moment it issues.
 type Identity struct {
 	UserID        int64
 	Email         string
