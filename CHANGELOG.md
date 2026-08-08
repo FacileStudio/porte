@@ -3,7 +3,12 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
-## Unreleased
+## v0.1.0 — 2026-08-08
+
+OIDC only, as SPEC §4 scopes it: no local password, no `porte/espace`. The contract, the engine,
+the PostgreSQL stores and the flow are complete and the whole thing is walked end to end against
+a conformant issuer. **No application has adopted it in production yet** — that is the next
+milestone, not this one, and it is why there is no `docs/architecture.md`.
 
 ### Proving the flow, and the hardening that came out of it
 

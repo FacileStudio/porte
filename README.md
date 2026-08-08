@@ -62,9 +62,12 @@ state comparison. Written once here instead of six times in the apps.
 
 | Version | Scope |
 |---|---|
-| v0.1 | OIDC only. Written; proven on the e-commerce demo and Nuage before tagging |
+| **v0.1.0** | OIDC only. Tagged. The flow is walked end to end against a conformant in-process issuer and the security surface has been reviewed — but **no application has adopted it in production yet**, so the version is deliberately `v0.x`: usable, and not promising an unchanged API |
 | v0.2 | Local email/password, argon2 |
 | v0.3 | `porte/espace` — spaces, membership, `RequireRole` |
+
+The first adopters are the e-commerce demo, which is greenfield and outside the suite, and then
+Nuage, which is where the code was extracted from. What they find lands in v0.1.x.
 
 ## Documentation
 
@@ -75,9 +78,8 @@ state comparison. Written once here instead of six times in the apps.
 | [Development](docs/development.md) | Local setup, the quality gate, versioning |
 | [API](docs/api.md) | Every exported symbol — the frozen contract, package by package |
 
-There is no `docs/architecture.md` yet. It arrives once the flow has run against a real
-provider: a page describing a request path nobody has walked is a page that documents an
-intention.
+There is no `docs/architecture.md` yet. It arrives with the first adoption: a page describing a
+request path nobody has walked in production is a page that documents an intention.
 
 ---
 
