@@ -2,6 +2,7 @@ package local
 
 import (
 	"context"
+	stderrors "errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -367,5 +368,73 @@ func TestHashPasswordProducesAVerifiableDistinctHashEachTime(t *testing.T) {
 		if VerifyPassword("anything", malformed) {
 			t.Fatalf("a malformed encoding verified: %q", malformed)
 		}
+	}
+}
+
+// The contract says the sentinels exist so a handler can map them to a status
+// without matching on message text. That is only true if they are wrapped.
+func TestTheSentinelsAreMatchable(t *testing.T) {
+	kit, _ := testKit(t, true)
+	ctx := context.Background()
+
+	w, r := request()
+	if _, _, err := kit.Register(ctx, w, r, "someone@facile.studio", "", "a-long-enough-password"); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		call func() error
+		want error
+	}{
+		{"wrong password", func() error {
+			w, r := request()
+			_, _, err := kit.Login(ctx, w, r, "someone@facile.studio", "wrong")
+			return err
+		}, porte.ErrWrongPassword},
+		{"unknown address", func() error {
+			w, r := request()
+			_, _, err := kit.Login(ctx, w, r, "nobody@facile.studio", "wrong")
+			return err
+		}, porte.ErrWrongPassword},
+		{"address already taken", func() error {
+			w, r := request()
+			_, _, err := kit.Register(ctx, w, r, "someone@facile.studio", "", "a-long-enough-password")
+			return err
+		}, porte.ErrEmailTaken},
+		{"password too short", func() error {
+			w, r := request()
+			_, _, err := kit.Register(ctx, w, r, "other@facile.studio", "", "short")
+			return err
+		}, porte.ErrWeakPassword},
+		{"not an address", func() error {
+			w, r := request()
+			_, _, err := kit.Register(ctx, w, r, "not-an-address", "", "a-long-enough-password")
+			return err
+		}, porte.ErrInvalidEmail},
+	}
+	for _, testCase := range cases {
+		err := testCase.call()
+		if err == nil {
+			t.Errorf("%s: no error", testCase.name)
+			continue
+		}
+		if !stderrors.Is(err, testCase.want) {
+			t.Errorf("%s: %v does not match %v", testCase.name, err, testCase.want)
+		}
+	}
+
+	closed, _ := testKit(t, false)
+	w, r = request()
+	if _, _, err := closed.Register(ctx, w, r, "first@facile.studio", "", "a-long-enough-password"); err != nil {
+		t.Fatalf("first account: %v", err)
+	}
+	w, r = request()
+	err := func() error {
+		_, _, err := closed.Register(ctx, w, r, "second@facile.studio", "", "a-long-enough-password")
+		return err
+	}()
+	if !stderrors.Is(err, porte.ErrRegistrationClosed) {
+		t.Errorf("registration closed: %v does not match %v", err, porte.ErrRegistrationClosed)
 	}
 }

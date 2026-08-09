@@ -3,6 +3,15 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.1 — 2026-08-09
+
+The error sentinels were decoration. `porte.go` says they exist "so a handler can map them to
+status codes without matching on message text", and `porte/local` was returning
+`errors.Unauthorized(porte.ErrWrongPassword.Error())` — the text, not the error — so `errors.Is`
+never matched and the only way to tell a wrong password from a closed registration was to compare
+strings. They are wrapped now, keeping tronc's code and therefore the HTTP status.
+`ErrWeakPassword` was declared and never returned at all; it now carries the configured minimum.
+
 ## v0.2.0 — 2026-08-09
 
 Local passwords, and the restructuring they forced.

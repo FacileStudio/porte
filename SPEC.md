@@ -211,6 +211,7 @@ Authentik → in-house IdP swap a config change rather than a rewrite.
 | `OIDC_CLIENT_SECRET` | with issuer | |
 | `OIDC_REDIRECT_URL` | with issuer | Must match the Authentik application |
 | `OIDC_SUCCESS_URL` | with issuer | Where the browser lands after a successful callback |
+| `OIDC_CLAIMS_SCOPE` | no | The scope carrying the `roles` claim (§5c). Its presence enables claims handling |
 | `SSO_ONLY` | no | When true, local password routes are not registered at all |
 
 Authentik application slug convention, unchanged: `sso.facile.studio/application/o/<app>/`.
@@ -225,7 +226,14 @@ POST /auth/oidc/exchange   one-time code → bearer token (CLI path)    no auth,
 POST /auth/logout          {"logged_out": true}, clears the cookie    session required
 POST /auth/sync-profile    refresh profile from the IdP               session required
 POST /auth/backchannel-logout   IdP-initiated session kill            logout token, no session
+POST /auth/register        v0.2, porte/local. {user_id, token} + cookie   no auth
+POST /auth/login           v0.2, porte/local. {user_id, token} + cookie   no auth
 ```
+
+`POST /auth/logout` is mounted by `porte/session`, not by either kit (§8). The two local routes
+are mounted by `porte/local` and are optional in a second sense as well: an app whose frontend
+expects the `{token, user}` body every existing Facile app answers calls `Register` and `Login`
+from its own handlers instead. `porte` keeps the credential, the app keeps its wire shape.
 
 Scopes requested: `openid email profile offline_access` — unchanged, plus the scope carrying
 `roles` when claims are enabled (§5c). `offline_access` is already requested by every app today,
@@ -764,6 +772,39 @@ in CHANGELOG.md with their reasoning. Three changed the contract and are noted i
 `Config.SessionIdleTTL` and the seven-day idle window, `IdentityStore.MarkRolesSynced`, and the
 `__Host-` cookie prefix with the bare names still read for migration.
 
+### Still unproven — recorded 2026-08-09, after the first adoption
+
+Journal runs `porte` against the suite's Authentik, so the browser login, the callback, the upsert,
+the cookie and the password login are walked by real users. Two things are not, and one of them is
+a live gap rather than a missing test.
+
+**The CLI flow has never run against a real Authentik.** `?flow=cli`, the loopback `?port=N`
+callback, the one-time code and `POST /auth/oidc/exchange` are walked end to end in
+`oidc/flow_test.go` against the conformant in-process issuer, and no further. Journal has no CLI,
+so the first app that does is the first real exercise. What is untested is not the code path — it
+is Authentik's behaviour on a redirect URI pointing at `127.0.0.1` with a variable port, which is
+a provider configuration question the flow test cannot ask.
+
+**Back-channel logout cannot work against the deployed Authentik, and does not.** The endpoint is
+implemented, validates the logout token, and is covered by the flow test — but the deployed
+provider is **Authentik 2025.6.3, which has no field to configure a back-channel logout URI at
+all**. Support landed in 2025.10. Nothing is calling `POST /auth/backchannel-logout` in
+production, and nothing can until that upgrade.
+
+The consequence is concrete and must not be softened: **an account disabled or deleted in
+Authentik keeps its Journal session until that session expires.** The IdP stops issuing new
+tokens immediately, so the user cannot log in again — but the session they already hold is an
+opaque token in `porte`'s own table, and the only mechanisms that reach it are back-channel logout
+and the app's own revocation. `ClaimsTTL` does not close this: it refreshes *roles* within five
+minutes, and only when `ClaimsScope` is configured, which no app has enabled. A deactivated
+employee therefore retains access for up to `SessionIdleTTL` — seven days of not using it, thirty
+days if they keep using it.
+
+Until Authentik is on 2025.10 or later, offboarding means revoking sessions in each app, and the
+mechanism for that is `session.Manager.RevokeUser`. Upgrading the provider is what makes this a
+protocol concern again; it is a deployment task, and it is the highest-value one open against
+`porte`.
+
 ### Still ahead, in order
 
 1. **The roles scope mapping in `authentik-config`** — the producing half of §5c. Until it
@@ -775,5 +816,8 @@ in CHANGELOG.md with their reasoning. Three changed the contract and are noted i
 3. **Nuage**, the extraction source, then **Perception**, whose `internal/identity/` seam and
    `seam_test.go` were designed against this idea rather than extracted from it — it is the repo
    whose structure will say whether the interface shape is right.
-4. **`docs/architecture.md`**, once there is a request flow somebody has actually walked in
-   production rather than in a test.
+4. **`docs/architecture.md`**, once there is a **second** adopter. The original condition — a
+   request flow somebody has walked in production rather than in a test — is met, and the page is
+   still not worth writing from one app: drawn from Journal alone it would document Journal's
+   wiring. v0.2 is the evidence for that caution, since one consumer was enough to move a package
+   boundary.
