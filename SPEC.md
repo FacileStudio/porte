@@ -782,17 +782,24 @@ inherits.
 **The CLI flow has never run against a real Authentik.** `?flow=cli`, the loopback `?port=N`
 callback, the one-time code and `POST /auth/oidc/exchange` are walked end to end in
 `oidc/flow_test.go` against the conformant in-process issuer, and no further. Journal has no CLI,
-so the first app that does is the first real exercise. What is untested is not the code path — it
-is Authentik's behaviour on a redirect URI pointing at `127.0.0.1` with a variable port, which is
-a provider configuration question the flow test cannot ask.
+so the first app that does is the first real exercise.
 
-The exercise now exists and has not been run: `sablier-cli` builds
-`{api}/auth/oidc?flow=cli&port={port}` on a kernel-assigned port (`src/login.rs:39`) and exchanges
-at `/auth/oidc/exchange`, against a Sablier that is `SSO_ONLY=true` — so there is no password path
-to fall back on and the whole login is Authentik's. The question it answers is narrow and worth
-stating so the result is not over-read: whether the Sablier provider accepts a loopback redirect
-URI whose port changes per invocation. If it refuses, the fix is provider configuration, not
-`porte` — and the fallback is already documented as the suite's loopback-handoff convention.
+This section used to say the untested part was "Authentik's behaviour on a redirect URI pointing
+at `127.0.0.1` with a variable port, a provider configuration question the flow test cannot ask."
+**That is wrong, and the design is why.** The port never reaches the IdP: `?port=N` is validated
+and parked in `porte`'s own pending-state cookie (`oidc/cookie.go:25`, `handlers.go:85`), the
+authorization request carries the app's single fixed `OIDC_REDIRECT_URL`, and the redirect to
+`127.0.0.1:N` is issued by the *app* after the callback, once the code is minted
+(`handlers.go:252`). Confirmed against the deployed provider: Sablier's has exactly one redirect
+URI, `https://sablier.facile.studio/api/auth/oidc/callback`, in `STRICT` matching mode — and the
+CLI flow does not need a second one. A loopback URI in the provider would be the design that
+hands the CLI an authorization code worth something on its own, which is the design this one was
+chosen over.
+
+So the exercise is narrower than it looked, and worth stating so the result is not over-read:
+`sablier-cli` (`src/login.rs:39`) against a Sablier that is `SSO_ONLY=true` proves the one-time
+code survives a real provider's timing and a real browser's redirect chain. It cannot fail for
+provider-configuration reasons, because the provider is not configured for it at all.
 
 **Back-channel logout is wired — closed 2026-08-09.** This section used to say the endpoint could
 not work, because the deployed provider was Authentik 2025.6.3 and the field to configure a
