@@ -3,6 +3,20 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.7 — 2026-08-10
+
+`local.Kit.Verify` — a password check that issues nothing. `Login` is now this plus a session.
+
+Found adopting Agenda, which serves CalDAV over Basic auth: a client re-sends its credentials on
+every PROPFIND, so a handler reaching for `Login` would mint a session row per request and attach
+a `Set-Cookie` to a response no browser will ever read. The alternative was the app verifying
+against `porte_identities.password_hash` itself, which is the argon2 parameters copy-pasted back
+out of the library they were extracted into.
+
+It keeps `Login`'s enumeration guarantees, because they are the part that gets dropped on
+reimplementation: an unknown address still costs a real hash and still returns the error a wrong
+password returns.
+
 ## v0.2.6 — 2026-08-10
 
 **A token that says nothing about the address no longer vouches for it.** New optional
