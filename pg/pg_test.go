@@ -546,3 +546,58 @@ func TestTheConflictPathStillRefusesAnUnverifiedEmail(t *testing.T) {
 		t.Fatalf("err = %v, want the unverified-email refusal", err)
 	}
 }
+
+// The password half of the store. A local account and a federated one are one
+// user with two identity rows, so creating the first must not stop the second
+// from finding it.
+func TestPasswordUserStore(t *testing.T) {
+	store, _ := open(t)
+	ctx := context.Background()
+	users := store.Users()
+
+	if _, err := users.FindByEmail(ctx, "nobody@facile.studio"); !stderrors.Is(err, porte.ErrNotFound) {
+		t.Fatalf("FindByEmail on an unknown address = %v, want ErrNotFound", err)
+	}
+
+	userID, err := users.CreateFromPassword(ctx, "camille@facile.studio", "Camille")
+	if err != nil {
+		t.Fatalf("CreateFromPassword: %v", err)
+	}
+	found, err := users.FindByEmail(ctx, "camille@facile.studio")
+	if err != nil || found != userID {
+		t.Fatalf("FindByEmail = %d, %v; want %d", found, err, userID)
+	}
+
+	// The unique index is what actually stops a duplicate, since the app
+	// holds the lock rather than this store.
+	if _, err := users.CreateFromPassword(ctx, "camille@facile.studio", "Camille"); err == nil {
+		t.Fatal("a duplicate address was created")
+	}
+
+	// A password identity and an OIDC one on the same human, which is the
+	// arrangement v0.2 exists to allow.
+	identities := store.Identities()
+	for _, identity := range []porte.StoredIdentity{
+		{UserID: userID, Provider: porte.ProviderLocal, Subject: "camille@facile.studio", PasswordHash: "$argon2id$fake"},
+		{UserID: userID, Provider: "https://sso.test/", Subject: "abc"},
+	} {
+		if err := identities.Save(ctx, identity); err != nil {
+			t.Fatalf("save %s: %v", identity.Provider, err)
+		}
+	}
+	held, err := identities.ListByUser(ctx, userID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(held) != 2 {
+		t.Fatalf("expected two identities on one human, got %d", len(held))
+	}
+
+	local, err := identities.Find(ctx, porte.ProviderLocal, "camille@facile.studio")
+	if err != nil {
+		t.Fatalf("find the local identity: %v", err)
+	}
+	if local.PasswordHash != "$argon2id$fake" {
+		t.Fatalf("the password hash did not round trip: %q", local.PasswordHash)
+	}
+}

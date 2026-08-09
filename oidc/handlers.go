@@ -27,25 +27,20 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 // They are relative to wherever router itself is mounted, so an app serving
 // its API under /api gets /api/auth/config and the frontends do not move.
 //
-// RouteConfig and RouteLogout are always served: reporting the configuration
-// and ending a session are session management, and both work against the
-// SessionStore that New requires whether or not a provider is configured. The
-// OIDC routes appear only when one is — an unconfigured provider means no
-// endpoint to probe rather than an endpoint that 500s.
+// RouteConfig is always served; the rest appear only when a provider is
+// configured, because an unconfigured provider should mean no endpoint to probe
+// rather than an endpoint that 500s. RouteLogout is not here at all any more —
+// it belongs to porte/session, which owns the credential whether or not this
+// app federates. Mount the manager as well as the kit.
 func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteConfig, k.handleConfig)
-	router.Group(func(authenticated chi.Router) {
-		authenticated.Use(k.RequireAuth)
-		authenticated.Post(porte.RouteLogout, k.handleLogout)
-		if k.Enabled() {
-			// Refreshing a profile against an identity provider means
-			// nothing without one.
-			authenticated.Post(porte.RouteSyncProfile, k.handleSyncProfile)
-		}
-	})
 	if !k.Enabled() {
 		return
 	}
+	router.Group(func(authenticated chi.Router) {
+		authenticated.Use(k.RequireAuth)
+		authenticated.Post(porte.RouteSyncProfile, k.handleSyncProfile)
+	})
 	router.Get(porte.RouteLogin, k.handleLogin)
 	router.Get(porte.RouteCallback, k.handleCallback)
 	router.Post(porte.RouteExchange, k.handleExchange)
@@ -95,7 +90,7 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteError(w, errors.Internal("failed to start the login", err))
 		return
 	}
-	k.setCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
+	k.sessions.SetCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
 
 	http.Redirect(w, r, k.oauth.AuthCodeURL(state,
 		oauth2.S256ChallengeOption(pending.Verifier),
@@ -116,12 +111,12 @@ func loopbackPort(value string) string {
 }
 
 func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
-	encoded, ok := k.readCookie(r, flowCookie)
+	encoded, ok := k.sessions.ReadCookie(r, flowCookie)
 	if !ok {
 		httpjson.WriteError(w, errors.Invalid("the login has expired, start again"))
 		return
 	}
-	k.clearCookie(w, r, flowCookie)
+	k.sessions.ClearCookie(w, r, flowCookie)
 
 	pending, ok := decodeFlow(encoded)
 	if !ok || !porte.SecureCompare(pending.State, r.URL.Query().Get("state")) {
@@ -146,12 +141,10 @@ func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := k.issueSession(r.Context(), userID, "")
-	if err != nil {
+	if _, _, err := k.sessions.IssueCookie(r.Context(), w, r, userID); err != nil {
 		httpjson.WriteError(w, err)
 		return
 	}
-	k.setSessionCookie(w, r, token)
 	http.Redirect(w, r, k.cfg.SuccessURL, http.StatusFound)
 }
 
@@ -232,28 +225,6 @@ func (k *Kit) syncAvatar(ctx context.Context, claims porte.Claims) string {
 		return ""
 	}
 	return avatarURL
-}
-
-// issueSession mints a token, stores only its hash, and returns the plaintext
-// exactly once. A label makes the row a named API token instead of a login.
-func (k *Kit) issueSession(ctx context.Context, userID int64, label string) (string, porte.Session, error) {
-	token, err := porte.NewToken()
-	if err != nil {
-		return "", porte.Session{}, errors.Internal("failed to issue a session", err)
-	}
-	now := k.now()
-	session, err := k.deps.Sessions.Create(ctx, porte.Session{
-		TokenHash:  porte.HashToken(token),
-		UserID:     userID,
-		Label:      label,
-		CreatedAt:  now,
-		LastUsedAt: now,
-		ExpiresAt:  now.Add(k.cfg.SessionTTL),
-	})
-	if err != nil {
-		return "", porte.Session{}, errors.Internal("failed to store the session", err)
-	}
-	return token, session, nil
 }
 
 // issueLoginCode ends the CLI flow. The code is a bearer credential for sixty
@@ -341,7 +312,7 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := k.issueSession(r.Context(), code.UserID, "")
+	token, _, err := k.sessions.Issue(r.Context(), code.UserID, "")
 	if err != nil {
 		httpjson.WriteError(w, err)
 		return
@@ -350,20 +321,6 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 		UserID: strconv.FormatInt(code.UserID, 10),
 		Token:  token,
 	})
-}
-
-func (k *Kit) handleLogout(w http.ResponseWriter, r *http.Request) {
-	identity, ok := porte.From(r.Context())
-	if !ok {
-		httpjson.WriteError(w, errors.Unauthorized("missing auth"))
-		return
-	}
-	if err := k.deps.Sessions.DeleteByID(r.Context(), identity.UserID, identity.SessionID); err != nil && !isErr(err, porte.ErrNotFound) {
-		httpjson.WriteError(w, errors.Internal("failed to end the session", err))
-		return
-	}
-	k.clearCookie(w, r, porte.SessionCookieName)
-	httpjson.WriteJSON(w, http.StatusOK, porte.LogoutResponse{LoggedOut: true})
 }
 
 // handleBackchannelLogout is the only mechanism by which a deactivation in the
@@ -400,7 +357,7 @@ func (k *Kit) handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deleted, err := k.deps.Sessions.DeleteByUser(r.Context(), stored.UserID)
+	deleted, err := k.sessions.RevokeUser(r.Context(), stored.UserID)
 	if err != nil {
 		httpjson.WriteError(w, errors.Internal("failed to revoke the sessions", err))
 		return

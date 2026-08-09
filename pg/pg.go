@@ -119,10 +119,11 @@ type SessionStore struct{ db *sql.DB }
 type LoginCodeStore struct{ db *sql.DB }
 
 var (
-	_ porte.UserStore      = (*UserStore)(nil)
-	_ porte.IdentityStore  = (*IdentityStore)(nil)
-	_ porte.SessionStore   = (*SessionStore)(nil)
-	_ porte.LoginCodeStore = (*LoginCodeStore)(nil)
+	_ porte.UserStore         = (*UserStore)(nil)
+	_ porte.PasswordUserStore = (*UserStore)(nil)
+	_ porte.IdentityStore     = (*IdentityStore)(nil)
+	_ porte.SessionStore      = (*SessionStore)(nil)
+	_ porte.LoginCodeStore    = (*LoginCodeStore)(nil)
 )
 
 // EnsureSchema applies [Schema]. It is here for tests and local development;
@@ -132,6 +133,37 @@ func EnsureSchema(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("porte/pg: ensure schema: %w", err)
 	}
 	return nil
+}
+
+// CreateFromPassword creates a user row for a local registration.
+//
+// It does not take a lock. The first-account-is-an-administrator rule and the
+// registration gate are the app's, so the app holds the lock that makes
+// counting and inserting atomic; the unique index on email is what stops a
+// duplicate here regardless.
+func (s *UserStore) CreateFromPassword(ctx context.Context, email, name string) (int64, error) {
+	var userID int64
+	err := s.db.QueryRowContext(ctx, `
+		INSERT INTO porte_users (email, email_verified, name)
+		VALUES ($1, false, $2)
+		RETURNING id`, email, name).Scan(&userID)
+	if err != nil {
+		return 0, fmt.Errorf("porte/pg: create user from password: %w", err)
+	}
+	return userID, nil
+}
+
+// FindByEmail returns the user id for an address, or porte.ErrNotFound.
+func (s *UserStore) FindByEmail(ctx context.Context, email string) (int64, error) {
+	var userID int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM porte_users WHERE email = $1`, email).Scan(&userID)
+	if stderrors.Is(err, sql.ErrNoRows) {
+		return 0, porte.ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("porte/pg: find user by email: %w", err)
+	}
+	return userID, nil
 }
 
 // UpsertFromOIDC resolves the callback's claims to a user id, creating the

@@ -14,13 +14,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/FacileStudio/porte"
+	"github.com/FacileStudio/porte/session"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -456,19 +456,30 @@ func newHarness(t *testing.T, configure func(*porte.Config)) *harness {
 		configure(&cfg)
 	}
 
+	h := &harness{idp: idp, app: app, stores: stores, clock: time.Now()}
+	manager, err := session.New(cfg, session.Deps{
+		Sessions: stores.memory,
+		Logger:   slog.New(slog.DiscardHandler),
+		Now:      h.now,
+	})
+	if err != nil {
+		t.Fatalf("session.New: %v", err)
+	}
+
 	kit, err := New(context.Background(), cfg, Deps{
 		Users:      stores,
 		Identities: identityStore{stores},
-		Sessions:   stores.memory,
+		Sessions:   manager,
 		Codes:      codes{stores.memory},
 		Logger:     slog.New(slog.DiscardHandler),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	h := &harness{idp: idp, kit: kit, app: app, stores: stores, clock: time.Now()}
+	h.kit = kit
 	kit.now = h.now
 
+	manager.Mount(router)
 	kit.Mount(router)
 	router.Group(func(r chi.Router) {
 		r.Use(kit.RequireAuth)
@@ -835,7 +846,12 @@ func TestNewRefusesARolesScopeTheProviderDoesNotOffer(t *testing.T) {
 		RedirectURL:  "https://app.test/auth/oidc/callback",
 		SuccessURL:   "https://app.test/",
 		ClaimsScope:  "facile",
-	}, Deps{Users: newFlowStores(), Identities: identityStore{newFlowStores()}, Sessions: newMemory(), Codes: codes{newMemory()}})
+	}, Deps{
+		Users:      newFlowStores(),
+		Identities: identityStore{newFlowStores()},
+		Sessions:   testManager(t, newMemory(), time.Now),
+		Codes:      codes{newMemory()},
+	})
 	if err == nil {
 		t.Fatal("New accepted a roles scope the provider does not offer")
 	}
@@ -940,58 +956,6 @@ func TestSyncProfileAcceptsAMatchingSubject(t *testing.T) {
 	}
 }
 
-// A cookie without the __Host- prefix is one a sibling host can forge: the
-// server cannot tell a host-only cookie from a Domain=example.com one of the
-// same name, so an app next door can fix a victim into its own session.
-func TestSessionCookieIsHostPrefixedBehindTLS(t *testing.T) {
-	kit := testKit(newMemory(), time.Now())
-	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
-
-	recorder := httptest.NewRecorder()
-	kit.setSessionCookie(recorder, httptest.NewRequest(http.MethodGet, "/", nil), "the-token")
-
-	cookie := recorder.Result().Cookies()[0]
-	if cookie.Name != "__Host-"+porte.SessionCookieName {
-		t.Fatalf("cookie name = %q, want the __Host- prefixed form", cookie.Name)
-	}
-	// The prefix is only honoured by a browser when all three hold.
-	if !cookie.Secure || cookie.Path != "/" || cookie.Domain != "" {
-		t.Fatalf("cookie = %+v, which a browser would reject under the __Host- prefix", cookie)
-	}
-}
-
-// Over plain http the browser rejects the prefixed name outright, so local
-// development keeps the bare one.
-func TestSessionCookieDropsThePrefixWithoutTLS(t *testing.T) {
-	kit := testKit(newMemory(), time.Now())
-	kit.cfg.RedirectURL = "http://localhost:5173/auth/oidc/callback"
-	kit.cfg.SuccessURL = "http://localhost:5173/"
-
-	recorder := httptest.NewRecorder()
-	kit.setSessionCookie(recorder, httptest.NewRequest(http.MethodGet, "/", nil), "the-token")
-
-	cookie := recorder.Result().Cookies()[0]
-	if cookie.Name != porte.SessionCookieName {
-		t.Fatalf("cookie name = %q, want the bare name over http", cookie.Name)
-	}
-}
-
-// The Secure attribute is derived from the configuration as well as the
-// request, so a proxy that stops sending X-Forwarded-Proto cannot downgrade
-// the session cookie to plaintext.
-func TestConfiguredHTTPSForcesTheSecureAttribute(t *testing.T) {
-	kit := testKit(newMemory(), time.Now())
-	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
-
-	recorder := httptest.NewRecorder()
-	// No TLS, no X-Forwarded-Proto: the misconfigured-proxy case.
-	kit.setSessionCookie(recorder, httptest.NewRequest(http.MethodGet, "/", nil), "the-token")
-
-	if cookie := recorder.Result().Cookies()[0]; !cookie.Secure {
-		t.Fatal("the session cookie was written without Secure although the app is configured for https")
-	}
-}
-
 func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 	h := newHarness(t, nil)
 	client := h.client(t)
@@ -1035,46 +999,5 @@ func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("whoami after logout = %d, want 401", response.StatusCode)
-	}
-}
-
-// Optional serves a route that has both a signed-in and an anonymous caller —
-// a public share link that shows an edit button to its owner.
-func TestOptionalAttachesAnIdentityWhenThereIsOneAndLetsAnonymousThrough(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	token := issue(t, kit, 42)
-
-	handler := kit.Optional(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := porte.From(r.Context())
-		if !ok {
-			_, _ = w.Write([]byte("anonymous"))
-			return
-		}
-		_, _ = w.Write([]byte(strconv.FormatInt(identity.UserID, 10)))
-	}))
-
-	anonymous := httptest.NewRecorder()
-	handler.ServeHTTP(anonymous, httptest.NewRequest(http.MethodGet, "/", nil))
-	if anonymous.Code != http.StatusOK || anonymous.Body.String() != "anonymous" {
-		t.Fatalf("anonymous request = %d %q, want 200 anonymous", anonymous.Code, anonymous.Body.String())
-	}
-
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
-	signedIn := httptest.NewRecorder()
-	handler.ServeHTTP(signedIn, request)
-	if signedIn.Code != http.StatusOK || signedIn.Body.String() != "42" {
-		t.Fatalf("signed-in request = %d %q, want 200 42", signedIn.Code, signedIn.Body.String())
-	}
-
-	// A bad credential is not a 401 here, but it must not authenticate
-	// either — the route is public, the caller is simply not identified.
-	bad := httptest.NewRequest(http.MethodGet, "/", nil)
-	bad.Header.Set("Authorization", "Bearer not-a-real-token")
-	rejected := httptest.NewRecorder()
-	handler.ServeHTTP(rejected, bad)
-	if rejected.Body.String() != "anonymous" {
-		t.Fatalf("an invalid token yielded %q, want anonymous", rejected.Body.String())
 	}
 }
