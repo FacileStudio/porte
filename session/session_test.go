@@ -78,7 +78,17 @@ func (m *memory) DeleteByUser(_ context.Context, userID int64) (int64, error) {
 	return deleted, nil
 }
 
-func (m *memory) ListByUser(context.Context, int64) ([]porte.Session, error) { return nil, nil }
+func (m *memory) ListByUser(_ context.Context, userID int64) ([]porte.Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var held []porte.Session
+	for _, session := range m.sessions {
+		if session.UserID == userID {
+			held = append(held, session)
+		}
+	}
+	return held, nil
+}
 
 func (m *memory) DeleteByID(_ context.Context, userID, sessionID int64) error {
 	m.mu.Lock()
@@ -597,5 +607,47 @@ func TestClearDeletesTheRowAndExpiresTheCookie(t *testing.T) {
 	}
 	if !cleared {
 		t.Fatalf("Clear did not expire the session cookie: %+v", recorder.Result().Cookies())
+	}
+}
+
+// An app that names a session — an API token — has to be able to list and
+// revoke it without also holding the store. The second adopter needed both and
+// the manager exposed neither.
+func TestListAndRevokeReachTheUsersSessions(t *testing.T) {
+	store := newMemory()
+	manager := testManager(t, store, time.Now())
+
+	interactive := issue(t, manager, 7)
+	named, _, err := manager.Issue(context.Background(), 7, "CLI")
+	if err != nil {
+		t.Fatalf("issue a labelled session: %v", err)
+	}
+
+	held, err := manager.List(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(held) != 2 {
+		t.Fatalf("expected two sessions, got %d", len(held))
+	}
+
+	var token porte.Session
+	for _, candidate := range held {
+		if candidate.IsAPIToken() {
+			token = candidate
+		}
+	}
+	if token.Label != "CLI" {
+		t.Fatalf("the labelled session did not come back: %+v", held)
+	}
+
+	if err := manager.Revoke(context.Background(), 7, token.ID); err != nil {
+		t.Fatalf("revoke: %v", err)
+	}
+	if _, err := store.Find(context.Background(), porte.HashToken(named)); err == nil {
+		t.Fatal("the revoked token still authenticates")
+	}
+	if _, err := store.Find(context.Background(), porte.HashToken(interactive)); err != nil {
+		t.Fatal("revoking the API token also ended the interactive session")
 	}
 }

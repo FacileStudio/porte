@@ -3,6 +3,14 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.2 — 2026-08-09
+
+`session.Manager` gained `List` and `Revoke`. The `SessionStore` contract has advertised
+`ListByUser` and `DeleteByID` since v0.1 as what an "your active sessions" screen is built on,
+and the manager — which exists so that one thing owns the credential — exposed neither, so the
+second adopter had to keep holding the store alongside the manager to show a user their own API
+token. Found by Sablier, whose named API tokens are labelled sessions.
+
 ## v0.2.1 — 2026-08-09
 
 The error sentinels were decoration. `porte.go` says they exist "so a handler can map them to
