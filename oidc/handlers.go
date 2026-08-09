@@ -493,7 +493,7 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		Provider:          stored.Provider,
 		Subject:           stored.Subject,
 		Email:             raw.Email,
-		EmailVerified:     emailClaimTrusted(raw.EmailVerified),
+		EmailVerified:     k.emailTrusted(raw.EmailVerified),
 		Name:              raw.Name,
 		PreferredUsername: raw.PreferredUsername,
 		GivenName:         raw.GivenName,

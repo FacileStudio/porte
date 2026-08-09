@@ -56,6 +56,7 @@ draw the password form in the first place.
 | `RedirectURL` | — | Required once `Issuer` is set |
 | `SuccessURL` | — | Required once `Issuer` is set |
 | `SSOOnly` | `false` | Local password routes are not registered |
+| `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
 | `SessionTTL` | `30 days` | Browser session lifetime |
 | `SessionIdleTTL` | `7 days` | How long a browser session may go unused before it stops authenticating |

@@ -271,7 +271,7 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 		Provider:          k.cfg.Issuer,
 		Subject:           idToken.Subject,
 		Email:             raw.Email,
-		EmailVerified:     emailClaimTrusted(raw.EmailVerified),
+		EmailVerified:     k.emailTrusted(raw.EmailVerified),
 		Name:              raw.Name,
 		PreferredUsername: raw.PreferredUsername,
 		GivenName:         raw.GivenName,
@@ -281,24 +281,45 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 	}, nil
 }
 
-// emailClaimTrusted reports whether the email in an ID token may be used to
-// match an existing account. Matching on a mutable, unproven email is how an
-// identity provider that lets a user set any address becomes an account
-// takeover primitive, so the fallback is refused when the provider explicitly
-// says the address is unverified. An absent claim is treated as trusted: the
-// provider is asserting nothing either way, and refusing it would strand every
-// account created before oidc_subject was recorded.
+// emailTrusted reports whether the email in a token may be used to match an
+// existing account. Matching on a mutable, unproven email is how an identity
+// provider that lets a user set any address becomes an account takeover
+// primitive, so an address the provider says is unverified never matches one.
 //
-// This is Nuage's function, unchanged. All six apps grew a version of it.
-func emailClaimTrusted(value any) bool {
-	switch typed := value.(type) {
-	case nil:
-		return true
-	case bool:
-		return typed
-	case string:
-		return typed != "false" && typed != "False" && typed != "FALSE"
-	default:
-		return false
+// An absent claim is the interesting case, because it is not a "no" — the
+// provider asserted nothing, and porte cannot tell "this provider omits a
+// claim it verifies anyway" from "anyone can register this address here".
+// Not being able to verify is a reason to refuse, so it refuses, and
+// Config.TrustEmailWithoutVerifiedClaim is how an operator who knows their
+// provider says otherwise. The flag cannot override an explicit false: that
+// one is an assertion, and the whole point of the guard.
+func (k *Kit) emailTrusted(value any) bool {
+	verified, asserted := emailClaimAsserted(value)
+	if asserted {
+		return verified
 	}
+	if !k.cfg.TrustEmailWithoutVerifiedClaim {
+		k.logger.Debug("porte: the provider asserted nothing about the address, so it will not match an existing account",
+			slog.String("issuer", k.cfg.Issuer))
+	}
+	return k.cfg.TrustEmailWithoutVerifiedClaim
+}
+
+// emailClaimAsserted reads the three states an email_verified claim has: a
+// verification, a refusal to verify, and silence. A malformed value is silence
+// rather than a refusal — a provider sending 42 has not said no, it has failed
+// to say anything, and the policy for that is the operator's to set.
+func emailClaimAsserted(value any) (verified, asserted bool) {
+	switch typed := value.(type) {
+	case bool:
+		return typed, true
+	case string:
+		switch typed {
+		case "true", "True", "TRUE", "1":
+			return true, true
+		case "false", "False", "FALSE", "0":
+			return false, true
+		}
+	}
+	return false, false
 }

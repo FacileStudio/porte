@@ -599,6 +599,46 @@ func assertLoginRefused(t *testing.T, response *http.Response) {
 	}
 }
 
+// A provider that says nothing about the address signs the user in — this is
+// not a login gate — but the claims that reach the store carry no verification,
+// so the store's email fallback cannot adopt somebody else's account with them.
+func TestAnOmittedEmailVerifiedClaimVouchesForNothing(t *testing.T) {
+	for _, trusting := range []bool{false, true} {
+		h := newHarness(t, func(cfg *porte.Config) { cfg.TrustEmailWithoutVerifiedClaim = trusting })
+		h.idp.mintClaims = func(claims map[string]any) { delete(claims, "email_verified") }
+
+		response := h.login(t, h.client(t), "")
+		if got := response.Header.Get("Location"); got != h.app.URL+"/welcome" {
+			t.Fatalf("trusting=%v: the login was refused (%q); the claim gates matching, not signing in",
+				trusting, got)
+		}
+
+		h.stores.mu.Lock()
+		claims := h.stores.lastClaims
+		h.stores.mu.Unlock()
+		if claims.EmailVerified != trusting {
+			t.Fatalf("trusting=%v: claims.EmailVerified = %v, want %v",
+				trusting, claims.EmailVerified, trusting)
+		}
+	}
+}
+
+// The escape hatch covers silence. A provider that answers "no" is answering,
+// and no configuration turns that into a yes.
+func TestTrustingSilenceDoesNotTrustARefusal(t *testing.T) {
+	h := newHarness(t, func(cfg *porte.Config) { cfg.TrustEmailWithoutVerifiedClaim = true })
+	h.idp.mintClaims = func(claims map[string]any) { claims["email_verified"] = false }
+
+	_ = h.login(t, h.client(t), "")
+
+	h.stores.mu.Lock()
+	claims := h.stores.lastClaims
+	h.stores.mu.Unlock()
+	if claims.EmailVerified {
+		t.Fatal("an address the provider refused to verify reached the store as verified")
+	}
+}
+
 func TestCallbackRefusesAWrongNonce(t *testing.T) {
 	h := newHarness(t, nil)
 	h.idp.mintClaims = func(claims map[string]any) { claims["nonce"] = "not-the-one-we-sent" }
