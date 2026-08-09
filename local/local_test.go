@@ -124,7 +124,7 @@ func (s *stores) DeleteExpired(context.Context, time.Time) (int64, error) { retu
 type sessionStore struct{ *stores }
 
 func (s sessionStore) Find(ctx context.Context, hash string) (porte.Session, error) {
-	return s.stores.Find2(ctx, hash)
+	return s.Find2(ctx, hash)
 }
 
 func (s sessionStore) ListByUser(_ context.Context, _ int64) ([]porte.Session, error) {
@@ -260,7 +260,65 @@ func TestRegistrationClosedStillAllowsTheFirstAccount(t *testing.T) {
 // A human who already signed in through the identity provider and then sets a
 // password is the same account, not a second one. That is the whole reason
 // identities live in their own table.
-func TestAPasswordOnAFederatedAccountKeepsTheSameUser(t *testing.T) {
+// TestRegisteringAFederatedAddressIsRefused is the regression test for the
+// account takeover this package shipped until v0.2.3.
+//
+// An account created by SSO has no local identity. Register used to read that
+// as "the same human is adding a password", write the caller's hash onto that
+// account and issue a session for it — so anyone who knew the address of an
+// SSO user owned their account, on an open registration form.
+func TestRegisteringAFederatedAddressIsRefused(t *testing.T) {
+	kit, store := testKit(t, true)
+
+	victim, err := store.CreateFromPassword(context.Background(), "someone@facile.studio", "Someone")
+	if err != nil {
+		t.Fatalf("seed the federated user: %v", err)
+	}
+	if err := store.Save(context.Background(), porte.StoredIdentity{
+		UserID: victim, Provider: "https://sso.test/", Subject: "abc",
+	}); err != nil {
+		t.Fatalf("seed the federated identity: %v", err)
+	}
+
+	w, r := request()
+	_, token, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "Attacker", "a-long-enough-password")
+	if err == nil {
+		t.Fatal("registering an address that already has an SSO account was allowed")
+	}
+	if !stderrors.Is(err, porte.ErrEmailTaken) {
+		t.Fatalf("expected ErrEmailTaken, got %v", err)
+	}
+	if token != "" {
+		t.Fatal("a session was issued for an account the caller does not own")
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Fatal("a session cookie was set for an account the caller does not own")
+	}
+
+	identities, err := store.ListByUser(context.Background(), victim)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(identities) != 1 {
+		t.Fatalf("a password was attached to the victim's account: %d identities", len(identities))
+	}
+
+	// The refusal must not be cheaper than the creation it refuses, or the
+	// response time answers "does this address have an account" on its own.
+	// The floor is deliberately far below one argon2 hash: this asserts the
+	// hash happened at all, not how fast the machine is.
+	start := time.Now()
+	w, r = request()
+	_, _, _ = kit.Register(context.Background(), w, r, "someone@facile.studio", "", "another-long-password")
+	if elapsed := time.Since(start); elapsed < 5*time.Millisecond {
+		t.Fatalf("the refusal skipped the timing equaliser: %s", elapsed)
+	}
+}
+
+// TestSetPasswordIsHowAFederatedAccountGainsAPassword pins the supported
+// replacement for what Register used to do. It takes a user id, so the caller
+// has already proved who they are; Register never can.
+func TestSetPasswordIsHowAFederatedAccountGainsAPassword(t *testing.T) {
 	kit, store := testKit(t, true)
 
 	federated, err := store.CreateFromPassword(context.Background(), "someone@facile.studio", "Someone")
@@ -273,13 +331,8 @@ func TestAPasswordOnAFederatedAccountKeepsTheSameUser(t *testing.T) {
 		t.Fatalf("seed the federated identity: %v", err)
 	}
 
-	w, r := request()
-	userID, _, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "Someone", "a-long-enough-password")
-	if err != nil {
-		t.Fatalf("adding a password failed: %v", err)
-	}
-	if userID != federated {
-		t.Fatalf("a second account was created: %d then %d", federated, userID)
+	if err := kit.SetPassword(context.Background(), federated, "someone@facile.studio", "a-long-enough-password"); err != nil {
+		t.Fatalf("SetPassword on a federated account: %v", err)
 	}
 
 	identities, err := store.ListByUser(context.Background(), federated)
@@ -290,11 +343,13 @@ func TestAPasswordOnAFederatedAccountKeepsTheSameUser(t *testing.T) {
 		t.Fatalf("expected two identities on one human, got %d", len(identities))
 	}
 
-	// And registering the same address twice is now a conflict, not a
-	// silent password reset.
-	w, r = request()
-	if _, _, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "", "another-long-password"); err == nil {
-		t.Fatal("re-registering an address with a password overwrote it")
+	w, r := request()
+	userID, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-long-enough-password")
+	if err != nil {
+		t.Fatalf("the password set on the federated account does not sign in: %v", err)
+	}
+	if userID != federated {
+		t.Fatalf("signed into a different account: %d then %d", federated, userID)
 	}
 }
 
