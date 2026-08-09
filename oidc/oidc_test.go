@@ -232,19 +232,42 @@ func TestFlowSurvivesACookieRoundTrip(t *testing.T) {
 
 func TestEmailClaimTrust(t *testing.T) {
 	cases := map[string]struct {
-		value any
-		want  bool
+		value              any
+		want, wantTrusting bool
 	}{
-		"absent is an assertion of nothing": {nil, true},
-		"true":                              {true, true},
-		"false":                             {false, false},
-		"the string false":                  {"false", false},
-		"the string true":                   {"true", true},
-		"anything unexpected":               {42, false},
+		"absent is an assertion of nothing": {nil, false, true},
+		"true":                              {true, true, true},
+		"false":                             {false, false, false},
+		"the string false":                  {"false", false, false},
+		"the string true":                   {"true", true, true},
+		"the string 0":                      {"0", false, false},
+		"a string nobody can read":          {"maybe", false, true},
+		"anything unexpected":               {42, false, true},
 	}
 	for name, testCase := range cases {
-		if got := emailClaimTrusted(testCase.value); got != testCase.want {
-			t.Errorf("%s: emailClaimTrusted(%v) = %v", name, testCase.value, got)
+		strict := testKit(t, newMemory(), time.Now())
+		if got := strict.emailTrusted(testCase.value); got != testCase.want {
+			t.Errorf("%s: emailTrusted(%v) = %v, want %v", name, testCase.value, got, testCase.want)
+		}
+
+		trusting := testKit(t, newMemory(), time.Now())
+		trusting.cfg.TrustEmailWithoutVerifiedClaim = true
+		if got := trusting.emailTrusted(testCase.value); got != testCase.wantTrusting {
+			t.Errorf("%s, trusting an absent claim: emailTrusted(%v) = %v, want %v",
+				name, testCase.value, got, testCase.wantTrusting)
+		}
+	}
+}
+
+// The flag answers "the provider said nothing". It must not answer "the
+// provider said no" — that one is an assertion, and an operator overruling it
+// is the account takeover the guard exists for, re-enabled by a checkbox.
+func TestTrustingAnAbsentClaimDoesNotOverruleAnExplicitFalse(t *testing.T) {
+	kit := testKit(t, newMemory(), time.Now())
+	kit.cfg.TrustEmailWithoutVerifiedClaim = true
+	for _, value := range []any{false, "false", "False", "FALSE", "0"} {
+		if kit.emailTrusted(value) {
+			t.Fatalf("emailTrusted(%v) trusted an address the provider refused to verify", value)
 		}
 	}
 }

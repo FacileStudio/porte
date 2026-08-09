@@ -226,6 +226,11 @@ once per successful callback and cares only about the returned id.
 Match on `(Provider, Subject)`. Fall back to email **only** when `Claims.EmailVerified` is true —
 an unverified email plus email matching is an account takeover primitive.
 
+`Claims.EmailVerified` is true when the provider said so. A token with no `email_verified` claim
+sets it false, because a provider that asserted nothing has not verified anything; an operator
+who knows better sets `Config.TrustEmailWithoutVerifiedClaim`. An explicit `email_verified: false`
+is a refusal and no configuration overrides it.
+
 ### PasswordUserStore
 
 ```go

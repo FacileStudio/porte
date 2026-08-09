@@ -477,7 +477,9 @@ actually still missing, and two items that were on it are already done.)*
 1. ~~**Match on `sub`, not email — the most severe item on this list.**~~ **Already fixed in all
    six**, and it is the HEAD commit of every `modules/auth/`. The lookup is `oidc_subject` first,
    with an email fallback taken only when `emailClaimTrusted(claims.EmailVerified)` allows it —
-   an absent claim counts as trusted, an explicit `false` does not, and one app (Plume) rejects
+   an absent claim counts as trusted *(**changed in porte v0.2.6**: an absent claim no longer
+   counts as trusted, and `Config.TrustEmailWithoutVerifiedClaim` is the opt-in — the six apps
+   still carry the old rule in their own copies)*, an explicit `false` does not, and one app (Plume) rejects
    unverified email outright before upserting. `porte` **preserves** this logic; do not treat it
    as new work, and do not regress it. `porte_identities(provider, subject)` in §5 makes it
    structural rather than conventional, which is still worth doing.

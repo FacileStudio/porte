@@ -3,6 +3,42 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.6 — 2026-08-10
+
+**A token that says nothing about the address no longer vouches for it.** New optional
+`Config.TrustEmailWithoutVerifiedClaim` restores the old behaviour for a provider that omits the
+claim on purpose.
+
+`emailClaimTrusted` treated an absent `email_verified` as trusted, with the reasoning that the
+provider "is asserting nothing either way". That is exactly right and it is the argument for the
+opposite conclusion: porte cannot tell a provider that omits a claim it checks anyway from one
+where any visitor can register any address, and `Claims.EmailVerified` decides whether a callback
+may **adopt an existing account by email**. So the permissive default handed the strongest thing
+in the flow — matching a stranger's row — to the one case porte knows least about. It is the
+`v0.2.3` takeover with a different door: an attacker registers the victim's address at a provider
+that does not verify addresses, signs in, and lands in the victim's account.
+
+The claim now has three states rather than two. An explicit `true` verifies, an explicit `false`
+refuses, and **anything else is silence** — absent, a string nobody can parse, a number. Silence
+resolves to `TrustEmailWithoutVerifiedClaim`, which is off. `"maybe"` and `42` used to resolve to
+trusted and refused respectively, which was two different answers to the same question.
+
+**The flag cannot overrule an explicit `false`.** That one is the provider answering, and an
+operator turning a no into a yes is the guard being disabled by checkbox. There is a test for it,
+because the useful part of a security flag is what it refuses to do.
+
+**What this changes for the suite: nothing, and that is checkable.** Authentik emits
+`email_verified` on every token — as `false` for addresses it never verified, which already
+refused the fallback — so no Facile app is on the absent path. Adopters migrating existing users
+do it by backfilling `porte_identities` (`adoptOIDCSubjects` in Sablier, `adoptExistingPasswords`
+in Journal), which is the supported route and does not touch this. The five Go apps that have not
+adopted porte still carry their own `emailClaimTrusted` with the old absent-is-trusted rule; that
+is now a divergence from the library and a thing to fix when each adopts.
+
+`porte` keeps signing these users in — the claim never was a login gate, and gating login on it
+locks out every Authentik account, which is a bug the suite already shipped once. It gates one
+thing: whether an incoming subject may take over a row it has never authenticated as.
+
 ## v0.2.5 — 2026-08-10
 
 `porte_identities` gains `created_at`. No API change, no migration to write by hand: it is in

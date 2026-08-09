@@ -150,6 +150,18 @@ type Config struct {
 	// registered rather than rejected, so there is no endpoint to probe.
 	SSOOnly bool
 
+	// TrustEmailWithoutVerifiedClaim lets a callback whose token carries no
+	// email_verified claim match an existing account by address.
+	//
+	// Off, because an absent claim is not a verification: porte cannot tell
+	// a provider that omits a claim it checks anyway from one where any
+	// visitor can register any address, and matching an existing account on
+	// the second is an account takeover with no exploit in it. Set it only
+	// for a provider whose registration you control — and note it never
+	// applies to an explicit `email_verified: false`, which is a provider
+	// saying no and is not an operator's to overrule.
+	TrustEmailWithoutVerifiedClaim bool
+
 	// ClaimsScope carries the roles claim. Empty disables claims handling
 	// altogether, which is the state every app is in today, so leaving it
 	// unset regresses nothing.
