@@ -170,6 +170,23 @@ func (m *Manager) Clear(ctx context.Context, w http.ResponseWriter, r *http.Requ
 	return nil
 }
 
+// List returns every session a user holds, newest first. It backs the "your
+// active sessions" screen the contract describes, and an app that names its
+// API tokens — a labelled session — needs it to show them.
+//
+// It is here rather than left to the store because an app that has a Manager
+// should not also have to hold the store: the whole point of the manager is
+// that one thing owns the credential.
+func (m *Manager) List(ctx context.Context, userID int64) ([]porte.Session, error) {
+	return m.store.ListByUser(ctx, userID)
+}
+
+// Revoke ends one of a user's sessions by id. It takes the user id as well, so
+// a handler cannot revoke somebody else's session by guessing an integer.
+func (m *Manager) Revoke(ctx context.Context, userID, sessionID int64) error {
+	return m.store.DeleteByID(ctx, userID, sessionID)
+}
+
 // RevokeUser drops every session a user holds. It is what back-channel logout
 // calls, and it is the only mechanism by which an administrative deactivation
 // in an identity provider reaches an app that issued its own opaque session.
