@@ -203,29 +203,49 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 // account enumeration oracle, and the timing half is the one that gets dropped
 // when this is reimplemented.
 func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request, email, password string) (int64, string, error) {
+	userID, err := k.Verify(ctx, email, password)
+	if err != nil {
+		return 0, "", err
+	}
+
+	token, _, err := k.sessions.IssueCookie(ctx, w, r, userID)
+	if err != nil {
+		return 0, "", err
+	}
+	return userID, token, nil
+}
+
+// Verify checks a password and returns the user id, issuing nothing.
+//
+// Login is this plus a session, and they are separate because not every caller
+// is a browser. CalDAV and IMAP clients re-send Basic credentials on every
+// request, so a protocol handler that reached for Login would mint a session
+// row per request — an unbounded write to the credential table, and a
+// Set-Cookie header on a response no browser will read.
+//
+// It carries the same enumeration guarantees as Login, which is the reason it
+// lives here rather than being reimplemented against the identity store: an
+// unknown address costs a real hash and returns the same error a wrong
+// password does.
+func (k *Kit) Verify(ctx context.Context, email, password string) (int64, error) {
 	normalized, err := normalizeEmail(email)
 	if err != nil {
 		EqualizeTiming(password)
-		return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
+		return 0, carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 	}
 
 	stored, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, normalized)
 	if err != nil {
 		if stderrors.Is(err, porte.ErrNotFound) {
 			EqualizeTiming(password)
-			return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
+			return 0, carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 		}
-		return 0, "", errors.Internal("failed to read the identity", err)
+		return 0, errors.Internal("failed to read the identity", err)
 	}
 	if !VerifyPassword(password, stored.PasswordHash) {
-		return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
+		return 0, carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 	}
-
-	token, _, err := k.sessions.IssueCookie(ctx, w, r, stored.UserID)
-	if err != nil {
-		return 0, "", err
-	}
-	return stored.UserID, token, nil
+	return stored.UserID, nil
 }
 
 // SetPassword adds or replaces the password on an existing account. It is what

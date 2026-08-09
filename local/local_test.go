@@ -95,6 +95,12 @@ func (s *stores) Create(_ context.Context, sess porte.Session) (porte.Session, e
 	return sess, nil
 }
 
+func (s *stores) CountSessions() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sessions)
+}
+
 func (s *stores) FindSession(hash string) (porte.Session, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -236,6 +242,37 @@ func TestLoginIssuesASessionForTheRightPassword(t *testing.T) {
 	}
 	if _, ok := store.FindSession(porte.HashToken(token)); !ok {
 		t.Fatal("login issued a token with no session row")
+	}
+}
+
+// Verify is Login without the session, for the callers that re-authenticate on
+// every request. A CalDAV client sending Basic credentials on each PROPFIND
+// must not leave a session row behind each time.
+func TestVerifyAuthenticatesWithoutIssuingAnything(t *testing.T) {
+	kit, store := testKit(t, true)
+	w, r := request()
+	registered, _, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "", "a-long-enough-password")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	before := store.CountSessions()
+
+	userID, err := kit.Verify(context.Background(), "SOMEONE@facile.studio", "a-long-enough-password")
+	if err != nil {
+		t.Fatalf("verify: %v", err)
+	}
+	if userID != registered {
+		t.Fatalf("verify resolved to %d, registered %d", userID, registered)
+	}
+	if after := store.CountSessions(); after != before {
+		t.Fatalf("verify left %d session rows behind", after-before)
+	}
+
+	if _, err := kit.Verify(context.Background(), "someone@facile.studio", "the-wrong-password"); !stderrors.Is(err, porte.ErrWrongPassword) {
+		t.Fatalf("a wrong password gave %v, want ErrWrongPassword", err)
+	}
+	if _, err := kit.Verify(context.Background(), "nobody@facile.studio", "a-long-enough-password"); !stderrors.Is(err, porte.ErrWrongPassword) {
+		t.Fatalf("an unknown address gave %v, want the same answer as a wrong password", err)
 	}
 }
 
