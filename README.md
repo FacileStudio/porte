@@ -3,9 +3,11 @@
 The authentication kit for the [Facile Suite](https://facile.studio). The OIDC plumbing every
 Facile API needs and none of them should be re-writing.
 
-**Unreleased and unproven.** The engine and the stores are written and tested; nothing has run
-against a real Authentik yet, and no app has adopted it. Read [SPEC.md](SPEC.md) before writing
-any code — it carries the decisions, the contract, and the reasoning behind both.
+**In production, in one app.** [Journal](https://github.com/FacileStudio/Journal) runs on it
+against the suite's Authentik: discovery, PKCE, nonce, callback, upsert and the session cookie
+are walked by real users, not only by tests. Six apps still have their own copy. Read
+[SPEC.md](SPEC.md) before writing any code — it carries the decisions, the contract, and the
+reasoning behind both.
 
 ## What it does
 
@@ -62,12 +64,16 @@ state comparison. Written once here instead of six times in the apps.
 
 | Version | Scope |
 |---|---|
-| **v0.1.0** | OIDC only. Tagged. The flow is walked end to end against a conformant in-process issuer and the security surface has been reviewed — but **no application has adopted it in production yet**, so the version is deliberately `v0.x`: usable, and not promising an unchanged API |
+| **v0.1.0** | OIDC only. The flow walked end to end against a conformant in-process issuer, and the security surface reviewed |
+| **v0.1.1** | What the first adoption found — see the [changelog](CHANGELOG.md). Journal runs this against a real Authentik. Still deliberately `v0.x`: proven, and not yet promising an unchanged API |
 | v0.2 | Local email/password, argon2 |
 | v0.3 | `porte/espace` — spaces, membership, `RequireRole` |
 
-The first adopters are the e-commerce demo, which is greenfield and outside the suite, and then
-Nuage, which is where the code was extracted from. What they find lands in v0.1.x.
+The first adopter turned out to be Journal — the one app with no OIDC of its own, so the wiring
+added a path instead of replacing six hundred lines of one. It kept its own `users` table and
+implemented `UserStore` over it; the other three stores came from `porte/pg` unchanged, with
+their foreign keys repointed. That is the shape the remaining apps should copy. What each one
+finds lands in v0.1.x.
 
 ## Documentation
 
