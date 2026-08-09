@@ -22,6 +22,7 @@ package local
 import (
 	"context"
 	stderrors "errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/mail"
@@ -125,7 +126,7 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return 0, "", err
 	}
 	if len([]rune(password)) < k.cfg.MinPasswordLength {
-		return 0, "", errors.Invalid("password must be at least " + strconv.Itoa(k.cfg.MinPasswordLength) + " characters")
+		return 0, "", carrying(errors.Invalid(""), fmt.Errorf("%w: it must be at least %d characters", porte.ErrWeakPassword, k.cfg.MinPasswordLength))
 	}
 
 	if !k.cfg.AllowRegistration {
@@ -134,7 +135,7 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 			return 0, "", errors.Internal("failed to count accounts", err)
 		}
 		if count > 0 {
-			return 0, "", errors.Forbidden(porte.ErrRegistrationClosed.Error())
+			return 0, "", carrying(errors.Forbidden(""), porte.ErrRegistrationClosed)
 		}
 	}
 
@@ -144,7 +145,7 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 	switch {
 	case err == nil:
 		if _, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, email); err == nil {
-			return 0, "", errors.Conflict(porte.ErrEmailTaken.Error())
+			return 0, "", carrying(errors.Conflict(""), porte.ErrEmailTaken)
 		} else if !stderrors.Is(err, porte.ErrNotFound) {
 			return 0, "", errors.Internal("failed to read the identity", err)
 		}
@@ -187,19 +188,19 @@ func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	normalized, err := normalizeEmail(email)
 	if err != nil {
 		EqualizeTiming(password)
-		return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+		return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 	}
 
 	stored, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, normalized)
 	if err != nil {
 		if stderrors.Is(err, porte.ErrNotFound) {
 			EqualizeTiming(password)
-			return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+			return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 		}
 		return 0, "", errors.Internal("failed to read the identity", err)
 	}
 	if !VerifyPassword(password, stored.PasswordHash) {
-		return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+		return 0, "", carrying(errors.Unauthorized(""), porte.ErrWrongPassword)
 	}
 
 	token, _, err := k.sessions.IssueCookie(ctx, w, r, stored.UserID)
@@ -218,7 +219,7 @@ func (k *Kit) SetPassword(ctx context.Context, userID int64, email, password str
 		return err
 	}
 	if len([]rune(password)) < k.cfg.MinPasswordLength {
-		return errors.Invalid("password must be at least " + strconv.Itoa(k.cfg.MinPasswordLength) + " characters")
+		return carrying(errors.Invalid(""), fmt.Errorf("%w: it must be at least %d characters", porte.ErrWeakPassword, k.cfg.MinPasswordLength))
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -268,13 +269,21 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// carrying returns an app error that keeps tronc's code — and so the HTTP
+// status — while wrapping the sentinel, so an app can match it with errors.Is
+// instead of comparing message text. The contract promises the sentinels are
+// matchable; without the wrap they were decoration.
+func carrying(status *errors.Error, cause error) error {
+	return errors.New(status.Code, cause.Error(), cause)
+}
+
 // normalizeEmail lowercases, trims and validates. The normalised form is the
 // identity's Subject, so two spellings of one address cannot become two
 // accounts.
 func normalizeEmail(email string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(email))
 	if _, err := mail.ParseAddress(normalized); err != nil {
-		return "", errors.Invalid(porte.ErrInvalidEmail.Error())
+		return "", carrying(errors.Invalid(""), porte.ErrInvalidEmail)
 	}
 	return normalized, nil
 }
