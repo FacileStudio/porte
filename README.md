@@ -3,13 +3,17 @@
 The authentication kit for the [Facile Suite](https://facile.studio). The OIDC plumbing every
 Facile API needs and none of them should be re-writing.
 
-**In production, in one app.** [Journal](https://github.com/FacileStudio/Journal) runs on it
-against the suite's Authentik: discovery, PKCE, nonce, callback, upsert and the session cookie
-are walked by real users, not only by tests — and since v0.2 its password logins land in the same
-session, the same cookie and the same logout as its federated ones. That adoption is also what
-priced v0.1's layering: the session belonged to the OIDC package, so an app with a password form
-could not mint one. Six apps still have their own copy. Read [SPEC.md](SPEC.md) before writing
-any code — it carries the decisions, the contract, and the reasoning behind both.
+**In production, in two apps.** [Journal](https://github.com/FacileStudio/Journal) and
+[Sablier](https://github.com/FacileStudio/Sablier) run on it against the suite's Authentik:
+discovery, PKCE, nonce, callback, upsert and the session cookie are walked by real users, not
+only by tests — and since v0.2 their password logins land in the same session, the same cookie
+and the same logout as their federated ones. Journal is also the first app running with
+`OIDC_CLAIMS_SCOPE` set, so the roles claim arrives from a real provider and not only from the
+flow test. Each adoption has moved the contract: the first priced v0.1's layering — the session
+belonged to the OIDC package, so an app with a password form could not mint one — and the second
+produced v0.2.1 and v0.2.2 inside two days. Five apps still have their own copy. Read
+[SPEC.md](SPEC.md) before writing any code — it carries the decisions, the contract, and the
+reasoning behind both.
 
 ## What it does
 
@@ -125,14 +129,18 @@ state comparison. Written once here instead of six times in the apps.
 | **v0.1.0** | OIDC only. The flow walked end to end against a conformant in-process issuer, and the security surface reviewed |
 | **v0.1.1** | What the first adoption found — see the [changelog](CHANGELOG.md). Journal runs this against a real Authentik. Still deliberately `v0.x`: proven, and not yet promising an unchanged API |
 | **v0.2.0** | `porte/session` extracted out of `porte/oidc`, `porte/local` with argon2id passwords, `porte/avatarfs`. **Breaking:** `oidc.Deps.Sessions` is a `*session.Manager` and the app builds it |
+| **v0.2.1** | The error sentinels are wrapped rather than stringified, so `errors.Is` works; `ErrWeakPassword` is actually returned |
+| **v0.2.2** | `session.Manager` gained `List` and `Revoke`, the two `SessionStore` methods a "your active sessions" screen needs and the manager did not expose. Purely additive |
 | v0.3 | `porte/espace` — spaces, membership, `RequireRole` |
 
 The first adopter turned out to be Journal — the one app with no OIDC of its own, so the wiring
 added a path instead of replacing six hundred lines of one. It kept its own `users` table and
 implemented `UserStore` and `PasswordUserStore` over it; the other three stores came from
 `porte/pg` unchanged, with their foreign keys repointed. That is the shape the remaining apps
-should copy. What each one finds lands in the next `v0.x` — v0.2 is entirely what the first one
-found.
+should copy. Sablier followed and is the first adoption of the other kind — a hand-written OIDC
+client deleted rather than a gap filled, `SSO_ONLY=true`, and a CLI on the loopback flow. What
+each one finds lands in the next `v0.x`: v0.2 is entirely what the first one found, v0.2.1 and
+v0.2.2 entirely what the second one did.
 
 ## Documentation
 
@@ -143,9 +151,11 @@ found.
 | [Development](docs/development.md) | Local setup, the quality gate, versioning |
 | [API](docs/api.md) | Every exported symbol — the frozen contract, package by package |
 
-There is still no `docs/architecture.md`. The reason has changed: it used to be that no request
-path had been walked in production, and now one has. What it waits on is a second adopter — a
-page drawn from the single app that shaped v0.2 would document Journal, not `porte`.
+There is still no `docs/architecture.md`, and its two conditions are now both met: a request path
+walked in production, and a second adopter to draw it from. Sablier is that second adopter, and
+it is deliberately the opposite shape to Journal — SSO-only against a deleted hand-written
+client, with a CLI — so a page drawn from the pair documents `porte` rather than one app's
+wiring. It is next.
 
 ---
 
