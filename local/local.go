@@ -11,8 +11,13 @@
 // A password identity is one row of porte_identities under
 // [porte.ProviderLocal], keyed on the normalised email. A human may hold that
 // row and a federated one at the same time and they are the same account:
-// registering a password does not disturb an OIDC subject, and signing in
-// through either lands on the same user id.
+// signing in through either lands on the same user id.
+//
+// Holding both is arrived at through [Kit.SetPassword], from a request that is
+// already authenticated — never through [Kit.Register], which refuses an
+// address that already has an account. Registration cannot prove the caller
+// owns the mailbox, so treating it as "the same human adding a password" hands
+// every SSO account to whoever types its address first.
 //
 // It depends on porte/session, not on porte/oidc. An app that wants only
 // passwords must not compile an OIDC client, which is the whole reason the
@@ -139,16 +144,29 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// The address may already carry a federated identity, in which case
-	// this is the same human adding a password rather than a new account.
-	userID, err := k.deps.Users.FindByEmail(ctx, email)
+	// An address that already has an account is refused, whether or not that
+	// account has a password.
+	//
+	// Attaching one here would be an account takeover, and it was: an
+	// account created by SSO, or migrated in without a hash, went to
+	// whoever registered its address first — with a session issued on the
+	// spot. porte cannot prove the caller owns the mailbox, because porte
+	// has no mailer, so the only safe answer to "this address is already
+	// somebody" is no. The same human adding a password to their own
+	// account does it through SetPassword, from a request their existing
+	// session already authenticates.
+	//
+	// The refusal pays for a hash it does not need so that it costs about
+	// what creating an account costs. It is not perfect equalisation — the
+	// create path also writes two rows — but argon2 is the dominant term,
+	// and without this the response time alone answers "is this address
+	// registered" for every address an attacker cares to try.
+	var userID int64
+	_, err = k.deps.Users.FindByEmail(ctx, email)
 	switch {
 	case err == nil:
-		if _, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, email); err == nil {
-			return 0, "", carrying(errors.Conflict(""), porte.ErrEmailTaken)
-		} else if !stderrors.Is(err, porte.ErrNotFound) {
-			return 0, "", errors.Internal("failed to read the identity", err)
-		}
+		EqualizeTiming(password)
+		return 0, "", carrying(errors.Conflict(""), porte.ErrEmailTaken)
 	case stderrors.Is(err, porte.ErrNotFound):
 		userID, err = k.deps.Users.CreateFromPassword(ctx, email, strings.TrimSpace(name))
 		if err != nil {
