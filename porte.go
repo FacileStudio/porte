@@ -141,6 +141,11 @@ type Config struct {
 	// SuccessURL is where the browser lands after a successful callback.
 	SuccessURL string
 
+	// FailureURL is where the browser lands when a login fails, with the
+	// reason in an `error` query parameter. Empty means /login on
+	// SuccessURL's origin, which is where every adopter's login page is.
+	FailureURL string
+
 	// SSOOnly suppresses local password routes entirely. They are not
 	// registered rather than rejected, so there is no endpoint to probe.
 	SSOOnly bool
@@ -187,6 +192,40 @@ type Config struct {
 func (c Config) HTTPS() bool {
 	return strings.HasPrefix(strings.ToLower(c.RedirectURL), "https://") ||
 		strings.HasPrefix(strings.ToLower(c.SuccessURL), "https://")
+}
+
+// LoginFailure returns the URL a failed browser login lands on, carrying reason
+// in an `error` query parameter.
+//
+// /auth/oidc and its callback are browser navigations, not API calls. Writing a
+// JSON error body to them puts `{"code":"invalid_argument"...}` in the user's
+// window, which is the app asking a human to read a wire format. Every failure
+// a browser can reach goes here instead; the CLI's own endpoints keep JSON,
+// because there the caller really is a program.
+//
+// The default keeps SuccessURL's origin and replaces its path, rather than
+// appending: an app whose SuccessURL is /dashboard has its login page at
+// /login, not at /dashboard/login. FailureURL covers anything else.
+func (c Config) LoginFailure(reason string) string {
+	target := c.FailureURL
+	if target == "" {
+		origin, err := url.Parse(c.SuccessURL)
+		if err != nil {
+			return "/login?error=" + url.QueryEscape(reason)
+		}
+		origin.Path = "/login"
+		origin.RawQuery = ""
+		origin.Fragment = ""
+		target = origin.String()
+	}
+	dest, err := url.Parse(target)
+	if err != nil {
+		return "/login?error=" + url.QueryEscape(reason)
+	}
+	query := dest.Query()
+	query.Set("error", reason)
+	dest.RawQuery = query.Encode()
+	return dest.String()
 }
 
 // IdleTimeout returns the idle window, or zero when it is disabled.
