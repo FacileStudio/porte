@@ -570,14 +570,40 @@ func TestBrowserLoginFlowEndToEnd(t *testing.T) {
 	}
 }
 
+// assertLoginRefused checks that response is a refusal and not a login.
+//
+// A refused callback and a successful one are both a 302 — the difference is
+// where they point and what they leave behind. Asserting on the status alone
+// would pass for a callback that signed the caller in, which is the failure
+// mode worth catching, so both halves are checked: the browser goes to the
+// login page carrying a reason, and no session cookie comes back.
+func assertLoginRefused(t *testing.T, response *http.Response) {
+	t.Helper()
+	if response.StatusCode != http.StatusFound {
+		t.Fatalf("refused callback = %d, want a 302 to the login page", response.StatusCode)
+	}
+	location, err := url.Parse(response.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("parsing the redirect: %v", err)
+	}
+	if location.Path != "/login" {
+		t.Fatalf("refused callback went to %q, want /login", location.Path)
+	}
+	if location.Query().Get("error") == "" {
+		t.Fatalf("refused callback carried no reason: %q", location.String())
+	}
+	for _, cookie := range response.Cookies() {
+		if strings.Contains(cookie.Name, porte.SessionCookieName) && cookie.Value != "" {
+			t.Fatalf("a refused callback issued a session cookie %q", cookie.Name)
+		}
+	}
+}
+
 func TestCallbackRefusesAWrongNonce(t *testing.T) {
 	h := newHarness(t, nil)
 	h.idp.mintClaims = func(claims map[string]any) { claims["nonce"] = "not-the-one-we-sent" }
 
-	callback := h.login(t, h.client(t), "")
-	if callback.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("callback with a wrong nonce = %d, want 401", callback.StatusCode)
-	}
+	assertLoginRefused(t, h.login(t, h.client(t), ""))
 }
 
 func TestCallbackRefusesATamperedState(t *testing.T) {
@@ -601,24 +627,22 @@ func TestCallbackRefusesATamperedState(t *testing.T) {
 		t.Fatalf("GET callback: %v", err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusBadRequest {
-		t.Fatalf("callback with a tampered state = %d, want 400", response.StatusCode)
-	}
+	assertLoginRefused(t, response)
 }
 
 func TestCallbackWithoutTheFlowCookieIsRefused(t *testing.T) {
 	h := newHarness(t, nil)
 
 	// A bare client with no jar: the state cookie never comes back, which is
-	// also what a cross-site request forging the callback looks like.
-	response, err := http.Get(h.app.URL + porte.RouteCallback + "?code=x&state=y")
+	// also what a cross-site request forging the callback looks like. The
+	// client must not follow the refusal's redirect, or the assertion reads
+	// the login page's status instead of the refusal's.
+	response, err := h.client(t).Get(h.app.URL + porte.RouteCallback + "?code=x&state=y")
 	if err != nil {
 		t.Fatalf("GET callback: %v", err)
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusBadRequest {
-		t.Fatalf("callback without the flow cookie = %d, want 400", response.StatusCode)
-	}
+	assertLoginRefused(t, response)
 }
 
 func TestCLILoginFlowEndToEnd(t *testing.T) {
@@ -829,10 +853,11 @@ func TestCallbackFailsLoudlyWhenTheRolesClaimNeverArrives(t *testing.T) {
 	h := newHarness(t, func(cfg *porte.Config) { cfg.ClaimsScope = "facile" })
 	h.idp.roles = nil
 
-	callback := h.login(t, h.client(t), "")
-	if callback.StatusCode == http.StatusFound {
-		t.Fatal("the callback succeeded although the roles claim never arrived — this is the silent-deny failure the guard exists for")
-	}
+	// The refusal is a 302 like the success is, so this asserts on where it
+	// points: a callback that landed on SuccessURL signed the caller in
+	// without the roles it is about to be authorized against, which is the
+	// silent-deny failure the guard exists for.
+	assertLoginRefused(t, h.login(t, h.client(t), ""))
 }
 
 func TestNewRefusesARolesScopeTheProviderDoesNotOffer(t *testing.T) {

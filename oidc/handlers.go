@@ -64,18 +64,41 @@ func (k *Kit) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	httpjson.WriteJSON(w, http.StatusOK, body)
 }
 
+// fail sends a browser back to the login page with a reason it can render,
+// rather than writing a JSON error body into the address bar. Only the handlers
+// a browser navigates to use it.
+func (k *Kit) fail(w http.ResponseWriter, r *http.Request, reason string) {
+	http.Redirect(w, r, k.cfg.LoginFailure(reason), http.StatusFound)
+}
+
+// failureReason picks the text a user should see for err. Anything porte
+// classified as the caller's problem says what it was; everything else is an
+// internal failure and says nothing, because its message is for the log.
+func failureReason(err error) string {
+	var apiErr *errors.Error
+	if stderrors.As(err, &apiErr) {
+		switch apiErr.Code {
+		case "invalid_argument", "already_exists", "unauthenticated", "permission_denied":
+			return apiErr.Message
+		}
+	}
+	return "could not sign you in"
+}
+
 // handleLogin starts the flow. Beyond what the apps do today it adds PKCE and
 // a nonce, both missing from all six: PKCE binds the authorization code to
 // this browser, and the nonce binds the ID token to this request.
 func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := porte.NewToken()
 	if err != nil {
-		httpjson.WriteError(w, errors.Internal("failed to start the login", err))
+		k.logger.Error("porte: failed to start the login", slog.Any("error", err))
+		k.fail(w, r, "could not start the login")
 		return
 	}
 	nonce, err := porte.NewToken()
 	if err != nil {
-		httpjson.WriteError(w, errors.Internal("failed to start the login", err))
+		k.logger.Error("porte: failed to start the login", slog.Any("error", err))
+		k.fail(w, r, "could not start the login")
 		return
 	}
 
@@ -87,7 +110,8 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	encoded, err := pending.encode()
 	if err != nil {
-		httpjson.WriteError(w, errors.Internal("failed to start the login", err))
+		k.logger.Error("porte: failed to start the login", slog.Any("error", err))
+		k.fail(w, r, "could not start the login")
 		return
 	}
 	k.sessions.SetCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
@@ -113,26 +137,28 @@ func loopbackPort(value string) string {
 func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 	encoded, ok := k.sessions.ReadCookie(r, flowCookie)
 	if !ok {
-		httpjson.WriteError(w, errors.Invalid("the login has expired, start again"))
+		k.fail(w, r, "the login has expired, start again")
 		return
 	}
 	k.sessions.ClearCookie(w, r, flowCookie)
 
 	pending, ok := decodeFlow(encoded)
 	if !ok || !porte.SecureCompare(pending.State, r.URL.Query().Get("state")) {
-		httpjson.WriteError(w, errors.Invalid("invalid oauth2 state"))
+		k.fail(w, r, "the login could not be verified, start again")
 		return
 	}
 
 	claims, tokens, err := k.completeFlow(r.Context(), r.URL.Query().Get("code"), pending)
 	if err != nil {
-		httpjson.WriteError(w, err)
+		k.logger.Warn("porte: the login flow did not complete", slog.Any("error", err))
+		k.fail(w, r, failureReason(err))
 		return
 	}
 
 	userID, err := k.persist(r.Context(), claims, tokens)
 	if err != nil {
-		httpjson.WriteError(w, err)
+		k.logger.Warn("porte: could not record the identity", slog.Any("error", err))
+		k.fail(w, r, failureReason(err))
 		return
 	}
 
@@ -142,7 +168,8 @@ func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, _, err := k.sessions.IssueCookie(r.Context(), w, r, userID); err != nil {
-		httpjson.WriteError(w, err)
+		k.logger.Error("porte: could not issue the session", slog.Any("error", err))
+		k.fail(w, r, "could not sign you in")
 		return
 	}
 	http.Redirect(w, r, k.cfg.SuccessURL, http.StatusFound)
@@ -232,7 +259,8 @@ func (k *Kit) syncAvatar(ctx context.Context, claims porte.Claims) string {
 func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int64, port string) {
 	code, err := porte.NewToken()
 	if err != nil {
-		httpjson.WriteError(w, errors.Internal("failed to issue a login code", err))
+		k.logger.Error("porte: failed to issue a login code", slog.Any("error", err))
+		k.fail(w, r, "could not complete the login")
 		return
 	}
 	if err := k.deps.Codes.Create(r.Context(), porte.LoginCode{
@@ -240,7 +268,8 @@ func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int6
 		UserID:    userID,
 		ExpiresAt: k.now().Add(k.cfg.LoginCodeTTL),
 	}); err != nil {
-		httpjson.WriteError(w, errors.Internal("failed to store the login code", err))
+		k.logger.Error("porte: failed to store the login code", slog.Any("error", err))
+		k.fail(w, r, "could not complete the login")
 		return
 	}
 

@@ -115,6 +115,22 @@ func TestResolvedFillsZeroDurations(t *testing.T) {
 	}
 }
 
+func TestLoginFailureLandsOnTheLoginPageWithTheReason(t *testing.T) {
+	// SuccessURL is a landing page, not the origin: appending would send a
+	// refused login to /dashboard/login, which is nowhere.
+	cfg := porte.Config{SuccessURL: "https://app.test/dashboard"}
+	got := cfg.LoginFailure("email not verified")
+	if got != "https://app.test/login?error=email+not+verified" {
+		t.Fatalf("LoginFailure = %q, want /login on the same origin carrying the reason", got)
+	}
+
+	override := porte.Config{SuccessURL: "https://app.test/", FailureURL: "https://app.test/sign-in?from=sso"}
+	got = override.LoginFailure("nope")
+	if got != "https://app.test/sign-in?error=nope&from=sso" {
+		t.Fatalf("LoginFailure with FailureURL = %q, want the configured page with its query kept", got)
+	}
+}
+
 func TestDisplayNamePrecedence(t *testing.T) {
 	cases := []struct {
 		name   string

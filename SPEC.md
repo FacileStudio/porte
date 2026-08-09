@@ -582,6 +582,9 @@ Dependency rules, following `caisse`:
 
 - `tronc/errors` for the suite error envelope, so `httpjson.WriteError` maps failures to the
   right status with no glue in the app. This couples `porte` to the suite deliberately.
+  **Exception, v0.2.4:** the two handlers a browser navigates to — `/auth/oidc` and its
+  callback — redirect to `Config.LoginFailure(reason)` instead. An error envelope is for a
+  caller that parses it, and there the caller is a person looking at an address bar.
 - **No GORM.** All six apps use it, but forcing it is a heavier commitment than anything the
   suite shares today, and it is what pushed `tronc` to split `migrate` and `testdb` into
   separate modules. `database/sql` keeps everything in one module.
