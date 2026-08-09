@@ -3,6 +3,31 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.5 — 2026-08-10
+
+`porte_identities` gains `created_at`. No API change, no migration to write by hand: it is in
+`Schema`, so an app that already applies `pg.Schema` (or its own copy of it, which is what an app
+keeping its own `users` table does) picks it up on the next boot.
+
+The column exists because of the account takeover fixed in `v0.2.3`. The audit that fix asks for —
+*which* accounts had a `local` identity grafted onto them while the hole was open, and when — could
+not be run: the table recorded that an identity existed and nothing about when it appeared. It
+records that now, and it is the first write that stamps it. Neither upsert carries `created_at` in
+its `ON CONFLICT` list, so a login never moves the stamp; a column that recorded the last sign-in
+would answer a different question while looking like an answer to this one.
+
+**Rows that predate the column stay NULL, deliberately.** The obvious `ADD COLUMN … NOT NULL
+DEFAULT now()` backfills every identity in production with the timestamp of the deploy, which is
+not late, not approximate, and not conservative — it is wrong, and it is wrong in the exact rows an
+audit is about to read. So the upgrade adds the column nullable and sets the default afterwards:
+new rows are stamped, old rows say "predates the column", and NULL is the honest answer to a
+question the database was never asked. A fresh install has the same nullable column rather than a
+stricter one, because two shapes of the same table is how a query that works in one deployment
+fails in another.
+
+`Boutique` added this column itself in its `00005` migration as `NOT NULL`; the statements here are
+`IF NOT EXISTS` and a `SET DEFAULT`, so they are no-ops against it and it keeps the stricter column.
+
 ## v0.2.4 — 2026-08-09
 
 A failed login is a page now, not a JSON body. New optional `Config.FailureURL`; no breaking

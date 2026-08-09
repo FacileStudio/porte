@@ -146,6 +146,92 @@ func TestIdentityRoundTripsIncludingRoles(t *testing.T) {
 	}
 }
 
+// created_at answers "when did this credential appear on this account", which
+// is the question an account-takeover audit asks. It is only an answer if the
+// first write stamps it and no later write moves it — an upsert that carried it
+// in EXCLUDED would reset the stamp on every login and the column would record
+// the last sign-in instead.
+func TestIdentityCreatedAtIsStampedOnceAndNeverMoves(t *testing.T) {
+	store, db := open(t)
+	ctx := context.Background()
+	userID, err := store.Users().UpsertFromOIDC(ctx, claims("sub-1", "camille@facile.studio", true))
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	createdAt := func() time.Time {
+		t.Helper()
+		var at sql.NullTime
+		if err := db.QueryRowContext(ctx,
+			`SELECT created_at FROM porte_identities WHERE provider = $1 AND subject = $2`,
+			"https://sso.test", "sub-1").Scan(&at); err != nil {
+			t.Fatalf("read created_at: %v", err)
+		}
+		if !at.Valid {
+			t.Fatal("created_at was not stamped")
+		}
+		return at.Time
+	}
+
+	first := createdAt()
+
+	identities := store.Identities()
+	if err := identities.Save(ctx, porte.StoredIdentity{
+		UserID: userID, Provider: "https://sso.test", Subject: "sub-1",
+		Tokens: porte.TokenSet{AccessToken: "at"},
+	}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if _, err := store.Users().UpsertFromOIDC(ctx, claims("sub-1", "camille@facile.studio", true)); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+
+	if again := createdAt(); !again.Equal(first) {
+		t.Fatalf("created_at moved: %v then %v", first, again)
+	}
+}
+
+// Applying the schema over a database created before created_at existed must
+// add the column and leave the rows already there NULL. Filling them with the
+// migration's own clock would date every identity in production to the deploy,
+// which reads as an answer and is a fabrication — NULL says "predates the
+// column", which is the truth and is what an audit needs to hear.
+func TestCreatedAtDoesNotBackfillRowsThatPredateIt(t *testing.T) {
+	store, db := open(t)
+	ctx := context.Background()
+	if _, err := store.Users().UpsertFromOIDC(ctx, claims("sub-1", "camille@facile.studio", true)); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE porte_identities DROP COLUMN created_at`); err != nil {
+		t.Fatalf("drop column: %v", err)
+	}
+	if err := pg.EnsureSchema(ctx, db); err != nil {
+		t.Fatalf("re-apply schema: %v", err)
+	}
+
+	var at sql.NullTime
+	if err := db.QueryRowContext(ctx,
+		`SELECT created_at FROM porte_identities WHERE provider = $1 AND subject = $2`,
+		"https://sso.test", "sub-1").Scan(&at); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+	if at.Valid {
+		t.Fatalf("an identity that predates the column was dated %v", at.Time)
+	}
+
+	if _, err := store.Users().UpsertFromOIDC(ctx, claims("sub-2", "remy@facile.studio", true)); err != nil {
+		t.Fatalf("upsert after migration: %v", err)
+	}
+	if err := db.QueryRowContext(ctx,
+		`SELECT created_at FROM porte_identities WHERE provider = $1 AND subject = $2`,
+		"https://sso.test", "sub-2").Scan(&at); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+	if !at.Valid {
+		t.Fatal("an identity created after the migration was not stamped")
+	}
+}
+
 // A stamp that was never set must read back as zero, not as the year 1: the
 // whole freshness model keys on IsZero meaning "never refreshed".
 func TestUnsetStampsReadBackAsZero(t *testing.T) {

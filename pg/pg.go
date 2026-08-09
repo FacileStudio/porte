@@ -53,9 +53,12 @@ CREATE TABLE IF NOT EXISTS porte_identities (
 	roles           jsonb,
 	roles_synced_at timestamptz,
 	synced_at       timestamptz,
+	created_at      timestamptz DEFAULT now(),
 	PRIMARY KEY (provider, subject)
 );
 CREATE INDEX IF NOT EXISTS porte_identities_user_idx ON porte_identities (user_id);
+ALTER TABLE porte_identities ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE porte_identities ALTER COLUMN created_at SET DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS porte_sessions (
 	id           bigserial PRIMARY KEY,
