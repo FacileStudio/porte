@@ -1,0 +1,280 @@
+// Package local is the email and password half of porte: argon2id hashing, a
+// register and a login, both landing in the same session as a federated login.
+//
+// It exists because five of the six apps porte replaces have a password form
+// and would otherwise keep their own. Sharing the flow is worth less than
+// sharing its details — the constant-time compare, the equalised timing on an
+// unknown address, the length floor, the refusal to say which half of the pair
+// was wrong. Those are what drift when six copies exist, and they are what an
+// app gets wrong quietly.
+//
+// A password identity is one row of porte_identities under
+// [porte.ProviderLocal], keyed on the normalised email. A human may hold that
+// row and a federated one at the same time and they are the same account:
+// registering a password does not disturb an OIDC subject, and signing in
+// through either lands on the same user id.
+//
+// It depends on porte/session, not on porte/oidc. An app that wants only
+// passwords must not compile an OIDC client, which is the whole reason the
+// session manager was extracted.
+package local
+
+import (
+	"context"
+	stderrors "errors"
+	"log/slog"
+	"net/http"
+	"net/mail"
+	"strconv"
+	"strings"
+
+	"github.com/FacileStudio/porte"
+	"github.com/FacileStudio/porte/session"
+	"github.com/FacileStudio/tronc/errors"
+	"github.com/FacileStudio/tronc/httpjson"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// DefaultMinPasswordLength is the floor the suite already enforces. It is a
+// length and nothing else: no character classes, which push users towards
+// P@ssw0rd1 and buy nothing a length does not.
+const DefaultMinPasswordLength = 12
+
+// Config is the local login's policy.
+type Config struct {
+	// AllowRegistration gates POST /auth/register once an account exists.
+	// The first account is always creatable regardless: locking an empty
+	// instance out of itself is not a security property, and every app in
+	// the suite already carries this exception.
+	AllowRegistration bool
+
+	// MinPasswordLength defaults to DefaultMinPasswordLength.
+	MinPasswordLength int
+}
+
+// Deps are the stores and the session manager the kit writes through.
+type Deps struct {
+	Users      porte.PasswordUserStore
+	Identities porte.IdentityStore
+	Sessions   *session.Manager
+	Logger     *slog.Logger
+
+	// Count reports how many accounts exist, for the first-account
+	// exception above. It is the app's because only the app knows what a
+	// user row is, and because the app is the one holding the lock that
+	// makes counting and inserting atomic.
+	Count func(ctx context.Context) (int64, error)
+}
+
+// Kit serves the local routes and hashes the passwords behind them.
+type Kit struct {
+	cfg      Config
+	deps     Deps
+	sessions *session.Manager
+	logger   *slog.Logger
+}
+
+// New returns a kit. It fails rather than degrading: a half-wired local login
+// that answers 500 on the first sign-up is worse than one that refuses to boot.
+func New(cfg Config, deps Deps) (*Kit, error) {
+	for name, missing := range map[string]bool{
+		"Users":      deps.Users == nil,
+		"Identities": deps.Identities == nil,
+		"Sessions":   deps.Sessions == nil,
+		"Count":      deps.Count == nil,
+	} {
+		if missing {
+			return nil, errors.Failed("porte/local: Deps." + name + " is required")
+		}
+	}
+	if cfg.MinPasswordLength <= 0 {
+		cfg.MinPasswordLength = DefaultMinPasswordLength
+	}
+	logger := deps.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Kit{cfg: cfg, deps: deps, sessions: deps.Sessions, logger: logger}, nil
+}
+
+// Mount registers POST /auth/register and POST /auth/login with porte's own
+// {user_id, token} body.
+//
+// An app whose frontend expects a richer response — every existing Facile app
+// answers {token, user}, and porte has no idea what a user looks like — should
+// skip this and call [Kit.Register] and [Kit.Login] from its own handlers
+// instead. That is the supported path, not a workaround.
+func (k *Kit) Mount(router chi.Router) {
+	if k.cfg.AllowRegistration {
+		router.Post(porte.RouteRegister, k.handleRegister)
+	}
+	router.Post(porte.RouteLoginLocal, k.handleLogin)
+}
+
+// Register creates an account and signs it in, setting the session cookie and
+// returning the bearer token, so one call serves a browser and a CLI.
+//
+// It is not race-free on its own and cannot be: counting the accounts and
+// inserting one must happen under a lock on a database porte does not own. The
+// app's PasswordUserStore is where that lock goes, and every Facile app
+// already takes an advisory lock there.
+func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Request, email, name, password string) (int64, string, error) {
+	email, err := normalizeEmail(email)
+	if err != nil {
+		return 0, "", err
+	}
+	if len([]rune(password)) < k.cfg.MinPasswordLength {
+		return 0, "", errors.Invalid("password must be at least " + strconv.Itoa(k.cfg.MinPasswordLength) + " characters")
+	}
+
+	if !k.cfg.AllowRegistration {
+		count, err := k.deps.Count(ctx)
+		if err != nil {
+			return 0, "", errors.Internal("failed to count accounts", err)
+		}
+		if count > 0 {
+			return 0, "", errors.Forbidden(porte.ErrRegistrationClosed.Error())
+		}
+	}
+
+	// The address may already carry a federated identity, in which case
+	// this is the same human adding a password rather than a new account.
+	userID, err := k.deps.Users.FindByEmail(ctx, email)
+	switch {
+	case err == nil:
+		if _, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, email); err == nil {
+			return 0, "", errors.Conflict(porte.ErrEmailTaken.Error())
+		} else if !stderrors.Is(err, porte.ErrNotFound) {
+			return 0, "", errors.Internal("failed to read the identity", err)
+		}
+	case stderrors.Is(err, porte.ErrNotFound):
+		userID, err = k.deps.Users.CreateFromPassword(ctx, email, strings.TrimSpace(name))
+		if err != nil {
+			return 0, "", err
+		}
+	default:
+		return 0, "", errors.Internal("failed to look up the account", err)
+	}
+
+	hash, err := HashPassword(password)
+	if err != nil {
+		return 0, "", errors.Internal("failed to hash the password", err)
+	}
+	if err := k.deps.Identities.Save(ctx, porte.StoredIdentity{
+		UserID:       userID,
+		Provider:     porte.ProviderLocal,
+		Subject:      email,
+		PasswordHash: hash,
+	}); err != nil {
+		return 0, "", errors.Internal("failed to store the identity", err)
+	}
+
+	token, _, err := k.sessions.IssueCookie(ctx, w, r, userID)
+	if err != nil {
+		return 0, "", err
+	}
+	return userID, token, nil
+}
+
+// Login verifies a password and issues a session.
+//
+// An unknown address and a wrong password are the same error and cost about
+// the same time. Either half of that being false turns the login form into an
+// account enumeration oracle, and the timing half is the one that gets dropped
+// when this is reimplemented.
+func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request, email, password string) (int64, string, error) {
+	normalized, err := normalizeEmail(email)
+	if err != nil {
+		EqualizeTiming(password)
+		return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+	}
+
+	stored, err := k.deps.Identities.Find(ctx, porte.ProviderLocal, normalized)
+	if err != nil {
+		if stderrors.Is(err, porte.ErrNotFound) {
+			EqualizeTiming(password)
+			return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+		}
+		return 0, "", errors.Internal("failed to read the identity", err)
+	}
+	if !VerifyPassword(password, stored.PasswordHash) {
+		return 0, "", errors.Unauthorized(porte.ErrWrongPassword.Error())
+	}
+
+	token, _, err := k.sessions.IssueCookie(ctx, w, r, stored.UserID)
+	if err != nil {
+		return 0, "", err
+	}
+	return stored.UserID, token, nil
+}
+
+// SetPassword adds or replaces the password on an existing account. It is what
+// an account settings screen calls, and what an app calls to give a
+// federated-only user a password.
+func (k *Kit) SetPassword(ctx context.Context, userID int64, email, password string) error {
+	normalized, err := normalizeEmail(email)
+	if err != nil {
+		return err
+	}
+	if len([]rune(password)) < k.cfg.MinPasswordLength {
+		return errors.Invalid("password must be at least " + strconv.Itoa(k.cfg.MinPasswordLength) + " characters")
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return errors.Internal("failed to hash the password", err)
+	}
+	return k.deps.Identities.Save(ctx, porte.StoredIdentity{
+		UserID:       userID,
+		Provider:     porte.ProviderLocal,
+		Subject:      normalized,
+		PasswordHash: hash,
+	})
+}
+
+func (k *Kit) handleRegister(w http.ResponseWriter, r *http.Request) {
+	var request porte.CredentialsRequest
+	if err := httpjson.DecodeJSON(w, r, &request); err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	userID, token, err := k.Register(r.Context(), w, r, request.Email, request.Name, request.Password)
+	if err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpjson.WriteJSON(w, http.StatusCreated, porte.ExchangeResponse{
+		UserID: strconv.FormatInt(userID, 10),
+		Token:  token,
+	})
+}
+
+func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
+	var request porte.CredentialsRequest
+	if err := httpjson.DecodeJSON(w, r, &request); err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	userID, token, err := k.Login(r.Context(), w, r, request.Email, request.Password)
+	if err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	httpjson.WriteJSON(w, http.StatusOK, porte.ExchangeResponse{
+		UserID: strconv.FormatInt(userID, 10),
+		Token:  token,
+	})
+}
+
+// normalizeEmail lowercases, trims and validates. The normalised form is the
+// identity's Subject, so two spellings of one address cannot become two
+// accounts.
+func normalizeEmail(email string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if _, err := mail.ParseAddress(normalized); err != nil {
+		return "", errors.Invalid(porte.ErrInvalidEmail.Error())
+	}
+	return normalized, nil
+}

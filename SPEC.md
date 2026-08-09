@@ -122,7 +122,7 @@ Do not re-litigate these. Each has a reason recorded.
 
 ## 4. Scope
 
-### v0.1 — OIDC only
+### v0.1 — OIDC only — built 2026-08-08
 
 The identical part, extracted and hardened. No local password: apps that still need
 email/password keep their own code in parallel for now, and lose roughly 60% of their auth
@@ -145,10 +145,26 @@ In scope for v0.1, beyond the routes (all three decided 2026-08-07):
 - **Role claims, optional** — the `roles` claim, its startup guard and its refresh TTL. Off
   unless configured; no app reads claims today, so nothing regresses by leaving it off. See §5c.
 
-### v0.2 — local password
+### v0.2 — local password — built 2026-08-09
 
-`register`, `login`, `me`, `password`, argon2 via the extracted `authcrypto`. Blocked on
-reconciling the drift in §2 and the role model in §7.
+Shipped as `porte/local`: `Register`, `Login`, `SetPassword`, argon2id at the parameters already
+in the apps' databases, and `POST /auth/register` / `POST /auth/login` for an app with no opinion
+about its login response. Journal runs it.
+
+Three corrections to what this section planned:
+
+- **`me` is not in it, and will not be.** `porte` authenticates a session, which tells it a user
+  id and nothing else; the profile behind `/auth/me` lives in the app's own user table, in a shape
+  `porte` has no opinion about. Journal serves its own, as every app already did.
+- **It is a separate package, not routes bolted to the engine** — and getting there meant
+  extracting `porte/session` first. See §8.
+- **It was not blocked on the role model in §7.** That was a misreading: a password login issues
+  the same opaque session a federated one does and never touches a claim. What it was actually
+  blocked on was the layering, which only the first adoption made visible.
+
+The `authcrypto` extraction this section anticipated did not happen either. There was nothing to
+extract to: the hashing is forty lines with one caller, and a second module to hold it would have
+been a dependency for the sake of a filename.
 
 Note for client projects: v0.2 is where `porte` starts serving **two user populations** — staff
 logs in through SSO, end customers (an e-commerce site's buyers, who will never have an
@@ -516,10 +532,36 @@ unacceptable.
 
 ```
 porte/          the contract. types, interfaces, wire shapes. standard library only
-porte/oidc      the engine: the flow, the seven routes, the middleware, the avatar guard
+porte/session   the credential: issuance, the cookie, the middleware, POST /auth/logout
+porte/oidc      the engine: the flow, the six OIDC routes, the avatar guard
+porte/local     email and password: argon2id, register, login, set-password
 porte/pg        the identity tables and the four stores. database/sql only, no ORM
+porte/avatarfs  a filesystem AvatarStore and the handler that serves it
 porte/espace    v0.3. Space/SpaceMember, membership, RequireRole
 ```
+
+**`porte/session` extracted 2026-08-09, and it is the decision this section got most wrong.**
+v0.1 put session issuance, the cookie, the authenticator, the middleware and `POST /auth/logout`
+inside `porte/oidc`, because OIDC was all there was and the layering question never came up. The
+first adoption priced it: Journal has its own password form, and an app with a password form could
+not mint a `porte` session or set `porte`'s cookie, so half its logins carried an `HttpOnly`
+cookie and the other half kept a token in `localStorage` — the exact split the cookie transport
+was adopted to end. Five of the six remaining apps have a password form too, so shipping them onto
+v0.1 would have spread it rather than exposed it.
+
+The general form is worth stating, because it will happen again: **the OIDC package owned the
+session, so the session inherited OIDC's preconditions.** A package that owns a credential must
+sit below every way of obtaining one. `porte/local` therefore depends on `porte/session` and not
+on `porte/oidc` — an app that wants only passwords must not compile an OIDC client, which is the
+whole reason the manager was extracted rather than merely re-exported.
+
+One manager, not one per kit. Two over one table would each keep their own idea of the clock and
+the cookie, and `oidc.New` refuses a kit whose config disagrees with its manager's about the
+redirect URL, the success URL or the TTLs: those decide `Config.HTTPS()`, which decides whether the
+cookie is `Secure` and `__Host-` prefixed, and nothing else would fail until an attacker noticed.
+
+This also cost a breaking change one version after freezing the contract — `oidc.Deps.Sessions` is
+a `*session.Manager` now — which is the argument for `v0.x` continuing a while longer.
 
 **Corrected 2026-08-07.** This section originally put the engine in the root package. That
 contradicts the zero-dependency decision taken with the contract in §11: an app implementing

@@ -212,6 +212,26 @@ type UserStore interface {
 	UpsertFromOIDC(ctx context.Context, claims Claims) (userID int64, err error)
 }
 
+// PasswordUserStore is the app's half of a local account, kept separate from
+// UserStore because an app may enable passwords, federation, or both, and
+// neither should force the other's method into its store.
+//
+// As with UpsertFromOIDC, the side effects are the app's on purpose: the rule
+// that the first account created is an administrator is product behaviour, and
+// porte has no business owning it. It is also why porte cannot make
+// registration race-free by itself — counting accounts and inserting one must
+// happen under a lock on a database porte does not own, so the app keeps the
+// lock it already takes.
+type PasswordUserStore interface {
+	// CreateFromPassword creates the user row and returns its id. porte has
+	// already validated the address and the password and hashed the
+	// password by the time this is called.
+	CreateFromPassword(ctx context.Context, email, name string) (userID int64, err error)
+
+	// FindByEmail returns the user id for an address, or ErrNotFound.
+	FindByEmail(ctx context.Context, email string) (userID int64, err error)
+}
+
 // IdentityStore persists the authentication rows and the cached claim. porte
 // ships a Postgres implementation in porte/pg; an app that implements
 // UserStore over its own tables implements this too.

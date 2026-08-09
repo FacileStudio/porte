@@ -12,19 +12,19 @@ import (
 	"time"
 
 	"github.com/FacileStudio/porte"
+	"github.com/FacileStudio/porte/session"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// memory is every store porte needs, in a map. It exists so the middleware and
-// the exchange can be tested without a database; the real ones are in porte/pg
-// and are tested against a real PostgreSQL.
+// memory is the session store in a map, small enough to build a session
+// manager on. The credential itself is tested in porte/session, which owns it;
+// this one only exists so the OIDC routes have somewhere to issue into.
 type memory struct {
 	mu       sync.Mutex
 	sessions map[string]porte.Session
 	codes    map[string]porte.LoginCode
 	nextID   int64
-	touches  int
 }
 
 func newMemory() *memory {
@@ -53,7 +53,6 @@ func (m *memory) Find(_ context.Context, tokenHash string) (porte.Session, error
 func (m *memory) Touch(_ context.Context, tokenHash string, at time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.touches++
 	session := m.sessions[tokenHash]
 	session.LastUsedAt = at
 	m.sessions[tokenHash] = session
@@ -118,173 +117,37 @@ func (c codes) Consume(_ context.Context, codeHash string) (porte.LoginCode, err
 
 func (c codes) DeleteExpired(context.Context, time.Time) (int64, error) { return 0, nil }
 
-func testKit(store *memory, now time.Time) *Kit {
-	return &Kit{
-		cfg:    porte.Config{SuccessURL: "https://app.test/"}.Resolved(),
-		deps:   Deps{Sessions: store, Codes: codes{store}},
-		logger: slog.New(slog.DiscardHandler),
-		now:    func() time.Time { return now },
-	}
-}
-
-// sessionCookie is the cookie a browser would actually send back to this kit:
-// the __Host- prefixed name over https, the bare one otherwise.
-func sessionCookie(kit *Kit, token string) *http.Cookie {
-	name := porte.SessionCookieName
-	if kit.cfg.HTTPS() {
-		name = "__Host-" + name
-	}
-	return &http.Cookie{Name: name, Value: token}
-}
-
-// issue puts a live session in the store and returns its plaintext token.
-func issue(t *testing.T, kit *Kit, userID int64) string {
+// testManager is the session manager the kit issues through, over the same
+// clock the kit reads.
+func testManager(t *testing.T, store *memory, now func() time.Time) *session.Manager {
 	t.Helper()
-	token, _, err := kit.issueSession(context.Background(), userID, "")
+	manager, err := session.New(porte.Config{SuccessURL: "https://app.test/"}, session.Deps{
+		Sessions: store,
+		Logger:   slog.New(slog.DiscardHandler),
+		Now:      now,
+	})
 	if err != nil {
-		t.Fatalf("issueSession: %v", err)
+		t.Fatalf("session.New: %v", err)
 	}
-	return token
+	return manager
 }
 
-func authenticated(kit *Kit) http.Handler {
-	return kit.RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, _ := porte.From(r.Context())
-		_ = json.NewEncoder(w).Encode(identity)
-	}))
-}
-
-func TestCookieTransportRequiresTheCSRFHeaderOnMutatingRequests(t *testing.T) {
-	now := time.Now()
-	store := newMemory()
-	kit := testKit(store, now)
-	token := issue(t, kit, 7)
-
-	cases := []struct {
-		name   string
-		method string
-		header bool
-		want   int
-	}{
-		{"a read is safe without it", http.MethodGet, false, http.StatusOK},
-		{"a write without it is refused", http.MethodPost, false, http.StatusForbidden},
-		{"a write with it is allowed", http.MethodPost, true, http.StatusOK},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			request := httptest.NewRequest(testCase.method, "/x", nil)
-			request.AddCookie(sessionCookie(kit, token))
-			if testCase.header {
-				request.Header.Set(porte.CSRFHeaderName, "1")
-			}
-			recorder := httptest.NewRecorder()
-			authenticated(kit).ServeHTTP(recorder, request)
-			if recorder.Code != testCase.want {
-				t.Fatalf("status = %d, want %d (%s)", recorder.Code, testCase.want, recorder.Body)
-			}
-		})
-	}
-}
-
-// A bearer caller is not a browser: nothing attaches the credential on its
-// behalf, so there is no CSRF to defend against and demanding the header would
-// break every CLI for nothing.
-func TestBearerWritesDoNotNeedTheCSRFHeader(t *testing.T) {
-	now := time.Now()
-	store := newMemory()
-	kit := testKit(store, now)
-
-	request := httptest.NewRequest(http.MethodPost, "/x", nil)
-	request.Header.Set("Authorization", "Bearer "+issue(t, kit, 7))
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body)
-	}
-}
-
-func TestNoCredentialIsReadFromTheQueryString(t *testing.T) {
-	now := time.Now()
-	store := newMemory()
-	kit := testKit(store, now)
-	token := issue(t, kit, 7)
-
-	for _, param := range []string{"token", "api_key", "access_token"} {
-		request := httptest.NewRequest(http.MethodGet, "/x?"+param+"="+token, nil)
-		recorder := httptest.NewRecorder()
-		authenticated(kit).ServeHTTP(recorder, request)
-		if recorder.Code != http.StatusUnauthorized {
-			t.Fatalf("?%s= authenticated the request (status %d)", param, recorder.Code)
-		}
-	}
-}
-
-func TestExpiredSessionIsRefusedAndTheCookieCleared(t *testing.T) {
-	now := time.Now()
-	store := newMemory()
-	kit := testKit(store, now)
-	token := issue(t, kit, 7)
-
-	kit.now = func() time.Time { return now.Add(porte.DefaultSessionTTL + time.Second) }
-
-	request := httptest.NewRequest(http.MethodGet, "/x", nil)
-	request.AddCookie(sessionCookie(kit, token))
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", recorder.Code)
-	}
-	if !strings.Contains(recorder.Header().Get("Set-Cookie"), porte.SessionCookieName+"=;") {
-		t.Fatalf("the dead cookie was not cleared: %q", recorder.Header().Get("Set-Cookie"))
-	}
-}
-
-// last_used_at is for recognising a session in a list, not for accounting. One
-// UPDATE per request on the auth path of every call would be the most
-// expensive column in the schema.
-func TestSessionUseIsRecordedAtMostOncePerInterval(t *testing.T) {
-	now := time.Now()
-	store := newMemory()
-	kit := testKit(store, now)
-	token := issue(t, kit, 7)
-
-	send := func() {
-		request := httptest.NewRequest(http.MethodGet, "/x", nil)
-		request.AddCookie(sessionCookie(kit, token))
-		authenticated(kit).ServeHTTP(httptest.NewRecorder(), request)
-	}
-	send()
-	send()
-	if store.touches != 0 {
-		t.Fatalf("touched %d times inside the interval, want 0", store.touches)
-	}
-
-	kit.now = func() time.Time { return now.Add(touchInterval + time.Second) }
-	send()
-	if store.touches != 1 {
-		t.Fatalf("touched %d times after the interval, want 1", store.touches)
-	}
-}
-
-func TestTheSessionTokenIsNeverStoredInThePlain(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	token := issue(t, kit, 7)
-
-	if _, ok := store.sessions[token]; ok {
-		t.Fatal("the plaintext token is a key in the store")
-	}
-	if _, ok := store.sessions[porte.HashToken(token)]; !ok {
-		t.Fatal("the session was not stored under its hash")
+func testKit(t *testing.T, store *memory, now time.Time) *Kit {
+	t.Helper()
+	manager := testManager(t, store, func() time.Time { return now })
+	return &Kit{
+		cfg:      porte.Config{SuccessURL: "https://app.test/"}.Resolved(),
+		deps:     Deps{Sessions: manager, Codes: codes{store}},
+		sessions: manager,
+		logger:   slog.New(slog.DiscardHandler),
+		now:      func() time.Time { return now },
 	}
 }
 
 func TestALoginCodeWorksOnceAndOnlyOnce(t *testing.T) {
 	now := time.Now()
 	store := newMemory()
-	kit := testKit(store, now)
+	kit := testKit(t, store, now)
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/cb", nil)
@@ -319,7 +182,7 @@ func TestALoginCodeWorksOnceAndOnlyOnce(t *testing.T) {
 func TestAnExpiredLoginCodeIsRefused(t *testing.T) {
 	now := time.Now()
 	store := newMemory()
-	kit := testKit(store, now)
+	kit := testKit(t, store, now)
 
 	recorder := httptest.NewRecorder()
 	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "")
@@ -367,21 +230,6 @@ func TestFlowSurvivesACookieRoundTrip(t *testing.T) {
 	}
 }
 
-// Behind Traefik the TLS terminates at the proxy, so r.TLS is nil on every
-// production request. Three apps derive the flag from the success URL and get
-// this wrong in exactly the deployment that matters.
-func TestSecureFlagFollowsTheForwardedProto(t *testing.T) {
-	plain := httptest.NewRequest(http.MethodGet, "/", nil)
-	if isSecure(plain) {
-		t.Fatal("a plain request was marked secure")
-	}
-	proxied := httptest.NewRequest(http.MethodGet, "/", nil)
-	proxied.Header.Set("X-Forwarded-Proto", "HTTPS")
-	if !isSecure(proxied) {
-		t.Fatal("a request proxied over https was marked insecure")
-	}
-}
-
 func TestEmailClaimTrust(t *testing.T) {
 	cases := map[string]struct {
 		value any
@@ -402,7 +250,7 @@ func TestEmailClaimTrust(t *testing.T) {
 }
 
 func TestConfigResponseIsServedWithOIDCDisabled(t *testing.T) {
-	kit := testKit(newMemory(), time.Now())
+	kit := testKit(t, newMemory(), time.Now())
 	kit.cfg.SSOOnly = true
 
 	recorder := httptest.NewRecorder()
@@ -421,7 +269,7 @@ func TestConfigResponseIsServedWithOIDCDisabled(t *testing.T) {
 // /auth/config, and porte owns the route, so an adopting app has to be able to
 // keep its own key without registering the path a second time.
 func TestConfigExtraAddsTheAppsOwnKeysAndCannotOverridePortes(t *testing.T) {
-	kit := testKit(newMemory(), time.Now())
+	kit := testKit(t, newMemory(), time.Now())
 	kit.cfg.SSOOnly = true
 	kit.deps.ConfigExtra = func() map[string]any {
 		return map[string]any{"allow_registration": true, "sso_only": false, "oidc_enabled": true}
@@ -442,29 +290,15 @@ func TestConfigExtraAddsTheAppsOwnKeysAndCannotOverridePortes(t *testing.T) {
 	}
 }
 
-// Ending a session is session management, not OIDC. An app running without a
-// provider still has sessions to end, and mounting this only alongside the
-// OIDC routes forced it to keep a second logout handler and a second response
-// shape until the day it switched SSO on.
-func TestLogoutIsMountedWithOIDCDisabled(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	token := issue(t, kit, 7)
+// An unconfigured provider should mean no endpoint to probe rather than an
+// endpoint that 500s, so RouteConfig is the only route Mount registers when
+// OIDC is off.
+func TestTheOIDCRoutesAreAbsentWhenOIDCIsDisabled(t *testing.T) {
+	kit := testKit(t, newMemory(), time.Now())
 
 	router := chi.NewRouter()
 	kit.Mount(router)
 
-	request := httptest.NewRequest(http.MethodPost, porte.RouteLogout, nil)
-	request.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	router.ServeHTTP(recorder, request)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("logout returned %d: %s", recorder.Code, recorder.Body)
-	}
-	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
-		t.Fatal("the session survived the logout")
-	}
 	for _, route := range []string{porte.RouteLogin, porte.RouteSyncProfile} {
 		probe := httptest.NewRequest(http.MethodGet, route, nil)
 		result := httptest.NewRecorder()
@@ -472,6 +306,12 @@ func TestLogoutIsMountedWithOIDCDisabled(t *testing.T) {
 		if result.Code != http.StatusMethodNotAllowed && result.Code != http.StatusNotFound {
 			t.Fatalf("%s answered %d with OIDC disabled", route, result.Code)
 		}
+	}
+
+	config := httptest.NewRecorder()
+	router.ServeHTTP(config, httptest.NewRequest(http.MethodGet, porte.RouteConfig, nil))
+	if config.Code != http.StatusOK {
+		t.Fatalf("%s answered %d with OIDC disabled, want 200", porte.RouteConfig, config.Code)
 	}
 }
 
@@ -490,125 +330,25 @@ func quote(value string) string {
 	return string(encoded)
 }
 
-// A thirty-day session that nothing can age out is the difference between a
-// borrowed laptop being a bad afternoon and a bad month. The window is the one
-// default porte does not inherit from the apps.
-func TestASessionIdleForTooLongIsRefused(t *testing.T) {
+// The kit and the manager share one Config type but are built separately, and
+// the fields deciding whether the session cookie is Secure live on the
+// manager's copy. A typo in one of them would otherwise downgrade a security
+// property with nothing failing.
+func TestNewRefusesAKitAndManagerBuiltFromDifferentConfigs(t *testing.T) {
 	store := newMemory()
-	issued := time.Now()
-	kit := testKit(store, issued)
-	token := issue(t, kit, 1)
-
-	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + time.Minute) }
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("an idle session authenticated: %d", recorder.Code)
+	manager, err := session.New(porte.Config{SuccessURL: "https://app.test/"}, session.Deps{
+		Sessions: store,
+		Logger:   slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatalf("session.New: %v", err)
 	}
 
-	// And the dead row is gone, so replaying the token costs nothing.
-	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
-		t.Fatal("the idled-out session row survived")
+	_, err = New(context.Background(), porte.Config{SuccessURL: "https://typo.test/"}, Deps{Sessions: manager})
+	if err == nil {
+		t.Fatal("a kit was built against a manager configured for another host")
 	}
-}
-
-func TestASessionUsedInsideTheIdleWindowSurvives(t *testing.T) {
-	issued := time.Now()
-	kit := testKit(newMemory(), issued)
-	token := issue(t, kit, 1)
-
-	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL - time.Hour) }
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("a session used inside the window = %d, want 200", recorder.Code)
-	}
-}
-
-// cookieRequest is a browser GET carrying the session cookie, which is the
-// transport the idle window applies to.
-func cookieRequest(kit *Kit, token string) *http.Request {
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.AddCookie(sessionCookie(kit, token))
-	return request
-}
-
-func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
-	issued := time.Now()
-	kit := testKit(newMemory(), issued)
-	kit.cfg.SessionIdleTTL = -1
-	token := issue(t, kit, 1)
-
-	// Well past the idle window, well inside the absolute one.
-	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 24*time.Hour) }
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, cookieRequest(kit, token))
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("the idle window fired although it was disabled: %d", recorder.Code)
-	}
-}
-
-// The whole point of the prefix is that a cookie which does not carry it is not
-// trusted. A reader that falls back unconditionally accepts exactly the cookie
-// a compromised sibling host plants, so the fallback is opt-in.
-func TestAnUnprefixedCookieIsRefusedOverHTTPSByDefault(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
-	token := issue(t, kit, 1)
-
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("X-Forwarded-Proto", "https")
-	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusUnauthorized {
-		t.Fatalf("an unprefixed cookie authenticated over https: %d", recorder.Code)
-	}
-
-	// The prefixed one, same token, is accepted.
-	request = httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("X-Forwarded-Proto", "https")
-	request.AddCookie(&http.Cookie{Name: "__Host-" + porte.SessionCookieName, Value: token})
-	recorder = httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("the prefixed cookie was refused: %d", recorder.Code)
-	}
-}
-
-// An app migrating off its own pre-porte cookie opts in for one SessionTTL.
-func TestAcceptLegacyCookieReopensTheUnprefixedName(t *testing.T) {
-	store := newMemory()
-	kit := testKit(store, time.Now())
-	kit.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
-	kit.cfg.AcceptLegacyCookie = true
-	token := issue(t, kit, 1)
-
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("X-Forwarded-Proto", "https")
-	request.AddCookie(&http.Cookie{Name: porte.SessionCookieName, Value: token})
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("the legacy cookie was refused although the migration is on: %d", recorder.Code)
-	}
-}
-
-// A CLI's token is a bearer, and a CLI nobody runs for a fortnight must not be
-// silently signed out — it is the one credential with no human present to
-// renew it. The idle window is for the browser transport.
-func TestABearerIsNeverIdledOut(t *testing.T) {
-	issued := time.Now()
-	kit := testKit(newMemory(), issued)
-	token := issue(t, kit, 1)
-
-	kit.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 48*time.Hour) }
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.Header.Set("Authorization", "Bearer "+token)
-	recorder := httptest.NewRecorder()
-	authenticated(kit).ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("a CLI bearer was idled out: %d", recorder.Code)
+	if !strings.Contains(err.Error(), "OIDC_SUCCESS_URL") {
+		t.Fatalf("the error does not name the variable that disagrees: %v", err)
 	}
 }

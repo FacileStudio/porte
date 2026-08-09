@@ -7,36 +7,46 @@
 //
 // Wiring is one call:
 //
-//	kit, err := oidc.New(ctx, cfg, oidc.Deps{Users: store, Identities: store, Sessions: store, Codes: store})
+//	manager, err := session.New(cfg, session.Deps{Sessions: store.Sessions()})
+//	kit, err := oidc.New(ctx, cfg, oidc.Deps{Sessions: manager, Users: store, Identities: store, Codes: store})
+//	manager.Mount(router)
 //	kit.Mount(router)
-//	router.Group(func(r chi.Router) { r.Use(kit.RequireAuth); ... })
+//	router.Group(func(r chi.Router) { r.Use(manager.RequireAuth); ... })
 package oidc
 
 import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/FacileStudio/porte"
+	"github.com/FacileStudio/porte/session"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
 
-// Deps are the stores the kit writes through. Users, Identities and Sessions
-// are required whenever OIDC is enabled; Codes is required for the CLI flow
-// and Avatars is optional.
+// Deps are the stores the kit writes through, plus the session manager it
+// issues into. Sessions is always required; Users, Identities and Codes become
+// required once OIDC is enabled, and Avatars is optional.
 //
-// porte/pg implements all four over the default identity tables, so an app
-// that has no reason to be exotic passes the same value four times.
+// porte/pg implements all four stores over the default identity tables, so an
+// app that has no reason to be exotic passes the same value three times.
 type Deps struct {
 	Users      porte.UserStore
 	Identities porte.IdentityStore
-	Sessions   porte.SessionStore
 	Codes      porte.LoginCodeStore
 	Avatars    porte.AvatarStore
 	Logger     *slog.Logger
+
+	// Sessions is the manager that issues and verifies the credential. It
+	// is required, and it is passed in rather than built here because an
+	// app with a local login shares one manager between porte/oidc and
+	// porte/local — two managers over the same table would each maintain
+	// their own idea of the cookie and the clock.
+	Sessions *session.Manager
 
 	// ConfigExtra adds fields to GET /auth/config. Every app in the suite
 	// serves a superset of porte's two keys there — one carries
@@ -51,10 +61,11 @@ type Deps struct {
 	ConfigExtra func() map[string]any
 }
 
-// Kit serves porte's routes and authenticates requests.
+// Kit serves porte's OIDC routes.
 type Kit struct {
 	cfg      porte.Config
 	deps     Deps
+	sessions *session.Manager
 	provider *gooidc.Provider
 	verifier *gooidc.IDTokenVerifier
 	oauth    oauth2.Config
@@ -77,19 +88,21 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	kit := &Kit{cfg: cfg.Resolved(), deps: deps, logger: logger, now: time.Now}
+	if deps.Sessions == nil {
+		return nil, fmt.Errorf("porte/oidc: Deps.Sessions is required; build one with session.New")
+	}
+	if err := agreesWith(cfg, deps.Sessions.Config()); err != nil {
+		return nil, err
+	}
+	kit := &Kit{cfg: cfg.Resolved(), deps: deps, sessions: deps.Sessions, logger: logger, now: time.Now}
 
 	if !cfg.Enabled() {
-		if deps.Sessions == nil {
-			return nil, fmt.Errorf("porte/oidc: a SessionStore is required even with OIDC disabled")
-		}
 		return kit, nil
 	}
 
 	for name, missing := range map[string]bool{
 		"UserStore":      deps.Users == nil,
 		"IdentityStore":  deps.Identities == nil,
-		"SessionStore":   deps.Sessions == nil,
 		"LoginCodeStore": deps.Codes == nil,
 	} {
 		if missing {
@@ -114,8 +127,51 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 	if err := kit.guardClaimsScope(); err != nil {
 		return nil, err
 	}
+	// The manager fills Identity.Roles through this kit, and this kit
+	// needs the manager to issue sessions. Something has to be built first.
+	if cfg.ClaimsEnabled() {
+		deps.Sessions.WithClaims(kit)
+	}
 	return kit, nil
 }
+
+// agreesWith refuses a kit and a manager built from different configurations.
+//
+// They share one Config type but are constructed separately, and the fields
+// that decide cookie behaviour are the manager's while the fields that decide
+// the flow are the kit's. A manager built with a different RedirectURL or
+// SuccessURL reaches a different HTTPS() verdict, which silently changes
+// whether the session cookie is Secure and carries the __Host- prefix — a
+// security property, decided by a typo, with nothing failing until an
+// attacker notices. Cheaper to refuse at boot.
+func agreesWith(kit, manager porte.Config) error {
+	resolved := kit.Resolved()
+	for name, pair := range map[string][2]string{
+		"OIDC_REDIRECT_URL": {resolved.RedirectURL, manager.RedirectURL},
+		"OIDC_SUCCESS_URL":  {resolved.SuccessURL, manager.SuccessURL},
+		"SessionTTL":        {resolved.SessionTTL.String(), manager.SessionTTL.String()},
+		"SessionIdleTTL":    {resolved.IdleTimeout().String(), manager.IdleTimeout().String()},
+	} {
+		if pair[0] != pair[1] {
+			return fmt.Errorf(
+				"porte/oidc: the kit and its session manager disagree about %s (%q vs %q) — build both from the same porte.Config",
+				name, pair[0], pair[1])
+		}
+	}
+	return nil
+}
+
+// Sessions returns the manager this kit issues through, so an app that wired
+// the kit does not have to keep a second reference to the manager.
+func (k *Kit) Sessions() *session.Manager { return k.sessions }
+
+// RequireAuth rejects unauthenticated requests. It is the manager's middleware,
+// re-exported here so wiring reads the same as it did in v0.1.
+func (k *Kit) RequireAuth(next http.Handler) http.Handler { return k.sessions.RequireAuth(next) }
+
+// Optional attaches an identity when there is one and lets the request through
+// either way.
+func (k *Kit) Optional(next http.Handler) http.Handler { return k.sessions.Optional(next) }
 
 // guardClaimsScope refuses to boot when the roles scope is configured but the
 // provider does not advertise it.

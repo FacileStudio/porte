@@ -14,6 +14,7 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_CLIENT_SECRET` | with issuer | — | Client secret |
 | `OIDC_REDIRECT_URL` | with issuer | — | Must match the redirect URI registered on the provider |
 | `OIDC_SUCCESS_URL` | with issuer | — | Where the browser lands after a successful callback |
+| `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
 `porte` does not read the environment itself. An app builds a `Config` however it already builds
@@ -38,6 +39,12 @@ and then fails discovery at boot with an error that names neither the variable n
 
 When `SSO_ONLY` is true the local password routes are never mounted. They do not return 403 —
 they are not there. There is no endpoint to probe and no handler to reach by mistake.
+
+**That is the app's line to write, not `porte/local`'s.** The kit has no `SSOOnly` field: it is
+constructed and then not mounted, or not constructed at all. Putting the flag inside it would mean
+a kit that answers 403 from a route it registered, which is precisely the thing this convention
+avoids. `sso_only` still rides out on `GET /auth/config`, which is how the frontend knows not to
+draw the password form in the first place.
 
 ## Config
 
@@ -102,20 +109,73 @@ Each number is what the apps already do, not a preference:
 **7 days** is the exception, and the only number here that was chosen rather than measured. No
 app has an idle window today, so there was nothing to inherit — see above for why one exists.
 
-### `ClaimsScope` and the silent-deny trap
+### `OIDC_CLAIMS_SCOPE` — roles, and the two ways they go wrong
 
-Claims are **off** unless `ClaimsScope` is set. No app reads claims today, so leaving it unset
-regresses nothing.
+Claims are **off** unless `ClaimsScope` is set, and no app sets it today, so leaving it unset
+regresses nothing. Setting it does three things: the scope is appended to the four `porte` always
+requests, `porte` reads a flat `roles` array off every verified ID token, and the middleware
+attaches those strings to `Identity.Roles` — refreshing them against the IdP through
+`offline_access` whenever the cached copy is older than `ClaimsTTL`.
 
-When it is set, it must name a scope that the Authentik provider actually has attached as a
-property mapping. authentik's own documentation carries the trap: group-based authorization
-needs the scope attached to the provider *and* requested by the client, and **if either half is
-missing the rules silently deny everyone**. A silent deny in the auth path is the worst failure
-mode available, so `porte` verifies at startup that the scope was granted and a `roles` claim
-actually arrived, and refuses to boot naming the missing half.
+The strings are opaque to `porte`. It transports them and keeps them fresh and never assigns them
+meaning: what an `admin` may do is the app's, through `Identity.HasRole`.
+
+Turning it on costs **one query per authenticated request** — the identity row the roles are
+cached on — on top of the session lookup. That is why it is opt-in rather than always-on: an app
+with no roles pays exactly what it pays today.
+
+**The silent-deny trap.** The scope must be attached to the provider's property mappings *and*
+requested by the client, and authentik's own documentation carries the failure: when either half
+is missing the claim simply never arrives, and every rule denies, silently, with no error
+anywhere. A silent deny in the auth path is the worst failure mode available, so `porte` catches
+it in two places, because only half of it is checkable at boot:
+
+- **At startup**, `oidc.New` reads `scopes_supported` from the discovery document and refuses to
+  boot when the configured scope is not among them. A provider that advertises no
+  `scopes_supported` at all is warned about and allowed through — there is nothing to check
+  against, and refusing would break every non-Authentik issuer.
+- **On the first callback**, a granted scope that produced no `roles` claim fails the login with
+  a message saying the provider is missing its scope mapping. The absence is only observable
+  once a token exists, which is why it cannot be a boot check.
+
+**The claim must be filtered per application by the scope mapping.** This is the part that is easy
+to get wrong on the provider side, where `porte` cannot help. A mapping that emits every group a
+user belongs to puts one app's access inside another app's token: Nuage's ID token would name
+`sablier-admin`, and any app that matched loosely, logged the claim, or forwarded it would be
+leaking Sablier's authorization model to Nuage's operators. Emit the roles for *this* application,
+stripped of any app prefix — that is what makes `Identity.HasRole("admin")` an exact comparison
+with nothing to parse, and it is least privilege for free.
 
 The producing half — a small Python scope mapping, parameterised by app slug — lives in the
-`authentik-config` repo next to the existing expression policies.
+`authentik-config` repo next to the existing expression policies. Until it is deployed,
+`ClaimsScope` cannot be enabled against the suite's provider.
+
+## `local.Config`
+
+The local login's policy, separate from `porte.Config` because it is `porte/local`'s and an app
+that never signs anyone in with a password never constructs it.
+
+| Field | Default | What it does |
+|---|---|---|
+| `AllowRegistration` | `false` | Whether `POST /auth/register` is mounted, and whether registration stays open past the first account |
+| `MinPasswordLength` | `12` | A length floor, applied by `Register` and `SetPassword` |
+
+`AllowRegistration` is two rules under one name, and the difference shows only when an app calls
+`Register` from its own handler rather than mounting the route. `Mount` does not register
+`/auth/register` when it is false. `Register` itself, when it is false, still allows the **first**
+account and refuses every later one: locking an empty instance out of itself is not a security
+property, and every app in the suite already carries that exception. Journal forwards the same
+flag to `GET /auth/config` as `allow_registration` through `Deps.ConfigExtra`, which is how its
+frontend knows whether to draw a sign-up link.
+
+`MinPasswordLength` is a length and nothing else. No character classes: they push people towards
+`P@ssw0rd1`, and they buy nothing that length does not.
+
+The argon2id parameters are **not** configurable — 64 MiB, three passes, two lanes. They are
+copied from the apps rather than chosen, so every hash already in a Facile database keeps
+verifying and adopting `porte/local` is a code change rather than a password reset. The PHC
+encoding stores them per hash, so raising the cost later is a change to the constants that
+verifies old hashes at their old settings instead of locking everyone out.
 
 ## Constants
 

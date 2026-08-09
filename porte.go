@@ -31,6 +31,30 @@ import (
 // than leaking sql.ErrNoRows or a GORM error across the boundary.
 var ErrNotFound = errors.New("porte: not found")
 
+// ProviderLocal is the Provider value a password identity is stored under, so
+// that (Provider, Subject) remains the account matching key whether the human
+// signed in with a password or through an identity provider. Subject is the
+// normalised email address.
+//
+// A human may hold a local identity and a federated one at the same time. They
+// are two rows, which is why identities were given their own table in v0.1
+// rather than a column on the user.
+const ProviderLocal = "local"
+
+// The local login's failure modes, as sentinels so a handler can map them to
+// status codes without matching on message text.
+//
+// ErrWrongPassword is deliberately what an unknown address returns too. An
+// error that distinguishes them is an account enumeration oracle, and the
+// timing is equalised for the same reason.
+var (
+	ErrWrongPassword      = errors.New("porte: invalid email or password")
+	ErrEmailTaken         = errors.New("porte: an account with this email already exists")
+	ErrRegistrationClosed = errors.New("porte: registration is disabled")
+	ErrWeakPassword       = errors.New("porte: password is too short")
+	ErrInvalidEmail       = errors.New("porte: a valid email is required")
+)
+
 // ErrCodeConsumed is returned when a login code was already exchanged. It is
 // distinct from ErrNotFound so a replayed code can be logged as an attack
 // rather than as a typo.
@@ -47,6 +71,11 @@ const (
 	RouteLogout            = "/auth/logout"
 	RouteSyncProfile       = "/auth/sync-profile"
 	RouteBackchannelLogout = "/auth/backchannel-logout"
+
+	// The local login's two routes, at the paths every app in the suite
+	// already serves them on.
+	RouteRegister   = "/auth/register"
+	RouteLoginLocal = "/auth/login"
 )
 
 // The login route's query parameters, frozen because six CLIs will spell them.
@@ -244,6 +273,14 @@ func (c Config) Resolved() Config {
 type ConfigResponse struct {
 	SSOOnly     bool `json:"sso_only"`
 	OIDCEnabled bool `json:"oidc_enabled"`
+}
+
+// CredentialsRequest is the body of POST /auth/register and POST /auth/login.
+// Name is ignored by the login.
+type CredentialsRequest struct {
+	Email    string `json:"email"`
+	Name     string `json:"name,omitempty"`
+	Password string `json:"password"`
 }
 
 // ExchangeRequest is the body of POST /auth/oidc/exchange: a CLI trading its

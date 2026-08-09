@@ -3,153 +3,18 @@ package oidc
 import (
 	"context"
 	"log/slog"
-	"net/http"
-	"strings"
-	"time"
 
 	"github.com/FacileStudio/porte"
+	"github.com/FacileStudio/porte/session"
 	"github.com/FacileStudio/tronc/errors"
-	"github.com/FacileStudio/tronc/httpjson"
 )
 
-// touchInterval coalesces last_used_at writes. Recording the exact second of
-// every request would put one UPDATE on the hot path of every authenticated
-// call to buy nothing: the column exists so a user can recognise a session in
-// a list, and a minute of resolution does that.
-const touchInterval = time.Minute
+// Kit implements session.ClaimsSource: the manager owns the credential, and
+// this is the one thing about an identity that only a federated provider can
+// answer for.
+var _ session.ClaimsSource = (*Kit)(nil)
 
-// RequireAuth rejects unauthenticated requests. On success the handler reads
-// the caller with porte.From(r.Context()).
-func (k *Kit) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, err := k.authenticate(w, r)
-		if err != nil {
-			httpjson.WriteError(w, err)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(porte.WithIdentity(r.Context(), identity)))
-	})
-}
-
-// Optional attaches an identity when the request carries a valid one and lets
-// the request through either way. It is for routes that serve both a signed-in
-// and an anonymous caller — a public share link that shows an edit button to
-// its owner.
-func (k *Kit) Optional(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, err := k.authenticate(w, r)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		next.ServeHTTP(w, r.WithContext(porte.WithIdentity(r.Context(), identity)))
-	})
-}
-
-// authenticate resolves the credential on a request.
-//
-// Two transports, and only two: the session cookie and an Authorization
-// bearer. No query parameter is read — a credential in a URL lands in access
-// logs, referrers and browser history, and the two places that genuinely
-// needed one, EventSource and download navigations, are exactly what the
-// cookie transport serves for free.
-func (k *Kit) authenticate(w http.ResponseWriter, r *http.Request) (porte.Identity, error) {
-	token, fromCookie := k.credential(r)
-	if token == "" {
-		return porte.Identity{}, errors.Unauthorized("missing auth")
-	}
-
-	// A cookie is attached by the browser whether or not the page meant to
-	// send it, which is the whole CSRF problem. SameSite=Lax handles the
-	// cross-site form post; this handles the rest, because a browser will
-	// not attach a custom header cross-site without a preflight the app
-	// never answers. Bearer callers are exempt: nothing attaches a header
-	// on their behalf.
-	if fromCookie && mutating(r) && r.Header.Get(porte.CSRFHeaderName) == "" {
-		return porte.Identity{}, errors.Forbidden("missing " + porte.CSRFHeaderName + " header")
-	}
-
-	hash := porte.HashToken(token)
-	session, err := k.deps.Sessions.Find(r.Context(), hash)
-	if err != nil {
-		if isErr(err, porte.ErrNotFound) {
-			if fromCookie {
-				k.clearCookie(w, r, porte.SessionCookieName)
-			}
-			return porte.Identity{}, errors.Unauthorized("invalid session")
-		}
-		return porte.Identity{}, errors.Internal("failed to read the session", err)
-	}
-
-	now := k.now()
-	if session.Expired(now) || k.idledOut(session, fromCookie, now) {
-		if fromCookie {
-			k.clearCookie(w, r, porte.SessionCookieName)
-		}
-		// The row is dead either way, and leaving it costs a lookup on
-		// every replay of a token that will never authenticate again.
-		if err := k.deps.Sessions.Delete(r.Context(), hash); err != nil && !isErr(err, porte.ErrNotFound) {
-			k.logger.Warn("porte: failed to drop a dead session", slog.Any("error", err))
-		}
-		return porte.Identity{}, errors.Unauthorized("session expired")
-	}
-	if now.Sub(session.LastUsedAt) >= touchInterval {
-		if err := k.deps.Sessions.Touch(r.Context(), hash, now); err != nil {
-			k.logger.Warn("porte: failed to record session use", slog.Any("error", err))
-		}
-	}
-
-	identity := porte.Identity{
-		UserID:    session.UserID,
-		SessionID: session.ID,
-	}
-	k.attachClaims(r.Context(), &identity)
-	return identity, nil
-}
-
-// credential returns the token and whether it came from the cookie. Cookie
-// first: a browser that has both is a browser, and the cookie is the transport
-// with the CSRF check behind it.
-func (k *Kit) credential(r *http.Request) (token string, fromCookie bool) {
-	if value, ok := k.readCookie(r, porte.SessionCookieName); ok {
-		return value, true
-	}
-	authorization := r.Header.Get("Authorization")
-	if len(authorization) > 7 && strings.EqualFold(authorization[:7], "bearer ") {
-		return strings.TrimSpace(authorization[7:]), false
-	}
-	return "", false
-}
-
-// idledOut reports whether a browser session has gone unused for longer than
-// the configured idle window. It reads LastUsedAt, which the touch above keeps
-// to within a minute — coarse enough to be cheap, far finer than a window
-// measured in days.
-//
-// The window applies to the cookie transport only. Everything arriving as a
-// bearer is a CLI or an API token, which is idle by design: a deploy script
-// nobody runs for a fortnight, a nightly job. Expiring those would break the
-// one class of credential with no human present to renew it, and it is not
-// where the risk is — the window exists for the browser left signed in on a
-// machine somebody else can reach.
-func (k *Kit) idledOut(session porte.Session, fromCookie bool, now time.Time) bool {
-	idle := k.cfg.IdleTimeout()
-	if !fromCookie || idle <= 0 || session.LastUsedAt.IsZero() {
-		return false
-	}
-	return now.Sub(session.LastUsedAt) >= idle
-}
-
-func mutating(r *http.Request) bool {
-	switch r.Method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return false
-	default:
-		return true
-	}
-}
-
-// attachClaims fills Roles from the stored identity and refreshes them when
+// Attach fills Roles from the stored identity and refreshes them when
 // they have gone stale. It does not fill Email or Name: no store porte reads
 // on this path holds either, and going to the app's user table for them would
 // double the cost of every authenticated request to serve the handlers that
@@ -159,7 +24,7 @@ func mutating(r *http.Request) bool {
 // which no app does today. An app that never sets OIDC_CLAIMS_SCOPE pays
 // exactly one query per authenticated request, the session lookup, which is
 // what it pays now.
-func (k *Kit) attachClaims(ctx context.Context, identity *porte.Identity) {
+func (k *Kit) Attach(ctx context.Context, identity *porte.Identity) {
 	if !k.cfg.ClaimsEnabled() {
 		return
 	}

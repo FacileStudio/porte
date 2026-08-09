@@ -3,6 +3,61 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.0 — 2026-08-09
+
+Local passwords, and the restructuring they forced.
+
+### The session stops belonging to OIDC
+
+v0.1 put session issuance, the cookie, the authenticator and the middleware inside `porte/oidc`,
+because OIDC was all there was. Journal's adoption priced that mistake: an app with its own
+password form could not mint a porte session or set porte's cookie, so half its logins carried an
+HttpOnly cookie and the other half kept a token in `localStorage` — the exact split the cookie
+was adopted to end. Five of the six remaining apps have a password form, so shipping them onto
+v0.1 would have spread it.
+
+`porte/session` is that code, extracted and unchanged in behaviour, plus the three methods v0.1
+was missing: `Issue`, `IssueCookie` and `Clear`. `POST /auth/logout` moves here too, because
+ending a session never was an OIDC concern. `porte/oidc` keeps `RequireAuth`, `Optional` and
+`Mount`, now delegating, and gains `Sessions()`.
+
+**Breaking:** `oidc.Deps.Sessions` is now a `*session.Manager` rather than a
+`porte.SessionStore`, and the app builds the manager. Two managers over one table would each
+keep their own idea of the clock and the cookie, so there is exactly one and both kits share it.
+Mount the manager as well as the kit — the logout route lives on the former now.
+
+### porte/local
+
+Email and password, argon2id, as an identity row under the new `porte.ProviderLocal` keyed on the
+normalised address. It depends on `porte/session` and not on `porte/oidc`: an app that wants only
+passwords must not compile an OIDC client, which is the whole reason the manager was extracted.
+
+The parameters are copied from the apps rather than chosen — 64 MiB, three passes, two lanes, PHC
+encoding — so every hash already in a Facile database keeps verifying. Adopting this is a code
+change, not a password reset.
+
+What is shared is not the flow, which is easy, but its details, which are what drift across six
+copies: the constant-time compare, the equalised timing on an unknown address, the length floor,
+and the refusal to say which half of the pair was wrong. `Register` and `Login` are exported as a
+service, not only as routes, because every Facile app answers `{token, user}` and porte has no
+idea what a user looks like — the app keeps its response shape and porte keeps the credential.
+
+**A human may hold a password identity and a federated one at once, and they are one account.**
+Registering a password against an address that already signed in through the IdP adds a row; it
+does not create a second user and does not disturb the OIDC subject. That is what identities
+having their own table since v0.1 was for.
+
+porte cannot make registration race-free by itself: counting accounts and inserting one must
+happen under a lock on a database porte does not own. `Deps.Count` and `PasswordUserStore` are
+the app's, and every Facile app already takes the advisory lock.
+
+### porte/avatarfs
+
+The filesystem `AvatarStore` five apps have each written, once. Atomic writes, so a concurrent
+read never sees half a file; a key guard, because a store that joins a caller-supplied string
+onto a path is a directory traversal waiting for its second caller; and a handler that serves
+only names `Put` could have written.
+
 ## v0.1.1 — 2026-08-08
 
 What the first adoption found. Journal — the one suite app with no OIDC at all, so the
