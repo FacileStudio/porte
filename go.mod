@@ -3,7 +3,7 @@ module github.com/FacileStudio/porte
 go 1.25.0
 
 require (
-	github.com/FacileStudio/tronc v0.9.0
+	github.com/FacileStudio/tronc v0.10.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
