@@ -3,6 +3,30 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.9 — 2026-08-10
+
+**The CLI loopback redirect can now carry the caller's nonce.** `/auth/oidc?flow=cli&port=N`
+accepts an optional `cli_state`, keeps it in the flow cookie, and echoes it back as `state`
+alongside `code` on the `127.0.0.1` redirect.
+
+Without it a CLI's listener has no way to tell its own callback from one somebody else sent. Any
+local process — or any web page that can reach `127.0.0.1:<port>` — can race an attacker-chosen
+code into the listener before the real one lands, and the CLI will exchange it and store the
+resulting token. `sablier-cli` accepts any callback bearing a `code` today; `casier-cli`, which
+does not use porte, has validated a nonce since it was written. This closes the gap for every
+porte adopter at once.
+
+**The parameter is optional, and that is deliberate, not laziness.** A CLI that predates this
+release sends no nonce and gets a redirect identical to today's. Requiring it server-side would
+hard-abort every installed binary the moment the server deployed — the lockout is a worse outcome
+than the race it prevents, and one the client can close on its own schedule. A CLI that *sends*
+the nonce must *require* it back; that half is the client's, and it may only ship after this
+release is live.
+
+`cli_state` is bounded at 128 characters and restricted to `[A-Za-z0-9-_]`. The value is opaque to
+the server and reflected into a redirect, so the only question worth asking is whether it can stop
+being a nonce and start being a second query parameter or a header.
+
 ## v0.2.8 — 2026-08-10
 
 **Logging out works when the session is already dead.** `POST /auth/logout` moves from
