@@ -102,7 +102,21 @@ func (m *memory) DeleteByID(_ context.Context, userID, sessionID int64) error {
 	return porte.ErrNotFound
 }
 
-func (m *memory) DeleteExpired(context.Context, time.Time) (int64, error) { return 0, nil }
+func (m *memory) DeleteExpired(_ context.Context, now time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var deleted int64
+	for hash, session := range m.sessions {
+		// A nil expiry is a named API token. The real store spares them
+		// and so does this one, or the test would prove nothing.
+		if session.ExpiresAt.IsZero() || !session.ExpiresAt.Before(now) {
+			continue
+		}
+		delete(m.sessions, hash)
+		deleted++
+	}
+	return deleted, nil
+}
 
 func testManager(t *testing.T, store *memory, now time.Time) *Manager {
 	t.Helper()
@@ -704,5 +718,59 @@ func TestListAndRevokeReachTheUsersSessions(t *testing.T) {
 	}
 	if _, err := store.Find(context.Background(), porte.HashToken(interactive)); err != nil {
 		t.Fatal("revoking the API token also ended the interactive session")
+	}
+}
+
+// An app running a cleanup worker should not have to hold the store as well as
+// the manager just to expire rows.
+func TestSweepDeletesExpiredSessionsAndSparesLabelledOnes(t *testing.T) {
+	now := time.Now()
+	store := newMemory()
+	manager := testManager(t, store, now)
+
+	live := issue(t, manager, 7)
+	token, _, err := manager.Issue(context.Background(), 7, "nightly job")
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+
+	// Past the absolute lifetime, so the browser session is expired and the
+	// labelled one — which never gets an expiry — is not.
+	manager.now = func() time.Time { return now.Add(porte.DefaultSessionTTL + time.Hour) }
+	if _, err := manager.Sweep(context.Background()); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+
+	if _, err := store.Find(context.Background(), porte.HashToken(live)); err == nil {
+		t.Error("the expired browser session survived the sweep")
+	}
+	if _, err := store.Find(context.Background(), porte.HashToken(token)); err != nil {
+		t.Error("the sweep took a named API token, which has no expiry to be past")
+	}
+}
+
+// A named API token has no expiry, which is what the store's sweeper, the idle
+// window and every adoption's migration already assumed. Issue used to stamp
+// the 30-day session lifetime onto it, so a token minted in the UI died a month
+// later while a migrated one lived forever.
+func TestANamedTokenIsIssuedWithoutAnExpiry(t *testing.T) {
+	now := time.Now()
+	store := newMemory()
+	manager := testManager(t, store, now)
+
+	_, login, err := manager.Issue(context.Background(), 7, "")
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if login.ExpiresAt.IsZero() {
+		t.Fatal("a browser session was issued with no expiry")
+	}
+
+	_, token, err := manager.Issue(context.Background(), 7, "nightly job")
+	if err != nil {
+		t.Fatalf("Issue: %v", err)
+	}
+	if !token.ExpiresAt.IsZero() {
+		t.Fatalf("a named token was given an expiry (%v), so it dies a month after it is created", token.ExpiresAt)
 	}
 }

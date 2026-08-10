@@ -3,6 +3,31 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.2.10 — 2026-08-10
+
+Two things the Plume adoption found, both in the same corner: what happens to a session over time.
+
+**A named API token is issued without an expiry.** The rest of porte already assumed this — the
+store's sweeper documents *"rows with no expiry are API tokens and are never swept"*, the idle
+window does not apply to the bearer transport, and every adoption migrated its old `api_tokens`
+table across with a null `expires_at`. `Issue` was the one place that disagreed, stamping the
+30-day session lifetime onto labelled rows too. The effect was invisible and dated: a token minted
+through an app's UI died a month later, while a token migrated from the same app's old table lived
+forever, and nobody finds out until a nightly job stops. An app that wants named tokens to expire
+owns that policy; it holds the label.
+
+**`Manager.Sweep` deletes what has expired.** `SessionStore.DeleteExpired` has existed since v0.1
+but only on the store, so an app running an hourly cleanup had to keep a second reference to
+`porte/pg` purely to expire rows. It is on the manager now for the same reason `List` and `Revoke`
+are: an app that holds a Manager should not also have to hold the store, because the whole point
+of the manager is that one thing owns the credential.
+
+**Upgrade note for Courrier and Agenda:** both mint named tokens through `Issue`, so any token
+created there between their adoption and this release carries a 30-day expiry. There are none in
+production yet — both were adopted today — but a fork that has been running longer should clear
+the expiry on its labelled rows:
+`UPDATE porte_sessions SET expires_at = NULL WHERE label <> ''`.
+
 ## v0.2.9 — 2026-08-10
 
 **The CLI loopback redirect can now carry the caller's nonce.** `/auth/oidc?flow=cli&port=N`
