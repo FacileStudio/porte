@@ -120,7 +120,35 @@ func (s *stores) Delete(context.Context, string) error           { return nil }
 func (s *stores) DeleteByUser(context.Context, int64) (int64, error) {
 	return 0, nil
 }
-func (s *stores) DeleteByID(context.Context, int64, int64) error          { return nil }
+
+func (s *stores) DeleteLogins(_ context.Context, userID, except int64) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var deleted int64
+	for hash, sess := range s.sessions {
+		if sess.UserID != userID || sess.Label != "" {
+			continue
+		}
+		if except != 0 && sess.ID == except {
+			continue
+		}
+		delete(s.sessions, hash)
+		deleted++
+	}
+	return deleted, nil
+}
+
+func (s *stores) DeleteByID(_ context.Context, userID, sessionID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, sess := range s.sessions {
+		if sess.UserID == userID && sess.ID == sessionID {
+			delete(s.sessions, hash)
+			return nil
+		}
+	}
+	return porte.ErrNotFound
+}
 func (s *stores) DeleteExpired(context.Context, time.Time) (int64, error) { return 0, nil }
 
 // sessionStore adapts stores to porte.SessionStore, which needs a Find taking a
@@ -188,11 +216,12 @@ func TestRegisterIssuesACookieSessionAndAHashedIdentity(t *testing.T) {
 		t.Fatalf("expected an HttpOnly session cookie carrying the token, got %+v", cookie)
 	}
 
-	// The address is the identity's subject, normalised, and the password
-	// is never at rest in the clear.
-	identity, err := store.Find(context.Background(), porte.ProviderLocal, "someone@facile.studio")
+	if _, err := store.Find(context.Background(), porte.ProviderLocal, "someone@facile.studio"); !stderrors.Is(err, porte.ErrNotFound) {
+		t.Fatalf("the address is still a credential key, which is what v0.3.0 removed: %v", err)
+	}
+	identity, err := store.Find(context.Background(), porte.ProviderLocal, porte.LocalSubject(userID))
 	if err != nil {
-		t.Fatalf("identity not stored under the normalised address: %v", err)
+		t.Fatalf("identity not stored under the account id: %v", err)
 	}
 	if identity.PasswordHash == "" || strings.Contains(identity.PasswordHash, "a-long-enough-password") {
 		t.Fatalf("password is not hashed: %q", identity.PasswordHash)
@@ -368,7 +397,7 @@ func TestSetPasswordIsHowAFederatedAccountGainsAPassword(t *testing.T) {
 		t.Fatalf("seed the federated identity: %v", err)
 	}
 
-	if err := kit.SetPassword(context.Background(), federated, "someone@facile.studio", "a-long-enough-password"); err != nil {
+	if err := kit.SetPassword(context.Background(), federated, "a-long-enough-password"); err != nil {
 		t.Fatalf("SetPassword on a federated account: %v", err)
 	}
 
@@ -414,16 +443,47 @@ func TestAnSSOOnlyAccountCannotBeSignedIntoWithAPassword(t *testing.T) {
 	}
 }
 
-func TestSetPasswordReplacesTheHash(t *testing.T) {
-	kit, _ := testKit(t, true)
+// registered returns a signed-in account and a context carrying the session
+// that signed it in, which is what a settings handler holds.
+func registered(t *testing.T, kit *Kit, store *stores) (int64, context.Context) {
+	t.Helper()
 	w, r := request()
-	userID, _, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "", "a-long-enough-password")
+	userID, token, err := kit.Register(context.Background(), w, r, "someone@facile.studio", "", "a-long-enough-password")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
+	sess, ok := store.FindSession(porte.HashToken(token))
+	if !ok {
+		t.Fatal("register issued no session")
+	}
+	return userID, porte.WithIdentity(context.Background(), porte.Identity{UserID: userID, SessionID: sess.ID})
+}
 
-	if err := kit.SetPassword(context.Background(), userID, "someone@facile.studio", "a-different-long-password"); err != nil {
-		t.Fatalf("set password: %v", err)
+// SetPassword adding a second password to an account that has one would be the
+// confirmation-free change that four adopters shipped. It refuses instead, and
+// that refusal is what makes ChangePassword the only way through.
+func TestSetPasswordRefusesAnAccountThatAlreadyHasOne(t *testing.T) {
+	kit, store := testKit(t, true)
+	userID, _ := registered(t, kit, store)
+
+	err := kit.SetPassword(context.Background(), userID, "a-different-long-password")
+	if !stderrors.Is(err, porte.ErrPasswordSet) {
+		t.Fatalf("SetPassword over an existing password = %v, want ErrPasswordSet", err)
+	}
+
+	w, r := request()
+	if _, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-long-enough-password"); err != nil {
+		t.Fatalf("the refusal changed the password anyway: %v", err)
+	}
+}
+
+func TestChangePasswordReplacesTheHash(t *testing.T) {
+	kit, store := testKit(t, true)
+	userID, ctx := registered(t, kit, store)
+
+	w, r := request()
+	if _, _, err := kit.ChangePassword(ctx, w, r, userID, "a-long-enough-password", "a-different-long-password"); err != nil {
+		t.Fatalf("change password: %v", err)
 	}
 
 	w, r = request()
@@ -433,6 +493,107 @@ func TestSetPasswordReplacesTheHash(t *testing.T) {
 	w, r = request()
 	if _, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-different-long-password"); err != nil {
 		t.Fatalf("the new password does not work: %v", err)
+	}
+}
+
+// The regression this whole version exists for. On v0.2 the credential was
+// keyed on the address, so an app that moved users.email left the password
+// answering to an address its owner no longer had — and every adopter had to
+// remember to re-key porte_identities by hand, which three of eight did not.
+// Now nothing in the credential mentions the address, so moving it is the
+// app's business alone and the login follows for free.
+func TestMovingTheAddressDoesNotBreakThePassword(t *testing.T) {
+	kit, store := testKit(t, true)
+	userID, _ := registered(t, kit, store)
+
+	store.mu.Lock()
+	delete(store.users, "someone@facile.studio")
+	store.users["moved@facile.studio"] = userID
+	store.mu.Unlock()
+
+	w, r := request()
+	signedIn, _, err := kit.Login(context.Background(), w, r, "moved@facile.studio", "a-long-enough-password")
+	if err != nil {
+		t.Fatalf("the password does not follow the account to its new address: %v", err)
+	}
+	if signedIn != userID {
+		t.Fatalf("signed into %d, want %d", signedIn, userID)
+	}
+
+	w, r = request()
+	if _, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-long-enough-password"); err == nil {
+		t.Fatal("the abandoned address still signs in")
+	}
+}
+
+func TestChangePasswordRefusesTheWrongCurrentPassword(t *testing.T) {
+	kit, store := testKit(t, true)
+	userID, ctx := registered(t, kit, store)
+
+	w, r := request()
+	_, _, err := kit.ChangePassword(ctx, w, r, userID, "not-the-current-password", "a-different-long-password")
+	if !stderrors.Is(err, porte.ErrWrongPassword) {
+		t.Fatalf("ChangePassword with the wrong current password = %v, want ErrWrongPassword", err)
+	}
+
+	w, r = request()
+	if _, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-long-enough-password"); err != nil {
+		t.Fatalf("a refused change altered the password: %v", err)
+	}
+}
+
+// An SSO-only account has no current password to confirm, so there is no safe
+// way to let this through: accepting it would be Register's account takeover
+// reached from inside a session instead of outside one.
+func TestChangePasswordRefusesAnAccountWithNoPassword(t *testing.T) {
+	kit, store := testKit(t, true)
+	federated, err := store.CreateFromPassword(context.Background(), "sso@facile.studio", "Someone")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	w, r := request()
+	_, _, err = kit.ChangePassword(context.Background(), w, r, federated, "", "a-long-enough-password")
+	if !stderrors.Is(err, porte.ErrNoPassword) {
+		t.Fatalf("ChangePassword without a password = %v, want ErrNoPassword", err)
+	}
+}
+
+// The rule the vendors agree on: other logins go, the caller keeps working
+// through a rotated token, and a named API token is left alone because it was
+// not minted by the password being replaced.
+func TestChangePasswordEndsOtherLoginsRotatesTheCallerAndSparesNamedTokens(t *testing.T) {
+	kit, store := testKit(t, true)
+	userID, ctx := registered(t, kit, store)
+	caller, _ := porte.From(ctx)
+
+	w, r := request()
+	if _, _, err := kit.Login(context.Background(), w, r, "someone@facile.studio", "a-long-enough-password"); err != nil {
+		t.Fatalf("second login: %v", err)
+	}
+	apiToken, _, err := kit.sessions.Issue(context.Background(), userID, "caldav")
+	if err != nil {
+		t.Fatalf("issue a named token: %v", err)
+	}
+
+	w, r = request()
+	fresh, revoked, err := kit.ChangePassword(ctx, w, r, userID, "a-long-enough-password", "a-different-long-password")
+	if err != nil {
+		t.Fatalf("change password: %v", err)
+	}
+	if revoked != 1 {
+		t.Fatalf("revoked %d other logins, want 1", revoked)
+	}
+	if _, ok := store.FindSession(porte.HashToken(apiToken)); !ok {
+		t.Fatal("the named API token was revoked, which breaks every script holding one")
+	}
+	if _, ok := store.FindSession(porte.HashToken(fresh)); !ok {
+		t.Fatal("the caller was handed a token that does not exist")
+	}
+	for _, sess := range store.sessions {
+		if sess.ID == caller.SessionID {
+			t.Fatal("the caller's original session survived, so the token it was changed with is still valid")
+		}
 	}
 }
 
