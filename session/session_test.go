@@ -78,6 +78,23 @@ func (m *memory) DeleteByUser(_ context.Context, userID int64) (int64, error) {
 	return deleted, nil
 }
 
+func (m *memory) DeleteLogins(_ context.Context, userID, except int64) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var deleted int64
+	for hash, session := range m.sessions {
+		if session.UserID != userID || session.Label != "" {
+			continue
+		}
+		if except != 0 && session.ID == except {
+			continue
+		}
+		delete(m.sessions, hash)
+		deleted++
+	}
+	return deleted, nil
+}
+
 func (m *memory) ListByUser(_ context.Context, userID int64) ([]porte.Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

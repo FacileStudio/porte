@@ -687,3 +687,48 @@ func TestPasswordUserStore(t *testing.T) {
 		t.Fatalf("the password hash did not round trip: %q", local.PasswordHash)
 	}
 }
+
+// The v0.3.0 migration, which is the only statement in Schema that touches
+// existing credential rows. It runs on every boot, so it has to be idempotent
+// as well as correct, and it has to leave federated identities alone — their
+// subject is the IdP's and moving it would unlink every SSO account at once.
+func TestSchemaRekeysLocalIdentitiesOntoTheAccountID(t *testing.T) {
+	store, db := open(t)
+	ctx := context.Background()
+
+	userID, err := store.Users().UpsertFromOIDC(ctx, claims("sso-subject", "camille@facile.studio", true))
+	if err != nil {
+		t.Fatalf("seed the user: %v", err)
+	}
+	if err := store.Identities().Save(ctx, porte.StoredIdentity{
+		UserID: userID, Provider: porte.ProviderLocal,
+		Subject: "camille@facile.studio", PasswordHash: "argon2-hash",
+	}); err != nil {
+		t.Fatalf("seed a v0.2 email-keyed identity: %v", err)
+	}
+	if err := store.Identities().Save(ctx, porte.StoredIdentity{
+		UserID: userID, Provider: "https://sso.test", Subject: "sso-subject",
+	}); err != nil {
+		t.Fatalf("seed the federated identity: %v", err)
+	}
+
+	for attempt := range 2 {
+		if err := pg.EnsureSchema(ctx, db); err != nil {
+			t.Fatalf("migration run %d: %v", attempt+1, err)
+		}
+
+		moved, err := store.Identities().Find(ctx, porte.ProviderLocal, porte.LocalSubject(userID))
+		if err != nil {
+			t.Fatalf("run %d: the password is not keyed on the account id: %v", attempt+1, err)
+		}
+		if moved.PasswordHash != "argon2-hash" {
+			t.Fatalf("run %d: the migration lost the hash: %q", attempt+1, moved.PasswordHash)
+		}
+		if _, err := store.Identities().Find(ctx, porte.ProviderLocal, "camille@facile.studio"); !stderrors.Is(err, porte.ErrNotFound) {
+			t.Fatalf("run %d: the address is still a credential key: %v", attempt+1, err)
+		}
+		if _, err := store.Identities().Find(ctx, "https://sso.test", "sso-subject"); err != nil {
+			t.Fatalf("run %d: the migration moved a federated subject: %v", attempt+1, err)
+		}
+	}
+}

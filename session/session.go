@@ -256,6 +256,25 @@ func (m *Manager) RevokeUser(ctx context.Context, userID int64) (int64, error) {
 	return m.store.DeleteByUser(ctx, userID)
 }
 
+// RevokeLogins ends a user's logins, spares their named API tokens, and spares
+// the session id given as except. It returns how many went.
+//
+// This is the credential-change revocation, and RevokeUser is the compromise
+// one. The distinction is deliberate: OWASP ASVS asks an application to offer
+// termination of all *other* sessions after a password change (v4 §3.3.3, v5
+// §7.4.3) and no control at any level requires ending the one making the
+// request. Nothing in ASVS, NIST SP 800-63B-4 or the OWASP cheat sheets says
+// anything at all about long-lived API tokens here, so sparing them is porte's
+// decision rather than a standard's: a named token was created deliberately
+// from an authenticated session, is listed in the account screen and is
+// revocable on its own, and ending it would mean a routine password rotation
+// silently stops the CalDAV client on somebody's phone.
+//
+// An app that means "everything, now" still has RevokeUser.
+func (m *Manager) RevokeLogins(ctx context.Context, userID, except int64) (int64, error) {
+	return m.store.DeleteLogins(ctx, userID, except)
+}
+
 // RequireAuth rejects unauthenticated requests. On success the handler reads
 // the caller with porte.From(r.Context()).
 func (m *Manager) RequireAuth(next http.Handler) http.Handler {

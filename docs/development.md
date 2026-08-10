@@ -98,7 +98,7 @@ pg/            the identity tables and the four stores over them
 docs/          Configuration, development, API
 ```
 
-`porte/espace` (v0.3) arrives the same way, as a subpackage sharing this repo's tags — the
+`porte/espace` (v0.4) arrives the same way, as a subpackage sharing this repo's tags — the
 pattern `tronc/migrate`, `tronc/testdb` and `caisse/pg` already use. An app that does not need
 spaces simply does not import `espace`.
 

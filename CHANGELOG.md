@@ -3,6 +3,92 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.3.0 — 2026-08-10
+
+**A password identity is keyed on the account id now, not on the email address.** This is the
+version's whole point; everything else in it follows from the same mistake.
+
+`porte` already knew the rule. SPEC §3 has said since 2026-08-07 that OIDC account matching keys
+on `(provider, subject)` and **never on email**, because the address is mutable — an email change
+silently orphans the account. That rule was applied to federated identities and broken for
+`porte`'s own local ones, where `subject` was the normalised address. OpenID Connect Core §5.7 is
+explicit: *"other Claims such as `email`, `phone_number`, `preferred_username`, and `name` MUST NOT
+be used as unique identifiers for the End-User."* Every mature implementation agrees — Keycloak's
+`credential` table keys on `user_id`, Supabase sets `identities.provider_id` to the user's uuid for
+the email provider, better-auth sets `account.accountId` equal to `userId` for credential accounts,
+Auth0 documents `user_id` as "unique and immutable".
+
+What the mutable key cost, measured across the eight adopters rather than imagined:
+
+- **Five apps wrote the same `UPDATE porte_identities SET subject = ?` by hand**, because the
+  contract offered no way to re-key — there is no delete and no update on `IdentityStore`. Copying
+  a raw statement against another package's table into five repos is the symptom; the missing
+  operation was the disease.
+- **Sablier did not write it.** Changing an address there moved `users.email` and left the
+  credential behind, so the old address kept signing in and the new one never did. Worse together
+  with a password change: `Save` upserts on `(provider, subject)`, so setting a password on the new
+  address **inserted a second identity** and left the first intact with its old hash — two working
+  passwords on one account, one of them on an address the human no longer owned.
+
+Keying on the id deletes the failure class instead of defending against it. Changing an address is
+now one `UPDATE` on the app's own user row, and `subject` being half the primary key means "one
+password per account" is enforced by the table rather than by a check somebody has to remember.
+
+**Migration.** `pg.Schema` carries `UPDATE porte_identities SET subject = user_id::text WHERE
+provider = 'local' AND subject <> user_id::text`. It is idempotent, it leaves federated subjects
+alone, and it is allowed to fail: the only way it can is an account holding two password
+identities, which the old key made reachable and which nothing should paper over by picking one.
+Refusing to migrate is the right answer to ambiguous credentials. Across the fleet on 2026-08-10
+the audit found **four local identities in total** — Journal 1, Boutique 3, and zero in the other
+six — which is why this landed now rather than later. It will never be cheaper.
+
+### `ChangePassword`, and why `SetPassword` refuses
+
+**Four of eight adopters shipped a settings screen that set a new password without asking for the
+old one.** Sablier, Courrier, Agenda and Boutique took `PATCH /users/me {"password": …}` and passed
+it straight to `SetPassword`. OWASP ASVS puts the confirmation at L1 (v4 §2.1.6, v5 §6.2.3): *"password
+change functionality requires the user's current and new password."* One method served both "add a
+first password" and "replace an existing one", so the check was the app's to remember, and half of
+them did not.
+
+So the two operations are two methods now. `SetPassword(ctx, userID, password)` gives a first
+password to an account that has none and returns `ErrPasswordSet` otherwise — it takes no address
+any more, because there is no longer an address in the key. `ChangePassword(ctx, w, r, userID,
+current, next)` is the replace path, and it cannot be called without the current password.
+
+`ChangePassword` also ends the account's **other** logins, rotates the caller's own session, and
+leaves named API tokens alone. Each third of that has a reason, and they are not the same reason:
+
+- **Other logins go.** ASVS asks an application to *offer* termination of all other sessions after
+  a password change (v4 §3.3.3, v5 §7.4.3, L2). Doing it rather than offering it is stronger than
+  the control and matches Google and Entra.
+- **The caller is rotated, not dropped.** No ASVS control covers this; the OWASP Session Management
+  Cheat Sheet does, naming password changes specifically and requiring the previous id to be
+  destroyed. The old token is dead before the call returns and the new one is already in the
+  cookie, so the screen that made the change keeps working. No vendor documents logging you out of
+  the browser you just used, and all eight say "all **other** sessions".
+- **Named API tokens survive**, and this one is porte's decision rather than a standard's — ASVS,
+  NIST SP 800-63B-4 and the cheat sheets are all silent on long-lived credentials here. The
+  industry is not: GitHub's exhaustive list of revocation triggers omits password change, AWS
+  states access keys keep working through an expired password, Entra exempts app passwords,
+  Stripe's keys are account-scoped. Revoking them would put `porte` outside all eight products
+  surveyed, and would mean a routine rotation silently stops the CalDAV client on somebody's phone.
+  `RevokeUser` remains the call for a leak, where the answer really is everything.
+
+### Breaking
+
+- `porte.IdentityStore` gains nothing, but **the meaning of `Subject` changed** for
+  `provider = 'local'`: it is `porte.LocalSubject(userID)`, never an address.
+- `porte.SessionStore` gains `DeleteLogins(ctx, userID, except)`. Any custom implementation must
+  add it; no adopter has one — all eight use `porte/pg`.
+- `local.Kit.SetPassword` loses its `email` parameter and now refuses an account that already has a
+  password.
+- New sentinels `porte.ErrNoPassword` and `porte.ErrPasswordSet`.
+
+**Adopting apps must delete their own re-keying SQL.** Left in place it is harmless — it updates
+zero rows, since no `subject` matches an address any more — but it is a statement against a table
+`porte` owns, describing a design that no longer exists.
+
 ## v0.2.10 — 2026-08-10
 
 Two things the Plume adoption found, both in the same corner: what happens to a session over time.

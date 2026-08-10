@@ -72,8 +72,14 @@ concern and never was — gating it behind a provider cost the first adopter a s
 answering a second response shape.
 
 `ProviderLocal` (`"local"`) is the `Provider` value a password identity is stored under, keyed on
-the normalised email as its `Subject`. It keeps `(Provider, Subject)` the account matching key
-whichever way the human signed in.
+`LocalSubject(userID)` — the account id as a string — as its `Subject`. It keeps `(Provider,
+Subject)` the account matching key whichever way the human signed in.
+
+**It was the normalised email until v0.3.0, and that was a bug.** The address is mutable, so the
+credential key moved whenever somebody edited their profile; OpenID Connect Core §5.7 forbids using
+`email` as a unique identifier for exactly this reason, and `porte` already applied that rule to
+federated identities while breaking it for its own. See the changelog for what it cost across the
+eight adopters.
 
 ## Configuration
 
@@ -198,7 +204,7 @@ has no key management to offer.
 One row of `porte_identities`: a single way one human authenticates. A human may hold several —
 an OIDC subject and a local password are two rows, not two columns, which is what made v0.2 a
 new package rather than a schema break. `PasswordHash` is empty on a federated row and carries a
-PHC-encoded argon2id string on a local one; `Subject` is the normalised email there.
+PHC-encoded argon2id string on a local one; `Subject` is `LocalSubject(userID)` there.
 
 `RolesStale(now, ttl) bool` reports whether the cached claim should be refreshed. A claim that
 was **never** synced is stale: a missing refresh must not read as fresh.
@@ -558,7 +564,9 @@ login that answers 500 on the first sign-up is worse than one that refuses to bo
 | `Mount(chi.Router)` | `POST /auth/login`, plus `POST /auth/register` when `AllowRegistration` |
 | `Register(ctx, w, r, email, name, password) (userID int64, token string, err error)` | Creates the account, sets the cookie, returns the bearer token |
 | `Login(ctx, w, r, email, password) (userID int64, token string, err error)` | Verifies and issues |
-| `SetPassword(ctx, userID, email, password) error` | Adds or replaces a password on an existing account |
+| `SetPassword(ctx, userID, password) error` | Gives a first password to an account that has none; `ErrPasswordSet` if it already has one |
+| `ChangePassword(ctx, w, r, userID, current, next) (token string, revoked int64, err error)` | Replaces a password after confirming the current one, ends the other logins, rotates the caller's session |
+| `Verify(ctx, email, password) (userID int64, err error)` | Checks a password and issues nothing |
 
 **`Register` and `Login` are exported as a service, not only as routes**, and that is the
 supported path for every app that already answers `{token, user}` from its login. `porte` has no
@@ -566,11 +574,20 @@ idea what a user looks like, so the app keeps its response shape and `porte` kee
 `Mount` exists for the app that has no opinion; it answers `ExchangeResponse` with
 `Cache-Control: no-store`, 201 on a register and 200 on a login.
 
-`SetPassword` is what an account settings screen calls, and what an app calls to give a
-federated-only user a password.
+`SetPassword` is what an app calls to give a federated-only user a password. **An account settings
+screen calls `ChangePassword`**, which is a separate method because it must not be possible to
+reach the replace path without the current password — ASVS puts that at L1 (v4 §2.1.6, v5 §6.2.3),
+and four of `porte`'s eight adopters shipped a settings screen that skipped it while one method
+served both cases.
 
-The email is lowercased, trimmed and parsed before anything else, and the normalised form is the
-identity's `Subject` — so two spellings of one address cannot become two accounts.
+`ChangePassword` ends the account's other logins, spares its named API tokens, and rotates the
+caller's own session rather than dropping it, so the screen making the change keeps working. The
+reasoning for each of those three, and the standards and vendor behaviour behind them, is in the
+v0.3.0 changelog entry.
+
+The email is lowercased, trimmed and parsed before anything else, and the normalised form is what
+the account is looked up by — so two spellings of one address cannot become two accounts. It is not
+what the credential is keyed on; see `LocalSubject`.
 
 **A human may hold a password identity and a federated one at once, and they are one account.**
 `Register` against an address that already signed in through the IdP looks the user up by email,

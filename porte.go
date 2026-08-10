@@ -55,6 +55,20 @@ var (
 	ErrInvalidEmail       = errors.New("porte: a valid email is required")
 )
 
+// ErrNoPassword is returned when a change is asked of an account that has no
+// password to change. It is not an enumeration risk the way ErrWrongPassword
+// would be: reaching it takes an authenticated session for the account in
+// question, so the caller already knows whose account it is.
+var ErrNoPassword = errors.New("porte: this account has no password")
+
+// ErrPasswordSet is returned when a first password is offered to an account
+// that already has one. The two operations are deliberately separate calls:
+// setting a first password cannot ask for the current one, so letting one
+// method do both would make the confirmation optional at exactly the moment it
+// matters — which is how four of porte's adopters shipped a password change
+// that never asked for the old password.
+var ErrPasswordSet = errors.New("porte: this account already has a password")
+
 // ErrCodeConsumed is returned when a login code was already exchanged. It is
 // distinct from ErrNotFound so a replayed code can be logged as an attack
 // rather than as a typo.
