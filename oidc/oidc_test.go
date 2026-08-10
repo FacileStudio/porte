@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -151,7 +152,7 @@ func TestALoginCodeWorksOnceAndOnlyOnce(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/cb", nil)
-	kit.issueLoginCode(recorder, request, 7, "")
+	kit.issueLoginCode(recorder, request, 7, "", "")
 
 	code := extractCode(t, recorder.Body.String())
 
@@ -185,7 +186,7 @@ func TestAnExpiredLoginCodeIsRefused(t *testing.T) {
 	kit := testKit(t, store, now)
 
 	recorder := httptest.NewRecorder()
-	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "")
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "", "")
 	code := extractCode(t, recorder.Body.String())
 
 	kit.now = func() time.Time { return now.Add(porte.DefaultLoginCodeTTL + time.Second) }
@@ -373,5 +374,75 @@ func TestNewRefusesAKitAndManagerBuiltFromDifferentConfigs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "OIDC_SUCCESS_URL") {
 		t.Fatalf("the error does not name the variable that disagrees: %v", err)
+	}
+}
+
+// A CLI's nonce must come back on the loopback redirect, or its listener has
+// no way to tell its own callback from one a local process raced in first.
+func TestLoopbackRedirectEchoesTheCLINonce(t *testing.T) {
+	kit := testKit(t, newMemory(), time.Now())
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/cb", nil)
+	kit.issueLoginCode(recorder, request, 7, "51234", "deadbeef")
+
+	location := recorder.Header().Get("Location")
+	target, err := url.Parse(location)
+	if err != nil {
+		t.Fatalf("the redirect is not a URL: %v", err)
+	}
+	if target.Hostname() != "127.0.0.1" || target.Port() != "51234" {
+		t.Fatalf("redirect went to %s, want loopback on 51234", location)
+	}
+	if got := target.Query().Get("state"); got != "deadbeef" {
+		t.Fatalf("state is %q, want the nonce back", got)
+	}
+	if target.Query().Get("code") == "" {
+		t.Fatal("the redirect carries no code")
+	}
+}
+
+// A CLI that predates the nonce must keep working, or deploying this locks out
+// every binary already installed.
+func TestLoopbackRedirectOmitsStateWhenNoNonceWasSent(t *testing.T) {
+	kit := testKit(t, newMemory(), time.Now())
+
+	recorder := httptest.NewRecorder()
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "51234", "")
+
+	target, err := url.Parse(recorder.Header().Get("Location"))
+	if err != nil {
+		t.Fatalf("the redirect is not a URL: %v", err)
+	}
+	if _, present := target.Query()["state"]; present {
+		t.Fatal("no nonce was sent, so none may be echoed")
+	}
+	if target.Query().Get("code") == "" {
+		t.Fatal("the redirect carries no code")
+	}
+}
+
+func TestCLIStateRejectsAnythingThatIsNotANonce(t *testing.T) {
+	cases := map[string]string{
+		"plain":       "deadbeef",
+		"mixed":       "aZ09-_",
+		"empty":       "",
+		"ampersand":   "abc&code=stolen",
+		"newline":     "abc\r\nX-Injected: 1",
+		"space":       "abc def",
+		"percent":     "abc%26",
+		"overlong":    strings.Repeat("a", 129),
+		"at the edge": strings.Repeat("a", 128),
+	}
+	valid := map[string]bool{"plain": true, "mixed": true, "at the edge": true}
+
+	for name, input := range cases {
+		got := cliState(input)
+		if valid[name] && got != input {
+			t.Errorf("%s: %q was rejected", name, input)
+		}
+		if !valid[name] && got != "" {
+			t.Errorf("%s: %q was accepted as %q", name, input, got)
+		}
 	}
 }
