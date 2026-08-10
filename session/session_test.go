@@ -493,6 +493,61 @@ func TestLogoutIsMountedWithoutAnyProvider(t *testing.T) {
 	}
 }
 
+// Logging out has to work in the state that makes somebody want to: a session
+// the server has already stopped honouring, in a browser that still holds the
+// cookie. Behind RequireAuth that request 401s and the cookie survives, so the
+// user presses a button that fails while the stale cookie keeps being sent.
+func TestLogoutClearsAStaleCookieInsteadOfRefusingIt(t *testing.T) {
+	store := newMemory()
+	manager := testManager(t, store, time.Now())
+
+	router := chi.NewRouter()
+	manager.Mount(router)
+
+	request := httptest.NewRequest(http.MethodPost, porte.RouteLogout, nil)
+	request.AddCookie(sessionCookie(manager, "a-session-that-no-longer-exists"))
+	request.Header.Set(porte.CSRFHeaderName, "1")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("logout with a stale cookie returned %d: %s", recorder.Code, recorder.Body)
+	}
+	var cleared bool
+	for _, cookie := range recorder.Result().Cookies() {
+		if strings.Contains(cookie.Name, porte.SessionCookieName) && cookie.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Fatal("the stale cookie was left in the browser, so the next request still sends it")
+	}
+}
+
+// Widening the route must not drop the protection it had. Optional swallows
+// the CSRF refusal Authenticate raises, so the check is the handler's own —
+// without it a cross-site POST logs the victim out.
+func TestLogoutStillRefusesACookieWithoutTheCSRFHeader(t *testing.T) {
+	store := newMemory()
+	manager := testManager(t, store, time.Now())
+	token := issue(t, manager, 7)
+
+	router := chi.NewRouter()
+	manager.Mount(router)
+
+	request := httptest.NewRequest(http.MethodPost, porte.RouteLogout, nil)
+	request.AddCookie(sessionCookie(manager, token))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("a forged logout returned %d, want 403", recorder.Code)
+	}
+	if _, err := store.Find(context.Background(), porte.HashToken(token)); err != nil {
+		t.Fatal("a forged logout ended the session")
+	}
+}
+
 // Optional serves a route that has both a signed-in and an anonymous caller —
 // a public share link that shows an edit button to its owner.
 func TestOptionalAttachesAnIdentityWhenThereIsOneAndLetsAnonymousThrough(t *testing.T) {
