@@ -4,7 +4,7 @@ The authentication kit for the [Facile Suite](https://facile.studio). The OIDC p
 Facile API needs and none of them should be re-writing.
 
 **In production, in two apps.** [Journal](https://github.com/FacileStudio/Journal) and
-[Sablier](https://github.com/FacileStudio/Sablier) run on it against the suite's Authentik:
+Sablier run on it against the suite's Authentik:
 discovery, PKCE, nonce, callback, upsert and the session cookie are walked by real users, not
 only by tests — and since v0.2 their password logins land in the same session, the same cookie
 and the same logout as their federated ones. Journal is also the first app running with
