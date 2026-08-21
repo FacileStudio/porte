@@ -189,7 +189,7 @@ drift is a security bug rather than cosmetics. If spaces ever grow a real produc
 email invitations, quotas, per-space billing — that is when it earns its own repo.
 
 `FacileID` carries a unique index, which only makes sense if the same space is meant to exist
-in several apps. Confirmed intent: **sync via Nook later**, so the whole park's spaces work
+in several apps. Confirmed intent: **sync via Antenne later**, so the whole park's spaces work
 together. Treat `FacileID` as the sync key from the start, even though the sync comes later.
 Check first: the `enveloppe` contract keys on `actor_email` and will need to carry a *space*
 identity — that is a change to `enveloppe`, to make before `porte/espace`, not during.
@@ -343,7 +343,7 @@ Three mechanisms, and v0.1 ships the first two:
    deletes that user's sessions. This is the security-critical case — deactivation, admin
    session termination — and per authentik's own documentation it is the only mechanism that
    covers it. One endpoint here, one URL per application there.
-3. **Nook**, later. A group-change event invalidating cached claims is the suite-native version
+3. **Antenne**, later. A group-change event invalidating cached claims is the suite-native version
    and composes with P4, but 1 and 2 cover the need; do not build it for this.
 
 Because sessions are opaque and claims are stored server-side (`porte_identities.claims`, JSONB),
