@@ -3,6 +3,23 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## [Unreleased]
+
+### Changed
+
+- **`SPEC.md` calls the event bus Antenne.** Two forward-looking passages still named Nook: §4's
+  `porte/espace` scope, where `FacileID` is the key a space syncs on across apps, and §5c's third
+  freshness mechanism, the group-change event that invalidates cached claims. Same bus, renamed.
+  Neither plan changed, and neither is built yet.
+
+  It is recorded here rather than pushed silently because `SPEC.md` is the contract an adopter
+  reads before building against porte, and Agenda, Courrier and Sablier vendor it — Go vendoring
+  carries a module's markdown too. Their copies keep the old name until each re-vendors, which is
+  the place to fix them; do not hand-edit a file under `vendor/`.
+
+No Go code changed in this range. The filet configuration and its CI workflow landed here too and
+are deliberately unlisted: they gate this repository and ship nothing an adopter consumes.
+
 ## v0.3.0 — 2026-08-10
 
 **A password identity is keyed on the account id now, not on the email address.** This is the
