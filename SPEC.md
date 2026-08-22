@@ -665,7 +665,8 @@ Same as `tronc` and `caisse`:
 
 - `scripts/check.sh` — gofmt, vet, `go test -race`, golangci-lint. Depends on nothing but a
   `go`, and is not invoked through mise on purpose.
-- `.githooks/pre-push` runs it. Enable with `mise run hooks`.
+- lefthook runs it as a `pre-push` job, and `mise install` installs the hooks. `lefthook.yml`
+  also pulls the shared conventional-commit check from `FacileStudio/hooks`, pinned by tag.
 - CI on Go 1.25 exactly — the floor the module documents — plus the PostgreSQL 16 service that
   `porte/pg`'s tests need. Both live in `.github/workflows/ci.yml`, with
   `PORTE_TEST_DATABASE_URL` set so the pg tests never skip there.

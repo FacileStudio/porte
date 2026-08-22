@@ -32,7 +32,6 @@ through mise internally, on purpose — a git hook must not require a task runne
 ```sh
 mise run test      # tests only
 mise run format    # rewrite formatting in place
-mise run hooks     # enable the tracked pre-push hook in this clone
 ```
 
 `scripts/check.sh` reports; it never rewrites a file. Use `mise run format` for that.
@@ -44,12 +43,13 @@ something broken.
 
 ## Hooks
 
-```sh
-mise run hooks
-```
+`mise install` wires the git hooks through lefthook, so the clone sequence in Setup above is
+all a fresh checkout needs.
 
-Sets `core.hooksPath` to `.githooks`, whose `pre-push` runs the gate. Hooks are opt-in per
-clone — a tracked hook that installs itself is a hook that runs code you did not read.
+`lefthook.yml` pulls the shared conventional-commit check from
+[FacileStudio/hooks](https://github.com/FacileStudio/hooks), pinned by tag, so a commit
+subject has to read `type(scope): summary`. `scripts/check.sh` is unchanged and still the
+gate, now run as the local `pre-push` job.
 
 Bypass once with `git push --no-verify`.
 
