@@ -9,6 +9,7 @@ import (
 	"io"
 	"math/big"
 	"net/http"
+	"strings"
 )
 
 // audience is the aud claim, which OIDC permits as either one string or an
@@ -69,6 +70,27 @@ func (k jwk) rsaKey() *rsa.PublicKey {
 		return nil
 	}
 	return &rsa.PublicKey{N: new(big.Int).SetBytes(n), E: exponent}
+}
+
+// discover fetches the discovery document, checks that it speaks for the
+// configured issuer, and returns the jwks_uri to cache.
+func (v *Verifier) discover(ctx context.Context) (string, error) {
+	discoveryURL := strings.TrimSuffix(v.cfg.Issuer, "/") + "/.well-known/openid-configuration"
+	var document struct {
+		Issuer  string `json:"issuer"`
+		JWKSURI string `json:"jwks_uri"`
+	}
+	if err := v.get(ctx, discoveryURL, &document); err != nil {
+		return "", fmt.Errorf("porte/jwt: discovery failed for %s: %w", v.cfg.Issuer, err)
+	}
+	if document.Issuer != "" && document.Issuer != v.cfg.Issuer {
+		return "", fmt.Errorf("porte/jwt: %s publishes issuer %q, not %q",
+			discoveryURL, document.Issuer, v.cfg.Issuer)
+	}
+	if document.JWKSURI == "" {
+		return "", fmt.Errorf("porte/jwt: %s advertises no jwks_uri", v.cfg.Issuer)
+	}
+	return document.JWKSURI, nil
 }
 
 // get fetches url and decodes the JSON body, capped at a mebibyte — a

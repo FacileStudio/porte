@@ -24,7 +24,14 @@ import (
 // that does not care. They are here because a UserStore fills them in tests
 // and because v0.2's local login has them in hand at the moment it issues.
 type Identity struct {
-	UserID        int64
+	UserID int64
+
+	// Subject is the identity provider's identifier for this principal —
+	// the sub claim, or the provider's subject for a machine token. Empty
+	// on a cookie-authenticated human, where UserID is the matching key;
+	// set on a verified bearer, where there is no user row and (issuer,
+	// subject) is the only identity there is.
+	Subject       string
 	Email         string
 	EmailVerified bool
 	Name          string

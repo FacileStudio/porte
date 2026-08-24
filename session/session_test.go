@@ -813,7 +813,7 @@ func TestAJWTShapedBearerGoesToTheTokenVerifier(t *testing.T) {
 	store := newMemory()
 	manager := testManager(t, store, now)
 	verifier := &stubJWT{accepted: map[string]porte.Identity{
-		"aaa.bbb.ccc": {UserID: 0, Email: "ci@facile.studio"},
+		"aaa.bbb.ccc": {Subject: "suite-ci", Email: "ci@facile.studio"},
 	}}
 	manager.WithJWT(verifier)
 
@@ -826,6 +826,13 @@ func TestAJWTShapedBearerGoesToTheTokenVerifier(t *testing.T) {
 	}
 	if verifier.verifies != 1 {
 		t.Fatalf("the verifier was consulted %d times, want 1", verifier.verifies)
+	}
+	var identity porte.Identity
+	if err := json.Unmarshal(recorder.Body.Bytes(), &identity); err != nil {
+		t.Fatalf("decoding the identity: %v", err)
+	}
+	if identity.Subject != "suite-ci" {
+		t.Errorf("subject = %q, want suite-ci — a machine authenticates as its subject or as nothing", identity.Subject)
 	}
 }
 

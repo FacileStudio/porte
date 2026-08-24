@@ -34,38 +34,20 @@ func TestAVerifierConsumesALiveRegistreToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetching discovery from %s: %v", issuer, err)
 	}
-	form := url.Values{
-		"grant_type":    {"client_credentials"},
-		"client_id":     {clientID},
-		"client_secret": {clientSecret},
-	}
-	response, err := http.PostForm(discovery.TokenEndpoint, form)
-	if err != nil {
-		t.Fatalf("requesting a token: %v", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("token endpoint = %d", response.StatusCode)
-	}
-	var granted struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.NewDecoder(response.Body).Decode(&granted); err != nil {
-		t.Fatalf("decoding the grant: %v", err)
-	}
+	accessToken := mintClientCredentials(t, discovery, clientID, clientSecret)
 
 	verifier, err := New(context.Background(), Config{Issuer: issuer, Audience: "courrier"})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	claims, err := verifier.Verify(context.Background(), granted.AccessToken)
+	claims, err := verifier.Verify(context.Background(), accessToken)
 	if err != nil {
 		t.Fatalf("Verify refused a freshly minted token: %v", err)
 	}
 	if claims.Subject == "" {
 		t.Error("identity carries no subject")
 	}
-	if _, err := verifier.Verify(context.Background(), granted.AccessToken+".tampered"); err == nil {
+	if _, err := verifier.Verify(context.Background(), accessToken+".tampered"); err == nil {
 		t.Error("a tampered token verified")
 	}
 }
@@ -84,4 +66,30 @@ func fetchDiscoveryDoc(issuer string) (discoveryDoc, error) {
 	var doc discoveryDoc
 	err = json.NewDecoder(response.Body).Decode(&doc)
 	return doc, err
+}
+
+// mintClientCredentials exchanges the credentials for an access token at the
+// endpoint the discovery document advertises.
+func mintClientCredentials(t *testing.T, doc discoveryDoc, clientID, clientSecret string) string {
+	t.Helper()
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+	}
+	response, err := http.PostForm(doc.TokenEndpoint, form)
+	if err != nil {
+		t.Fatalf("requesting a token: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("token endpoint = %d", response.StatusCode)
+	}
+	var granted struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&granted); err != nil {
+		t.Fatalf("decoding the grant: %v", err)
+	}
+	return granted.AccessToken
 }

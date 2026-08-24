@@ -245,7 +245,7 @@ func (m machineVerifier) VerifyJWT(ctx context.Context, rawToken string) (porte.
 	if err != nil {
 		return porte.Identity{}, err
 	}
-	return porte.Identity{Email: claims.Email, Name: claims.Name, Roles: claims.Roles}, nil
+	return porte.Identity{Subject: claims.Subject, Email: claims.Email, Name: claims.Name, Roles: claims.Roles}, nil
 }
 
 func toTokenSet(token *oauth2.Token) porte.TokenSet {

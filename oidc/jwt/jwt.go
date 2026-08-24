@@ -110,18 +110,11 @@ func New(ctx context.Context, cfg Config) (*Verifier, error) {
 	}
 	v := &Verifier{cfg: cfg, client: client, now: now}
 
-	discoveryURL := strings.TrimSuffix(cfg.Issuer, "/") + "/.well-known/openid-configuration"
-	var document struct {
-		Issuer  string `json:"issuer"`
-		JWKSURI string `json:"jwks_uri"`
+	jwks, err := v.discover(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if err := v.get(ctx, discoveryURL, &document); err != nil {
-		return nil, fmt.Errorf("porte/jwt: discovery failed for %s: %w", cfg.Issuer, err)
-	}
-	if document.JWKSURI == "" {
-		return nil, fmt.Errorf("porte/jwt: %s advertises no jwks_uri", cfg.Issuer)
-	}
-	v.jwks = document.JWKSURI
+	v.jwks = jwks
 	return v, nil
 }
 
@@ -195,6 +188,12 @@ func (v *Verifier) verifySignature(ctx context.Context, parts []string) error {
 // key returns the signing key for kid, refreshing the cache when it is stale
 // and once more when the kid is simply unknown — a key rotated in since the
 // last fetch must not wait out the TTL.
+//
+// The lock is held across the fetch, so verifications serialize while the
+// provider is slow and each queued caller retries the fetch on its own; a
+// provider outage is a latency wall, never a fallback to stale keys. That is
+// deliberate — fail closed — and worth revisiting only with singleflight or
+// serve-stale, not by dropping the guard.
 func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
