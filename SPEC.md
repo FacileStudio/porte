@@ -670,7 +670,7 @@ Same as `tronc` and `caisse`:
 - CI on Go 1.25 exactly — the floor the module documents — plus the PostgreSQL 16 service that
   `porte/pg`'s tests need. Both live in `.github/workflows/ci.yml`, with
   `PORTE_TEST_DATABASE_URL` set so the pg tests never skip there.
-- Docs follow `~/Projects/Facile/Wiki/DOCS-STANDARD.md`: `README.md` plus `docs/` with
+- Docs follow `~/.mycelium/memory/standards/docs.md`: `README.md` plus `docs/` with
   `architecture.md`, `configuration.md`, `development.md`, `api.md`. English, no badges, no
   emoji.
 - Semver from `main`. While on `v0`, a breaking change bumps the minor.
