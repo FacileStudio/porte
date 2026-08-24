@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -789,5 +790,76 @@ func TestANamedTokenIsIssuedWithoutAnExpiry(t *testing.T) {
 	}
 	if !token.ExpiresAt.IsZero() {
 		t.Fatalf("a named token was given an expiry (%v), so it dies a month after it is created", token.ExpiresAt)
+	}
+}
+
+// stubJWT is a JWTVerifier that answers from a fixed map, so the middleware's
+// routing of JWT-shaped bearers can be tested without any cryptography.
+type stubJWT struct {
+	accepted map[string]porte.Identity
+	verifies int
+}
+
+func (s *stubJWT) VerifyJWT(_ context.Context, rawToken string) (porte.Identity, error) {
+	s.verifies++
+	if identity, ok := s.accepted[rawToken]; ok {
+		return identity, nil
+	}
+	return porte.Identity{}, errors.New("refused")
+}
+
+func TestAJWTShapedBearerGoesToTheTokenVerifier(t *testing.T) {
+	now := time.Now()
+	store := newMemory()
+	manager := testManager(t, store, now)
+	verifier := &stubJWT{accepted: map[string]porte.Identity{
+		"aaa.bbb.ccc": {UserID: 0, Email: "ci@facile.studio"},
+	}}
+	manager.WithJWT(verifier)
+
+	request := httptest.NewRequest(http.MethodGet, "/x", nil)
+	request.Header.Set("Authorization", "Bearer aaa.bbb.ccc")
+	recorder := httptest.NewRecorder()
+	authenticated(manager).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body)
+	}
+	if verifier.verifies != 1 {
+		t.Fatalf("the verifier was consulted %d times, want 1", verifier.verifies)
+	}
+}
+
+func TestARefusedJWTHasNoSessionFallback(t *testing.T) {
+	now := time.Now()
+	store := newMemory()
+	manager := testManager(t, store, now)
+	issue(t, manager, 7)
+	manager.WithJWT(&stubJWT{})
+
+	request := httptest.NewRequest(http.MethodGet, "/x", nil)
+	request.Header.Set("Authorization", "Bearer aaa.bbb.ccc")
+	recorder := httptest.NewRecorder()
+	authenticated(manager).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (%s)", recorder.Code, recorder.Body)
+	}
+	if len(store.sessions) == 0 {
+		t.Error("the refused JWT must not have consumed the opaque session")
+	}
+}
+
+func TestAnOpaqueBearerStillAuthenticatesAgainstTheSessionStore(t *testing.T) {
+	now := time.Now()
+	store := newMemory()
+	manager := testManager(t, store, now)
+	token := issue(t, manager, 7)
+	manager.WithJWT(&stubJWT{})
+
+	request := httptest.NewRequest(http.MethodGet, "/x", nil)
+	request.Header.Set("Authorization", "Bearer "+token)
+	recorder := httptest.NewRecorder()
+	authenticated(manager).ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", recorder.Code, recorder.Body)
 	}
 }

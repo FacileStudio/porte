@@ -44,6 +44,18 @@ type ClaimsSource interface {
 	Attach(ctx context.Context, identity *porte.Identity)
 }
 
+// JWTVerifier authenticates a bearer token shaped as a JSON Web Token against
+// a federated provider, offline. porte/oidc builds one from the JWKS when
+// Config.MachineAudience is set and attaches it here; this package never
+// parses a token itself.
+//
+// A refusal must be an error, never silence: the manager falls through to the
+// hashed-session lookup only for bearers that are not JWT-shaped at all, so a
+// failed verification cannot become a second chance with a weaker verifier.
+type JWTVerifier interface {
+	VerifyJWT(ctx context.Context, rawToken string) (porte.Identity, error)
+}
+
 // Deps are what a Manager needs. Only Sessions is required.
 type Deps struct {
 	Sessions porte.SessionStore
@@ -61,6 +73,7 @@ type Manager struct {
 	store  porte.SessionStore
 	logger *slog.Logger
 	claims ClaimsSource
+	jwt    JWTVerifier
 	now    func() time.Time
 }
 
@@ -91,6 +104,14 @@ func New(cfg porte.Config, deps Deps) (*Manager, error) {
 // something has to be built first.
 func (m *Manager) WithClaims(claims ClaimsSource) *Manager {
 	m.claims = claims
+	return m
+}
+
+// WithJWT returns m with a bearer-token verifier attached. porte/oidc calls
+// it after construction, for the same reason it calls WithClaims: something
+// has to be built first.
+func (m *Manager) WithJWT(verifier JWTVerifier) *Manager {
+	m.jwt = verifier
 	return m
 }
 
@@ -328,6 +349,9 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		return porte.Identity{}, errors.Forbidden("missing " + porte.CSRFHeaderName + " header")
 	}
 
+	if m.jwtApplies(fromCookie, token) {
+		return m.verifyBearerJWT(r, token)
+	}
 	hash := porte.HashToken(token)
 	stored, err := m.store.Find(r.Context(), hash)
 	if err != nil {
@@ -365,6 +389,26 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 	return identity, nil
 }
 
+// jwtApplies reports whether this manager authenticates a bearer as a JWT:
+// a verifier is attached, the credential came as a bearer rather than a
+// cookie, and the token parses as a compact JWS.
+func (m *Manager) jwtApplies(fromCookie bool, token string) bool {
+	return !fromCookie && m.jwt != nil && jwtShaped(token)
+}
+
+// verifyBearerJWT authenticates a JWT-shaped bearer through the attached
+// verifier. It exists as its own method so Authenticate stays readable: the
+// two bearer kinds have entirely different failure stories, and a failed
+// verification is refused here rather than falling through to the session
+// lookup — a token that parses as a JWT and fails is an answer, not noise.
+func (m *Manager) verifyBearerJWT(r *http.Request, token string) (porte.Identity, error) {
+	identity, err := m.jwt.VerifyJWT(r.Context(), token)
+	if err != nil {
+		return porte.Identity{}, errors.Unauthorized("invalid token")
+	}
+	return identity, nil
+}
+
 // credential returns the token and whether it came from the cookie. Cookie
 // first: a browser that has both is a browser, and the cookie is the transport
 // with the CSRF check behind it.
@@ -396,6 +440,22 @@ func (m *Manager) idledOut(session porte.Session, fromCookie bool, now time.Time
 		return false
 	}
 	return now.Sub(session.LastUsedAt) >= idle
+}
+
+// jwtShaped reports whether a bearer token parses as a compact JWS: three
+// dot-separated, non-empty base64url segments. It decides which verifier a
+// bearer goes to and nothing more — no claim inside is trusted on this alone.
+func jwtShaped(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func mutating(r *http.Request) bool {

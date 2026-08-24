@@ -171,6 +171,18 @@ type Config struct {
 	// registered rather than rejected, so there is no endpoint to probe.
 	SSOOnly bool
 
+	// MachineAudience enables offline verification of bearer tokens shaped
+	// as JWTs against the provider's JWKS — machine tokens minted by another
+	// suite service, keyed to this audience. Empty disables it entirely,
+	// which is every app today.
+	//
+	// It requires OIDC_ISSUER: discovery and the JWKS come from the same
+	// provider the browser flow federates to. A bearer that parses as three
+	// dot-separated segments is verified and never falls through to the
+	// hashed-session lookup; anything else is authenticated exactly as
+	// before.
+	MachineAudience string
+
 	// TrustEmailWithoutVerifiedClaim lets a callback whose token carries no
 	// email_verified claim match an existing account by address.
 	//
@@ -294,6 +306,9 @@ func (c Config) Scopes() []string {
 // secret must not become a 500 on the first login attempt three days later.
 func (c Config) Validate() error {
 	if !c.Enabled() {
+		if c.MachineAudience != "" {
+			return fmt.Errorf("porte: OIDC_MACHINE_AUDIENCE is set but OIDC_ISSUER is empty — machine tokens need a provider to verify against")
+		}
 		return nil
 	}
 	issuer, err := url.Parse(c.Issuer)

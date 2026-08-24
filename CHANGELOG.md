@@ -3,6 +3,19 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## Unreleased
+
+**Offline verification of machine-token JWTs.** `Config.MachineAudience` (env
+`OIDC_MACHINE_AUDIENCE`) gives the session manager a second bearer verifier: a bearer that parses
+as three dot-separated segments is verified against the provider's JWKS — signature, `iss`, `aud`,
+`exp` — and never reaches the hashed-session lookup. Keys cache for an hour and refetch once on an
+unknown kid, so a rotation does not wait out the TTL while forged kids cannot cause a fetch storm.
+The engine is the new stdlib-only `porte/oidc/jwt`; the manager learns of it through the
+`session.JWTVerifier` interface so the credential package still compiles without any OIDC
+dependency. A verified token has no session row behind it — `SessionID` is zero, revocation
+does not reach it, and it dies when the key or the expiry says so. Introspection stays out:
+offline verification is the point.
+
 ## v0.3.1 — 2026-08-22
 
 **`SPEC.md` calls the event bus Antenne.** Two forward-looking passages still named Nook: §4's

@@ -208,3 +208,10 @@ func contains(haystack, needle string) bool {
 	}
 	return false
 }
+
+func TestConfigValidateRejectsMachineAudienceWithoutAnIssuer(t *testing.T) {
+	err := (porte.Config{MachineAudience: "registre"}).Validate()
+	if err == nil {
+		t.Fatal("machine tokens need a provider to verify against")
+	}
+}

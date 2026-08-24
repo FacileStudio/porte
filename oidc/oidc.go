@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/FacileStudio/porte"
+	jwtpkg "github.com/FacileStudio/porte/oidc/jwt"
 	"github.com/FacileStudio/porte/session"
 
 	gooidc "github.com/coreos/go-oidc/v3/oidc"
@@ -127,6 +128,13 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 	if err := kit.guardClaimsScope(); err != nil {
 		return nil, err
 	}
+	if cfg.MachineAudience != "" {
+		verifier, err := jwtpkg.New(ctx, jwtpkg.Config{Issuer: cfg.Issuer, Audience: cfg.MachineAudience})
+		if err != nil {
+			return nil, fmt.Errorf("porte/oidc: machine-token verification failed to configure: %w", err)
+		}
+		deps.Sessions.WithJWT(machineVerifier{verifier})
+	}
 	// The manager fills Identity.Roles through this kit, and this kit
 	// needs the manager to issue sessions. Something has to be built first.
 	if cfg.ClaimsEnabled() {
@@ -222,6 +230,22 @@ func (k *Kit) tokenSource(ctx context.Context, tokens porte.TokenSet) oauth2.Tok
 		RefreshToken: tokens.RefreshToken,
 		Expiry:       tokens.Expiry,
 	})
+}
+
+// machineVerifier adapts the offline JWT verifier to the manager's
+// JWTVerifier interface. A verified token authenticates on its own claims:
+// there is no session row behind it, so SessionID is zero and an app that
+// needs a user id matches on Email or Subject itself.
+type machineVerifier struct {
+	verifier *jwtpkg.Verifier
+}
+
+func (m machineVerifier) VerifyJWT(ctx context.Context, rawToken string) (porte.Identity, error) {
+	claims, err := m.verifier.Verify(ctx, rawToken)
+	if err != nil {
+		return porte.Identity{}, err
+	}
+	return porte.Identity{Email: claims.Email, Name: claims.Name, Roles: claims.Roles}, nil
 }
 
 func toTokenSet(token *oauth2.Token) porte.TokenSet {

@@ -15,6 +15,7 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_REDIRECT_URL` | with issuer | — | Must match the redirect URI registered on the provider |
 | `OIDC_SUCCESS_URL` | with issuer | — | Where the browser lands after a successful callback |
 | `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
+| `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS. **Its presence is what enables machine-token verification** |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
 `porte` does not read the environment itself. An app builds a `Config` however it already builds
@@ -58,6 +59,7 @@ draw the password form in the first place.
 | `SSOOnly` | `false` | Local password routes are not registered |
 | `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
+| `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline. Empty disables the JWT branch; requires `Issuer`. See [Machine tokens](#machine-tokens) below |
 | `SessionTTL` | `30 days` | Browser session lifetime |
 | `SessionIdleTTL` | `7 days` | How long a browser session may go unused before it stops authenticating |
 | `ClaimsTTL` | `5 minutes` | How long a cached role claim is trusted |
@@ -261,3 +263,25 @@ behind on the request meant to migrate the user off it.
 - **The hash.** Session tokens are random, opaque, and stored hashed. There is no option to
   store them in the clear and no option to issue a self-contained JWT instead: an opaque token
   is revocable by construction, which is the property back-channel logout depends on.
+
+## Machine tokens
+
+Setting `OIDC_MACHINE_AUDIENCE` gives the session manager a second bearer verifier. A bearer
+that parses as three dot-separated segments is verified offline — signature against the
+provider's JWKS, then `iss`, `aud` and `exp` — and never touches the hashed-session lookup.
+Anything else is authenticated exactly as before, so an opaque token's behaviour does not move.
+
+The rules the branch lives by:
+
+- **A failed verification is refused, never fallen through.** A token that parses as a JWT and
+  fails *is* an answer; giving it a second chance with the session lookup would mean a bad
+  token's only cost was being unrecognized.
+- **There is no session row behind a verified token.** `SessionID` is zero and revocation
+  endpoints do not reach it: the token dies when the provider's key or expiry says so, not when
+  the app feels like it. An app that needs a user id matches on the claims itself.
+- **Keys are cached for an hour** (`DefaultCacheTTL` in `porte/oidc/jwt`, roughly one token
+  lifetime) and refetched once on an unknown kid before refusing — a rotation must not wait out
+  the TTL, but a flood of forged kids must not turn into a fetch storm either.
+- **Introspection is deliberately out of scope.** Offline verification is what makes the check
+  free; a per-request call to the issuer would reintroduce the dependency machine tokens exist
+  to remove.
