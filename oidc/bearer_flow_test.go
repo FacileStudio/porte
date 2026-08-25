@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -80,5 +81,54 @@ func TestARegistreTokenAuthenticatesThroughTheWholeKit(t *testing.T) {
 	defer func() { _ = after.Body.Close() }()
 	if after.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a deactivated account answered %d, want 401", after.StatusCode)
+	}
+}
+
+// TestTheCLIAudienceDoesNotArmTheBearerPath is the boundary the device
+// exchange exists behind, and the regression that folding the two audiences
+// into one setting would have shipped.
+//
+// A token addressed to the CLI must not be a credential on every RequireAuth
+// route. If it were, the exchange would not be a boundary at all: the token it
+// trades in would already open the app directly, and it would do so leaving no
+// session row, so nothing could list or revoke it. Exchanging is the only way
+// in, and what comes back is a session the app owns.
+func TestTheCLIAudienceDoesNotArmTheBearerPath(t *testing.T) {
+	h := newHarness(t, withCLIAudience)
+	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
+	token := cliToken(h)
+
+	direct := whoami(t, h, token)
+	closeLater(t, direct)
+	if direct.StatusCode == http.StatusOK {
+		t.Fatal("a facile-cli token authenticated a request directly; the exchange is not a boundary")
+	}
+
+	traded := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, token))
+	if traded.StatusCode != http.StatusOK {
+		t.Fatalf("the same token answered %d at the exchange, want 200", traded.StatusCode)
+	}
+}
+
+// TestTheMachineAudienceDoesNotMountTheExchange is the other half, and the
+// functional regression the split avoids. OIDC_MACHINE_AUDIENCE carries this
+// app's own client id because that is what a service account's token is
+// addressed to: Registre's suite-ci declares `audiences: [courrier]`. An app
+// that had to spell facile-cli there to gain the exchange would start refusing
+// every one of those tokens, so the two settings are independent and this
+// pins it from the machine side.
+func TestTheMachineAudienceDoesNotMountTheExchange(t *testing.T) {
+	h := newHarness(t, func(cfg *porte.Config) { cfg.MachineAudience = "test-client" })
+	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
+
+	service := whoami(t, h, h.idp.accessToken())
+	closeLater(t, service)
+	if service.StatusCode != http.StatusOK {
+		t.Fatalf("a service-account token answered %d on the bearer path, want 200", service.StatusCode)
+	}
+
+	traded := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, cliToken(h)))
+	if traded.StatusCode != http.StatusNotFound {
+		t.Fatalf("the exchange answered %d with only a machine audience set, want 404", traded.StatusCode)
 	}
 }

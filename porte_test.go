@@ -215,3 +215,14 @@ func TestConfigValidateRejectsMachineAudienceWithoutAnIssuer(t *testing.T) {
 		t.Fatal("machine tokens need a provider to verify against")
 	}
 }
+
+// TestConfigValidateRejectsCLIAudienceWithoutAnIssuer keeps the device
+// exchange from being half-configured. The route would mount and then refuse
+// every token, which the CLI reads as "shipped but broken" rather than "not
+// shipped", so it never falls back.
+func TestConfigValidateRejectsCLIAudienceWithoutAnIssuer(t *testing.T) {
+	err := (porte.Config{CLIAudience: "facile-cli"}).Validate()
+	if err == nil {
+		t.Fatal("the device exchange needs a provider to verify against")
+	}
+}

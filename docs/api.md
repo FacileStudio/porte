@@ -520,7 +520,7 @@ device exchange, the back-channel logout endpoint and the CLI code page do the s
 
 `POST /auth/oidc/device/exchange` answers 400 to a body it cannot read or one with no
 `access_token` in it, 401 to any token it will not accept, and 200 with `{"user_id", "token"}`
-otherwise. It is mounted only when `OIDC_MACHINE_AUDIENCE` is set, and its 404 when it is not is
+otherwise. It is mounted only when `OIDC_CLI_AUDIENCE` is set, and its 404 when it is not is
 load-bearing: that is how `facile login` learns an app has not shipped the exchange and falls
 back to the loopback flow. An app that mounts it therefore must never answer 404. The CLI
 probes with an empty body, which is why an empty body earns a 400. See

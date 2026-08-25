@@ -21,28 +21,47 @@ a request body rather than a header, so `Cache-Control: no-store` applies (OAuth
 CSRF header is required, because there is no ambient credential to abuse when the caller has to
 put a token it holds into the body.
 
-**The audience decision.** Registre issues the CLI's token to the `facile-cli` client, so an app
-turns the exchange on with `OIDC_MACHINE_AUDIENCE=facile-cli`, and that says plainly: any holder
-of a token Registre minted for `facile-cli` can obtain a session here, as whoever that token
-names. The orthodox alternative, Registre declaring `audiences: [<every tool>]` so each app
-checks its own client id, buys no isolation, because the CLI runs the grant once and one token
-still has to open every tool, and it costs a Registre deploy whenever a tool is added. One
-audience, not two: the exchange checks the same value as the header path, because a token that
-path already accepts on every route is not made safer by a second name on this one.
+**Two audiences, because they are two token populations.** The exchange has its own setting,
+`Config.CLIAudience` (env `OIDC_CLI_AUDIENCE`), which an app sets to the CLI's client id,
+`facile-cli` for the suite. `OIDC_MACHINE_AUDIENCE` keeps its old meaning and its old value:
+this app's own client id, which is what a service account's token is addressed to. Registre's
+`suite-ci` account declares `audiences: [courrier]`, so courrier checks `courrier` there and the
+CLI's `aud: ["facile-cli"]` never matches it. Folding the two into one variable would have made
+an app choose between service accounts and CLI login, and an app that chose CLI login would have
+started rejecting every service-account token it had been accepting, silently, with nothing in
+its own configuration having changed meaning.
 
-**An empty `OIDC_MACHINE_AUDIENCE` does not mount the route, and its 404 is load-bearing.** An
-app with no audience cannot tell a Registre token from a forgery and must not pretend to serve
+**The second audience builds a second verifier, and it never reaches the session manager.**
+`OIDC_CLI_AUDIENCE` arms this route alone; it does not put a `facile-cli` token on the
+`Authorization` header path. So the exchange is a real boundary rather than a formality: the
+token traded in cannot already open every `RequireAuth` route on its own, and what comes back is
+a session row the app can list, expire and revoke, where a verified bearer JWT leaves no row at
+all. The cost is one extra discovery and JWKS fetch at boot, paid once per process, because
+`porte/oidc/jwt` bakes the audience in at construction.
+
+**An empty `OIDC_CLI_AUDIENCE` does not mount the route, and its 404 is load-bearing.** An app
+with no CLI audience cannot tell a Registre token from a forgery and must not pretend to serve
 the exchange; 404 is exactly what `facile login` reads as "not shipped" before falling back. The
 corollary binds an app that does mount it: the CLI probes with a POST carrying an empty body, so
-a mounted route refuses on the merits (400 or 401) and never with a 404.
+a mounted route refuses on the merits (400 or 401) and never with a 404. `OIDC_MACHINE_AUDIENCE`
+does not mount it, so an app can run service accounts with no exchange, the exchange with no
+service accounts, or both, and the two never interfere.
 
 Refusals are one status and one message. Bad signature, wrong issuer, wrong audience, expired,
 not yet valid, unknown kid, no subject, and a subject with no row in `porte_identities` are
-indistinguishable to the caller, and the identity store is consulted only after every
+indistinguishable to the caller, and a token addressed to the machine audience is refused here
+exactly like any other wrong audience. The identity store is consulted only after every
 cryptographic and claim check has passed, so refusal latency does not answer "does this subject
 have an account here" either. No account is created here: provisioning from a bearer would let
 anyone the provider will mint a token for materialise an account in every app at once, and the
 callback owns account creation because it is the path holding a verified email.
+
+**What the split does not close, stated plainly:** a stolen or phished `facile-cli` token can
+still be exchanged for a durable session at every app that trusts it. `facile-cli` is a public
+client, so anyone can start its device grant; the human approving the code and the requirement
+of an existing local account are what stand in the way. Bounding the rest is back-channel
+logout's job, and `backchannel_logout_uri` appears zero times in Registre's `seed.yaml` today,
+so that bound is not in place yet.
 
 **A verified bearer whose identity row names account zero is now refused** on both paths. No
 account has that id, so the row is a store bug, and both callers spend the `UserID` directly,

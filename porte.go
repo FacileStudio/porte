@@ -94,6 +94,8 @@ const (
 	// falls back to the loopback flow silently, so an app that mounts the
 	// route must answer every bad request on its merits. The caller probes
 	// with a POST carrying an empty body and must get a 400, never a 404.
+	//
+	// CLIAudience is what mounts it. MachineAudience does not.
 	RouteDeviceExchange = "/auth/oidc/device/exchange"
 
 	RouteLogout            = "/auth/logout"
@@ -195,7 +197,40 @@ type Config struct {
 	// dot-separated segments is verified and never falls through to the
 	// hashed-session lookup; anything else is authenticated exactly as
 	// before.
+	//
+	// Its value is this app's own client id, because that is what a service
+	// account's token is addressed to. Registre's suite-ci account declares
+	// `audiences: [courrier]`, so courrier sets `courrier` here and a token
+	// minted for any other app does not open it. That is the whole point of
+	// the claim, and it is why CLIAudience below is a separate field rather
+	// than a second use of this one.
 	MachineAudience string
+
+	// CLIAudience enables POST /auth/oidc/device/exchange: a CLI trades an
+	// access token the provider's device grant issued for this app's own
+	// session token. Empty means the route is not mounted at all. It
+	// requires OIDC_ISSUER for the same reason MachineAudience does.
+	//
+	// Its value is the CLI's client id, not this app's. Registre issues the
+	// suite CLI's token to `facile-cli` and that client declares no
+	// audiences of its own, so the token carries `aud: ["facile-cli"]` and
+	// every app that wants one login for every terminal sets exactly that.
+	//
+	// It is deliberately not MachineAudience, and the two hold different
+	// values by construction: a service-account token is addressed to one
+	// app, and the CLI's token is addressed to the CLI and presented at all
+	// of them. Folding them into one setting would force an app to choose
+	// between service accounts and CLI login, and an app that chose CLI
+	// login would silently start rejecting every service-account token it
+	// used to accept.
+	//
+	// The separation is also a boundary, not only a naming fix. Setting
+	// this does not put the CLI's token on the bearer path: it verifies
+	// tokens for this route and nothing else, so a facile-cli token cannot
+	// be used directly as a credential on every RequireAuth route. It buys
+	// a session here only by being exchanged for one, which leaves a
+	// session row that an app can list and revoke.
+	CLIAudience string
 
 	// TrustEmailWithoutVerifiedClaim lets a callback whose token carries no
 	// email_verified claim match an existing account by address.
@@ -301,6 +336,22 @@ func (c Config) IdleTimeout() time.Duration {
 // Enabled reports whether OIDC is configured at all.
 func (c Config) Enabled() bool { return c.Issuer != "" }
 
+// validateWithoutIssuer checks the settings that are meaningless without a
+// provider. Both audiences name a claim in a token this app never sees when
+// OIDC is off, and each one enables a different surface, so each says which
+// variable is the one to remove.
+func (c Config) validateWithoutIssuer() error {
+	for name, audience := range map[string]string{
+		"OIDC_MACHINE_AUDIENCE": c.MachineAudience,
+		"OIDC_CLI_AUDIENCE":     c.CLIAudience,
+	} {
+		if audience != "" {
+			return fmt.Errorf("porte: %s is set but OIDC_ISSUER is empty — verifying a token audience needs a provider", name)
+		}
+	}
+	return nil
+}
+
 // ClaimsEnabled reports whether porte should request and verify the roles
 // claim. Off by default: no app reads claims today.
 func (c Config) ClaimsEnabled() bool { return c.ClaimsScope != "" }
@@ -320,10 +371,7 @@ func (c Config) Scopes() []string {
 // secret must not become a 500 on the first login attempt three days later.
 func (c Config) Validate() error {
 	if !c.Enabled() {
-		if c.MachineAudience != "" {
-			return fmt.Errorf("porte: OIDC_MACHINE_AUDIENCE is set but OIDC_ISSUER is empty — machine tokens need a provider to verify against")
-		}
-		return nil
+		return c.validateWithoutIssuer()
 	}
 	issuer, err := url.Parse(c.Issuer)
 	switch {

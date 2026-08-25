@@ -34,10 +34,13 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 // app federates. Mount the manager as well as the kit.
 //
 // RouteDeviceExchange has a second condition on top of that one: it appears
-// only when Config.MachineAudience is set, because without an audience there
-// is no verifier and the route could do nothing but refuse. Its absence is a
-// 404, which is exactly what the CLI reads as "this app has not shipped the
-// exchange" before falling back to the loopback flow.
+// only when Config.CLIAudience is set, because without a CLI audience there is
+// no verifier for the CLI's tokens and the route could do nothing but refuse.
+// Config.MachineAudience does not mount it: that field arms the Authorization
+// header path for service-account tokens, which are addressed to a different
+// audience entirely. Its absence is a 404, which is exactly what the CLI reads
+// as "this app has not shipped the exchange" before falling back to the
+// loopback flow.
 func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteConfig, k.handleConfig)
 	if !k.Enabled() {
@@ -51,7 +54,7 @@ func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteCallback, k.handleCallback)
 	router.Post(porte.RouteExchange, k.handleExchange)
 	router.Post(porte.RouteBackchannelLogout, k.handleBackchannelLogout)
-	if k.bearer != nil {
+	if k.cliTokens != nil {
 		router.Post(porte.RouteDeviceExchange, k.handleDeviceExchange)
 	}
 }
@@ -399,31 +402,38 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 // Manager.Issue that mints every other session. What is new is only that the
 // token arrives in a request body instead of a header.
 //
-// # The audience this trusts, and what that means
+// # The audience this trusts, and why it is its own setting
 //
-// The token is verified against Config.MachineAudience, the same audience as
-// the per-request bearer path, because Registre mints one token per `facile
-// login` run and the CLI presents that one token to every tool. Today that
-// audience is `facile-cli`: the device grant's token carries the client id it
-// was requested under, and the facile-cli client declares no audiences of its
-// own. So an operator turns this on by setting OIDC_MACHINE_AUDIENCE=facile-cli
-// alongside the issuer, and that setting is a statement with teeth: **any
-// holder of a token Registre minted for facile-cli can obtain a session at
-// this app, as whoever that token names.** facile-cli is a public client, so
-// anyone can start its device grant; what stands between that and a session
-// here is the human approving the code at the provider, and the requirement
-// below that the subject already have an account.
+// The token is verified against Config.CLIAudience (OIDC_CLI_AUDIENCE), which
+// an app running the suite CLI sets to `facile-cli`. Registre issues the CLI's
+// token to that client and the client declares no audiences of its own, so the
+// token carries `aud: ["facile-cli"]`.
 //
-// The orthodox alternative, Registre declaring `audiences: [<every tool>]` on
-// facile-cli so each app checks its own client id, was not taken. It buys no
-// isolation, because one token still has to open every tool and would name
-// every one of them in aud; it costs a Registre deploy whenever a tool is
-// added; and
-// it needs a change in a repo this one cannot make. Splitting the audience in
-// two, so the exchange trusted a stricter value than the header path, was not
-// taken either: this endpoint mints a session that outlives the token it was
-// traded for, so a token already accepted on every route by the header path is
-// not made safer by a second name on this one.
+// That is deliberately not Config.MachineAudience, and the two cannot hold the
+// same value. MachineAudience is this app's own client id, because that is
+// what a service account's token is addressed to: Registre's suite-ci account
+// declares `audiences: [courrier]`, so courrier checks `courrier` there. The
+// CLI's token is addressed to the CLI and presented at every tool. One setting
+// would force an app to pick one population, and an app that picked the CLI
+// would start rejecting every service-account token it had been accepting,
+// silently, with nothing in its own configuration having changed meaning.
+//
+// The split is also a boundary, not only a naming fix. Setting CLIAudience
+// verifies tokens for this route and nothing else: it never reaches
+// session.Manager.WithJWT, so a facile-cli token is not a credential on every
+// RequireAuth route. It buys a session here only by being exchanged for one,
+// and that leaves a session row an app can list, expire and revoke, where a
+// verified bearer JWT leaves nothing at all.
+//
+// What the split does not close: a stolen or phished facile-cli token can
+// still be exchanged for a durable session at every app that trusts it, as
+// whoever the token names. facile-cli is a public client, so anyone can start
+// its device grant; what stands between that and a session here is the human
+// approving the code at the provider, and the requirement below that the
+// subject already hold a local account. Containing the rest is back-channel
+// logout's job, and no app in the suite registers a backchannel_logout_uri
+// today, so that containment is not in place yet. Do not read this endpoint as
+// providing it.
 //
 // # Refusals
 //
@@ -459,7 +469,7 @@ func (k *Kit) handleDeviceExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	identity, err := k.bearer.VerifyJWT(r.Context(), request.AccessToken)
+	identity, err := k.cliTokens.VerifyJWT(r.Context(), request.AccessToken)
 	if err != nil {
 		k.logger.Debug("porte: device exchange refused", slog.Any("error", err))
 		httpjson.WriteError(w, errors.Unauthorized("invalid access token"))

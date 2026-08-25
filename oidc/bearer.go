@@ -8,27 +8,37 @@ import (
 	jwtpkg "github.com/FacileStudio/porte/oidc/jwt"
 )
 
-// attachBearerVerifier gives the session manager the offline JWT verifier,
-// built against the same provider the browser flow federates to, and hands it
-// back so the kit can hold it too. It is called only when
-// Config.MachineAudience is set, which is what enables the branch.
+// newBearerVerifier builds an offline JWT verifier for one audience, against
+// the same provider the browser flow federates to.
 //
-// The kit needs its own reference because the device exchange
-// (RouteDeviceExchange) verifies a token carried in a request body rather than
-// in an Authorization header, so the manager's middleware never sees it. Both
-// callers share one verifier, and therefore one JWKS cache and one audience.
-func attachBearerVerifier(ctx context.Context, cfg porte.Config, deps Deps) (bearerVerifier, error) {
-	verifier, err := jwtpkg.New(ctx, jwtpkg.Config{Issuer: cfg.Issuer, Audience: cfg.MachineAudience})
+// It takes the audience as an argument rather than reading it off cfg because
+// porte builds two of these from two different settings, and they must not be
+// able to see each other's. A verifier's audience is baked in at construction
+// by porte/oidc/jwt, so one verifier cannot serve two audiences and the second
+// one costs a second discovery and JWKS fetch at boot. That is the price of
+// keeping the two token populations apart, and it is paid once per process.
+func newBearerVerifier(ctx context.Context, cfg porte.Config, audience string, identities porte.IdentityStore) (bearerVerifier, error) {
+	verifier, err := jwtpkg.New(ctx, jwtpkg.Config{Issuer: cfg.Issuer, Audience: audience})
 	if err != nil {
-		return bearerVerifier{}, fmt.Errorf("porte/oidc: bearer-token verification failed to configure: %w", err)
+		return bearerVerifier{}, fmt.Errorf("porte/oidc: bearer-token verification for audience %q failed to configure: %w", audience, err)
 	}
-	bearer := bearerVerifier{
-		tokens:     verifier,
-		identities: deps.Identities,
-		issuer:     cfg.Issuer,
+	return bearerVerifier{tokens: verifier, identities: identities, issuer: cfg.Issuer}, nil
+}
+
+// attachBearerVerifier gives the session manager the verifier for
+// Config.MachineAudience, which is what puts a service account's JWT on the
+// Authorization header path. It is called only when that field is set.
+//
+// It deliberately does not serve the device exchange. The exchange has its own
+// audience and its own verifier, and returns nothing here, so enabling one
+// never enables the other.
+func attachBearerVerifier(ctx context.Context, cfg porte.Config, deps Deps) error {
+	verifier, err := newBearerVerifier(ctx, cfg, cfg.MachineAudience, deps.Identities)
+	if err != nil {
+		return err
 	}
-	deps.Sessions.WithJWT(bearer)
-	return bearer, nil
+	deps.Sessions.WithJWT(verifier)
+	return nil
 }
 
 // tokenVerifier is the signature half of the bearer path. It is an interface

@@ -212,6 +212,8 @@ Authentik → in-house IdP swap a config change rather than a rewrite.
 | `OIDC_REDIRECT_URL` | with issuer | Must match the Authentik application |
 | `OIDC_SUCCESS_URL` | with issuer | Where the browser lands after a successful callback |
 | `OIDC_CLAIMS_SCOPE` | no | The scope carrying the `roles` claim (§5c). Its presence enables claims handling |
+| `OIDC_MACHINE_AUDIENCE` | no | This app's own client id. Its presence enables bearer-JWT verification on the header path |
+| `OIDC_CLI_AUDIENCE` | no | The CLI's client id. Its presence mounts `POST /auth/oidc/device/exchange`, and nothing else does |
 | `SSO_ONLY` | no | When true, local password routes are not registered at all |
 
 Authentik application slug convention, unchanged: `sso.facile.studio/application/o/<app>/`.
@@ -300,8 +302,13 @@ token, and trades it at each tool for that tool's own session. Writing the provi
 the slot where a CLI keeps its session is a login that stops working when that token expires, so
 the trade is not optional. The handler verifies the token through the same JWKS verifier the
 Authorization header path uses, resolves `sub` through `porte_identities`, and calls
-`Manager.Issue`. It mounts only when `OIDC_MACHINE_AUDIENCE` is set, because an app with no
-audience cannot verify anything, and its 404 in that state is the signal `facile login` reads as
+`Manager.Issue`. It mounts only when `OIDC_CLI_AUDIENCE` is set, a **second** audience holding
+the CLI's client id, distinct from `OIDC_MACHINE_AUDIENCE`, which holds this app's own and
+arms the header path for service accounts. One variable could not serve both: a service-account
+token is addressed to one app (`suite-ci` declares `audiences: [courrier]`) while the CLI's is
+addressed to the CLI and presented at all of them. The CLI audience builds its own verifier and
+never reaches `session.Manager.WithJWT`, so a CLI token is not a credential on every route and
+the exchange stays a boundary. Its 404 when unset is the signal `facile login` reads as
 "not shipped". The client half lives in `facile`, which probes the route before running the
 grant so a tool without it never makes a human read a code off one screen for nothing.
 

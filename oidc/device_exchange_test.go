@@ -11,10 +11,18 @@ import (
 	"github.com/FacileStudio/porte"
 )
 
-// withMachineAudience is what an operator sets to turn the device exchange on:
-// the audience Registre stamps on a token minted for the official CLI. Nothing
-// else enables the route.
-func withMachineAudience(cfg *porte.Config) { cfg.MachineAudience = "test-client" }
+// withCLIAudience is what an operator sets to turn the device exchange on: the
+// audience Registre stamps on a token minted for the official CLI. Nothing else
+// enables the route, and OIDC_MACHINE_AUDIENCE in particular does not.
+func withCLIAudience(cfg *porte.Config) { cfg.CLIAudience = "facile-cli" }
+
+// cliToken mints what `facile login` holds after a human approves the device
+// code: a token addressed to the CLI, not to this app. The app's own audience
+// is "test-client", which is what a service account's token would carry, and
+// the two must never be interchangeable.
+func cliToken(h *harness) string {
+	return h.idp.accessTokenWith(func(claims map[string]any) { claims["aud"] = "facile-cli" })
+}
 
 // closeLater closes a response body when the test ends, and complains if it
 // cannot, because a discarded Close is where a leaked connection hides.
@@ -47,24 +55,28 @@ func deviceExchange(t *testing.T, h *harness, body string) *http.Response {
 // check failed is not the caller's business, and the last two would otherwise
 // tell a stranger whether a given subject has an account here.
 func deviceRefusals(h *harness) map[string]string {
-	good := h.idp.accessToken()
+	good := cliToken(h)
 	mutated := func(claim string, value any) string {
-		return h.idp.accessTokenWith(func(claims map[string]any) { claims[claim] = value })
+		return h.idp.accessTokenWith(func(claims map[string]any) {
+			claims["aud"] = "facile-cli"
+			claims[claim] = value
+		})
 	}
 	return map[string]string{
 		"not a token at all":         "not-a-jwt",
 		"three segments of nonsense": "aaa.bbb.ccc",
 		"tampered signature":         good[:len(good)-4] + "AAAA",
 		"unknown kid": signJWT(h.idp.key, "rotated-out", map[string]any{
-			"iss": h.idp.issuer(), "sub": h.idp.subject, "aud": "test-client",
+			"iss": h.idp.issuer(), "sub": h.idp.subject, "aud": "facile-cli",
 			"exp": time.Now().Add(time.Minute).Unix(),
 		}),
-		"wrong audience":                 mutated("aud", "some-other-client"),
-		"wrong issuer":                   mutated("iss", "https://evil.example"),
-		"expired":                        mutated("exp", time.Now().Add(-time.Hour).Unix()),
-		"not valid yet":                  mutated("nbf", time.Now().Add(time.Hour).Unix()),
-		"no subject":                     mutated("sub", ""),
-		"a subject with no account here": mutated("sub", "stranger"),
+		"a service account's token for this app": h.idp.accessToken(),
+		"wrong audience":                         mutated("aud", "some-other-client"),
+		"wrong issuer":                           mutated("iss", "https://evil.example"),
+		"expired":                                mutated("exp", time.Now().Add(-time.Hour).Unix()),
+		"not valid yet":                          mutated("nbf", time.Now().Add(time.Hour).Unix()),
+		"no subject":                             mutated("sub", ""),
+		"a subject with no account here":         mutated("sub", "stranger"),
 	}
 }
 
@@ -78,9 +90,9 @@ func deviceRefusals(h *harness) map[string]string {
 // the response is porte's own and works as one on a route the provider's token
 // was never issued for.
 func TestTheDeviceExchangeMintsThisAppsOwnSession(t *testing.T) {
-	h := newHarness(t, withMachineAudience)
+	h := newHarness(t, withCLIAudience)
 	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
-	accessToken := h.idp.accessToken()
+	accessToken := cliToken(h)
 
 	response := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, accessToken))
 	if response.StatusCode != http.StatusOK {
@@ -111,7 +123,7 @@ func TestTheDeviceExchangeMintsThisAppsOwnSession(t *testing.T) {
 // distinguishable refusals ships an account-enumeration oracle instead, so
 // both halves are asserted here.
 func TestEveryDeviceRefusalAnswersTheSame401(t *testing.T) {
-	h := newHarness(t, withMachineAudience)
+	h := newHarness(t, withCLIAudience)
 	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
 
 	for name, token := range deviceRefusals(h) {
@@ -140,7 +152,7 @@ func TestEveryDeviceRefusalAnswersTheSame401(t *testing.T) {
 // request on its merits, and 400 is the only honest answer to a body with no
 // token in it.
 func TestAMalformedDeviceExchangeIsRefusedOnItsMerits(t *testing.T) {
-	h := newHarness(t, withMachineAudience)
+	h := newHarness(t, withCLIAudience)
 
 	for name, body := range map[string]string{
 		"the CLI's probe": "",
@@ -156,16 +168,16 @@ func TestAMalformedDeviceExchangeIsRefusedOnItsMerits(t *testing.T) {
 	}
 }
 
-// TestTheRouteIsAbsentWithoutAMachineAudience is the deliberate 404. An app
-// with no audience to check has no verifier, so it cannot tell a Registre
-// token from a forgery and must not pretend to serve the exchange. 404 is
+// TestTheRouteIsAbsentWithoutACLIAudience is the deliberate 404. An app with
+// no CLI audience to check has no verifier for a CLI token, so it cannot tell
+// one from a forgery and must not pretend to serve the exchange. 404 is
 // precisely the signal the CLI reads as "not shipped" before falling back to
 // the loopback flow, which makes the absence the correct answer rather than a
 // gap.
-func TestTheRouteIsAbsentWithoutAMachineAudience(t *testing.T) {
+func TestTheRouteIsAbsentWithoutACLIAudience(t *testing.T) {
 	h := newHarness(t, nil)
 
-	response := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, h.idp.accessToken()))
+	response := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, cliToken(h)))
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatalf("answered %d, want 404, the CLI's not-shipped signal", response.StatusCode)
 	}
@@ -177,9 +189,9 @@ func TestTheRouteIsAbsentWithoutAMachineAudience(t *testing.T) {
 // thing an app can do to stop a token that has not expired yet from buying a
 // thirty-day session here.
 func TestARemovedIdentityRowEndsTheDeviceExchange(t *testing.T) {
-	h := newHarness(t, withMachineAudience)
+	h := newHarness(t, withCLIAudience)
 	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
-	body := fmt.Sprintf(`{"access_token":%q}`, h.idp.accessToken())
+	body := fmt.Sprintf(`{"access_token":%q}`, cliToken(h))
 
 	if status := deviceExchange(t, h, body).StatusCode; status != http.StatusOK {
 		t.Fatalf("a live account answered %d, want 200", status)
@@ -199,10 +211,10 @@ func TestARemovedIdentityRowEndsTheDeviceExchange(t *testing.T) {
 // once. No account has that id, so a row carrying it is broken, and both
 // callers of VerifyJWT spend the UserID directly.
 func TestAnIdentityRowNamingNoAccountIsRefused(t *testing.T) {
-	h := newHarness(t, withMachineAudience)
+	h := newHarness(t, withCLIAudience)
 	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 0)
 
-	response := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, h.idp.accessToken()))
+	response := deviceExchange(t, h, fmt.Sprintf(`{"access_token":%q}`, cliToken(h)))
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a row naming account zero answered %d, want 401", response.StatusCode)
 	}
