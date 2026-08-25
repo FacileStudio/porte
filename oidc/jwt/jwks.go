@@ -123,6 +123,8 @@ type payload struct {
 	Issuer    string   `json:"iss"`
 	Audience  audience `json:"aud"`
 	ExpiresAt int64    `json:"exp"`
+	NotBefore int64    `json:"nbf"`
+	IssuedAt  int64    `json:"iat"`
 	Subject   string   `json:"sub"`
 	Email     string   `json:"email"`
 	Name      string   `json:"name"`

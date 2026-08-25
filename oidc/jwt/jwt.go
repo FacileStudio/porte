@@ -85,9 +85,10 @@ type Verifier struct {
 	now    func() time.Time
 	jwks   string
 
-	mu        sync.Mutex
-	keys      map[string]*rsa.PublicKey
-	fetchedAt time.Time
+	mu          sync.Mutex
+	keys        map[string]*rsa.PublicKey
+	fetchedAt   time.Time
+	refetchedAt time.Time
 }
 
 // New performs discovery and returns a verifier. It is the boot path, so an
@@ -142,8 +143,8 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 	if !payload.Audience.contains(v.cfg.Audience) {
 		return Claims{}, fmt.Errorf("%w: audience is not %q", ErrInvalid, v.cfg.Audience)
 	}
-	if v.now().After(time.Unix(payload.ExpiresAt, 0).Add(leeway)) {
-		return Claims{}, fmt.Errorf("%w: token expired", ErrInvalid)
+	if err := withinValidity(v.now(), payload); err != nil {
+		return Claims{}, err
 	}
 	return Claims{
 		Subject: payload.Subject,
@@ -151,6 +152,29 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 		Name:    payload.Name,
 		Roles:   payload.Roles,
 	}, nil
+}
+
+// withinValidity checks the three time claims against now, each with the same
+// leeway.
+//
+// exp is mandatory: an absent one decodes as zero, which is 1970, so a token
+// that carries no expiry is refused rather than accepted forever. nbf and iat
+// are optional in an OAuth 2.0 access token — RFC 9068 requires only iat — so
+// a zero there means the claim was absent and not that the epoch was meant.
+// A token that says it is not usable yet, or that says it was minted after
+// this machine's clock, is refused either way: both are a signal that the
+// token was not issued for this moment.
+func withinValidity(now time.Time, claims payload) error {
+	if now.After(time.Unix(claims.ExpiresAt, 0).Add(leeway)) {
+		return fmt.Errorf("%w: token expired", ErrInvalid)
+	}
+	if claims.NotBefore != 0 && now.Add(leeway).Before(time.Unix(claims.NotBefore, 0)) {
+		return fmt.Errorf("%w: token is not valid yet", ErrInvalid)
+	}
+	if claims.IssuedAt != 0 && now.Add(leeway).Before(time.Unix(claims.IssuedAt, 0)) {
+		return fmt.Errorf("%w: token was issued in the future", ErrInvalid)
+	}
+	return nil
 }
 
 // verifySignature checks the header, resolves the signing key by kid and
@@ -182,63 +206,6 @@ func (v *Verifier) verifySignature(ctx context.Context, parts []string) error {
 	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], signature); err != nil {
 		return fmt.Errorf("%w: bad signature: %w", ErrInvalid, err)
 	}
-	return nil
-}
-
-// key returns the signing key for kid, refreshing the cache when it is stale
-// and once more when the kid is simply unknown — a key rotated in since the
-// last fetch must not wait out the TTL.
-//
-// The lock is held across the fetch, so verifications serialize while the
-// provider is slow and each queued caller retries the fetch on its own; a
-// provider outage is a latency wall, never a fallback to stale keys. That is
-// deliberate — fail closed — and worth revisiting only with singleflight or
-// serve-stale, not by dropping the guard.
-func (v *Verifier) key(ctx context.Context, kid string) (*rsa.PublicKey, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	stale := v.keys == nil || v.now().Sub(v.fetchedAt) >= v.ttl()
-	if stale {
-		if err := v.fetch(ctx); err != nil {
-			return nil, err
-		}
-	}
-	if key, ok := v.keys[kid]; ok {
-		return key, nil
-	}
-	if !stale {
-		if err := v.fetch(ctx); err != nil {
-			return nil, err
-		}
-		if key, ok := v.keys[kid]; ok {
-			return key, nil
-		}
-	}
-	return nil, fmt.Errorf("%w: no key for kid %q", ErrInvalid, kid)
-}
-
-func (v *Verifier) ttl() time.Duration {
-	if v.cfg.CacheTTL == 0 {
-		return DefaultCacheTTL
-	}
-	return v.cfg.CacheTTL
-}
-
-func (v *Verifier) fetch(ctx context.Context) error {
-	var set struct {
-		Keys []jwk `json:"keys"`
-	}
-	if err := v.get(ctx, v.jwks, &set); err != nil {
-		return fmt.Errorf("porte/jwt: JWKS fetch failed: %w", err)
-	}
-	keys := make(map[string]*rsa.PublicKey, len(set.Keys))
-	for _, jwk := range set.Keys {
-		if key := jwk.rsaKey(); key != nil {
-			keys[jwk.Kid] = key
-		}
-	}
-	v.keys = keys
-	v.fetchedAt = v.now()
 	return nil
 }
 

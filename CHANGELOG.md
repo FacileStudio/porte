@@ -5,16 +5,46 @@ session from undoing a deliberate choice.
 
 ## Unreleased
 
-**Offline verification of machine-token JWTs.** `Config.MachineAudience` (env
+**Offline verification of bearer JWTs.** `Config.MachineAudience` (env
 `OIDC_MACHINE_AUDIENCE`) gives the session manager a second bearer verifier: a bearer that parses
 as three dot-separated segments is verified against the provider's JWKS — signature, `iss`, `aud`,
-`exp` — and never reaches the hashed-session lookup. Keys cache for an hour and refetch once on an
-unknown kid, so a rotation does not wait out the TTL while forged kids cannot cause a fetch storm.
-The engine is the new stdlib-only `porte/oidc/jwt`; the manager learns of it through the
-`session.JWTVerifier` interface so the credential package still compiles without any OIDC
-dependency. A verified token has no session row behind it — `SessionID` is zero, revocation
-does not reach it, and it dies when the key or the expiry says so. Introspection stays out:
-offline verification is the point.
+`exp`, and `nbf`/`iat` when present — and never reaches the hashed-session lookup. Keys cache for
+an hour and refetch once on an unknown kid, so a rotation does not wait out the TTL. The engine is
+the new stdlib-only `porte/oidc/jwt`; the manager learns of it through the `session.JWTVerifier`
+interface so the credential package still compiles without any OIDC dependency. Introspection
+stays out: offline verification is the point.
+
+**A verified bearer resolves to a local account.** This is what turns one login per app into one
+login for the suite: a user who has signed in here through the browser can afterwards present a
+Registre-issued token to the same app, and porte authenticates them as themselves. `sub` is
+matched against `porte_identities` on `(issuer, subject)` — the same key the callback and
+back-channel logout already use, and never the email address, because matching on a mutable
+address is the account-takeover primitive v0.3.0 removed from the callback. A subject with no row
+is refused rather than provisioned: account creation stays in the callback, which is the path
+that holds a verified email.
+
+That lookup is also the whole of the deactivation story on this path, and the reason it is
+mandatory. A JWT carries no session row, so revoking sessions — all back-channel logout can do —
+does not reach one, and `SessionID` is zero. What does reach one is `IdentityStore.Find`: an app
+that deactivates an account by making `Find` answer `ErrNotFound` locks it out on the next
+request. An app that leaves the row readable keeps admitting the token until it expires, so the
+issuer's access-token lifetime is the real bound. Registre SPEC §10 question 6 chose offline
+verification knowing this and named short lifetimes as the mitigation.
+
+The behaviour change lands on an unreleased, unadopted surface: `MachineAudience` was empty in
+every app, and a service account that previously authenticated as an all-but-empty identity now
+needs a row like anybody else. Registre's SPEC asks for exactly that — "the app-side identity is
+`(issuer, sub)` exactly as it is for a human, a service account is a principal, not a special
+case". Roles are taken from the verified token rather than from the cached row, so a provider
+that emits no roles claim leaves a bearer caller with none rather than with yesterday's.
+
+**The unknown-kid refetch is rate limited.** The previous entry claimed forged kids could not
+cause a fetch storm and the code did not deliver it: `kid` is read off the header before any
+signature is checked, and a fresh one on every request bought one outbound JWKS fetch each,
+serialized under the mutex every real verification waits on and aimed at the one provider all
+eleven apps share. It is now one refetch per `minRefetchInterval` (30s). A rotation the provider
+published before signing with the new key is already cached and unaffected; the floor costs at
+most half a minute of refusals on a rotation that skipped that step.
 
 ## v0.3.1 — 2026-08-22
 

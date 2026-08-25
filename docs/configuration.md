@@ -15,7 +15,7 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_REDIRECT_URL` | with issuer | — | Must match the redirect URI registered on the provider |
 | `OIDC_SUCCESS_URL` | with issuer | — | Where the browser lands after a successful callback |
 | `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
-| `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS. **Its presence is what enables machine-token verification** |
+| `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS. **Its presence is what enables bearer-JWT verification**, for machine and human principals alike |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
 `porte` does not read the environment itself. An app builds a `Config` however it already builds
@@ -59,7 +59,7 @@ draw the password form in the first place.
 | `SSOOnly` | `false` | Local password routes are not registered |
 | `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
-| `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline. Empty disables the JWT branch; requires `Issuer`. See [Machine tokens](#machine-tokens) below |
+| `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline. Empty disables the JWT branch; requires `Issuer`. See [Bearer JWTs from the issuer](#bearer-jwts-from-the-issuer) below |
 | `SessionTTL` | `30 days` | Browser session lifetime |
 | `SessionIdleTTL` | `7 days` | How long a browser session may go unused before it stops authenticating |
 | `ClaimsTTL` | `5 minutes` | How long a cached role claim is trusted |
@@ -264,24 +264,42 @@ behind on the request meant to migrate the user off it.
   store them in the clear and no option to issue a self-contained JWT instead: an opaque token
   is revocable by construction, which is the property back-channel logout depends on.
 
-## Machine tokens
+## Bearer JWTs from the issuer
 
 Setting `OIDC_MACHINE_AUDIENCE` gives the session manager a second bearer verifier. A bearer
 that parses as three dot-separated segments is verified offline — signature against the
-provider's JWKS, then `iss`, `aud` and `exp` — and never touches the hashed-session lookup.
-Anything else is authenticated exactly as before, so an opaque token's behaviour does not move.
+provider's JWKS, then `iss`, `aud`, `exp` and, when present, `nbf` and `iat` — and never touches
+the hashed-session lookup. Anything else is authenticated exactly as before, so an opaque
+token's behaviour does not move.
+
+The variable is named for machine tokens because that is what it was built for, and the name is
+kept so nothing that already sets it has to move. It admits any principal the issuer signs for
+this audience, a human included: a suite user who signed in through the browser once can present
+a Registre token to this app afterwards, which is what makes one login serve the suite.
 
 The rules the branch lives by:
 
 - **A failed verification is refused, never fallen through.** A token that parses as a JWT and
   fails *is* an answer; giving it a second chance with the session lookup would mean a bad
   token's only cost was being unrecognized.
-- **There is no session row behind a verified token.** `SessionID` is zero and revocation
-  endpoints do not reach it: the token dies when the provider's key or expiry says so, not when
-  the app feels like it. An app that needs a user id matches on the claims itself.
+- **The token resolves to a local account, or it is refused.** `sub` is matched against
+  `porte_identities` on `(issuer, subject)` — the same key the login callback and back-channel
+  logout use, never the email address. A subject with no row has never signed in here, and porte
+  does not create an account from a bearer: the callback owns account creation because it is the
+  path holding a verified email.
+- **The identity lookup is the deactivation lever.** There is no session row behind a verified
+  token, so revoking sessions does not reach one and `SessionID` is zero. What does reach one is
+  `IdentityStore.Find`: an app that deactivates an account by making `Find` answer `ErrNotFound`
+  locks it out of this path on the next request. An app that leaves the row readable keeps
+  admitting the token until it expires, so the issuer's access-token lifetime is the real bound.
+- **Roles come from the token, not from the cached row.** The row holds what the provider said
+  during the last browser login; the token holds what it says now, already filtered for this
+  client. A provider that emits no roles claim therefore leaves a bearer caller with no roles
+  rather than with yesterday's — closed rather than open.
 - **Keys are cached for an hour** (`DefaultCacheTTL` in `porte/oidc/jwt`, roughly one token
-  lifetime) and refetched once on an unknown kid before refusing — a rotation must not wait out
-  the TTL, but a flood of forged kids must not turn into a fetch storm either.
+  lifetime) and refetched once on an unknown kid before refusing, so a rotation does not wait
+  out the TTL. That refetch is rate limited to one per `minRefetchInterval` (30s), because the
+  kid is read before any signature is checked and would otherwise buy an unauthenticated caller
+  one outbound fetch per request, aimed at the provider every app shares.
 - **Introspection is deliberately out of scope.** Offline verification is what makes the check
-  free; a per-request call to the issuer would reintroduce the dependency machine tokens exist
-  to remove.
+  free; a per-request call to the issuer would reintroduce the dependency this exists to remove.
