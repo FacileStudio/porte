@@ -78,10 +78,24 @@ var ErrCodeConsumed = errors.New("porte: login code already consumed")
 // exact paths with these exact response shapes, which is what makes them safe
 // to freeze.
 const (
-	RouteConfig            = "/auth/config"
-	RouteLogin             = "/auth/oidc"
-	RouteCallback          = "/auth/oidc/callback"
-	RouteExchange          = "/auth/oidc/exchange"
+	RouteConfig   = "/auth/config"
+	RouteLogin    = "/auth/oidc"
+	RouteCallback = "/auth/oidc/callback"
+	RouteExchange = "/auth/oidc/exchange"
+
+	// RouteDeviceExchange trades an access token the provider's device
+	// grant already issued for this app's own session token. It is what
+	// lets a CLI run RFC 8628 once and sign in to every tool in the suite,
+	// including from a machine whose browser is somewhere else.
+	//
+	// The path and the wire shape are frozen by the shipped caller
+	// (facile@5483f18), not chosen here. A 404 on this path is that
+	// caller's signal that an app has not shipped the endpoint, and it
+	// falls back to the loopback flow silently, so an app that mounts the
+	// route must answer every bad request on its merits. The caller probes
+	// with a POST carrying an empty body and must get a 400, never a 404.
+	RouteDeviceExchange = "/auth/oidc/device/exchange"
+
 	RouteLogout            = "/auth/logout"
 	RouteSyncProfile       = "/auth/sync-profile"
 	RouteBackchannelLogout = "/auth/backchannel-logout"
@@ -374,6 +388,16 @@ type CredentialsRequest struct {
 // one-time login code for a bearer token.
 type ExchangeRequest struct {
 	Code string `json:"code"`
+}
+
+// DeviceExchangeRequest is the body of POST /auth/oidc/device/exchange: a CLI
+// trading the access token it already holds from the provider's device grant
+// for this app's own session token.
+//
+// The field name is the shipped caller's, and the token in it is a live
+// credential. Nothing that handles this struct may log it.
+type DeviceExchangeRequest struct {
+	AccessToken string `json:"access_token"`
 }
 
 // ExchangeResponse keeps Plume's existing wire shape, including user_id as a

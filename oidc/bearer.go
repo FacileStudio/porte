@@ -9,19 +9,26 @@ import (
 )
 
 // attachBearerVerifier gives the session manager the offline JWT verifier,
-// built against the same provider the browser flow federates to. It is called
-// only when Config.MachineAudience is set, which is what enables the branch.
-func attachBearerVerifier(ctx context.Context, cfg porte.Config, deps Deps) error {
+// built against the same provider the browser flow federates to, and hands it
+// back so the kit can hold it too. It is called only when
+// Config.MachineAudience is set, which is what enables the branch.
+//
+// The kit needs its own reference because the device exchange
+// (RouteDeviceExchange) verifies a token carried in a request body rather than
+// in an Authorization header, so the manager's middleware never sees it. Both
+// callers share one verifier, and therefore one JWKS cache and one audience.
+func attachBearerVerifier(ctx context.Context, cfg porte.Config, deps Deps) (bearerVerifier, error) {
 	verifier, err := jwtpkg.New(ctx, jwtpkg.Config{Issuer: cfg.Issuer, Audience: cfg.MachineAudience})
 	if err != nil {
-		return fmt.Errorf("porte/oidc: bearer-token verification failed to configure: %w", err)
+		return bearerVerifier{}, fmt.Errorf("porte/oidc: bearer-token verification failed to configure: %w", err)
 	}
-	deps.Sessions.WithJWT(bearerVerifier{
+	bearer := bearerVerifier{
 		tokens:     verifier,
 		identities: deps.Identities,
 		issuer:     cfg.Issuer,
-	})
-	return nil
+	}
+	deps.Sessions.WithJWT(bearer)
+	return bearer, nil
 }
 
 // tokenVerifier is the signature half of the bearer path. It is an interface
@@ -63,6 +70,11 @@ type bearerVerifier struct {
 // token already proven to be signed by the issuer and minted for this app, so
 // a caller without one cannot time the difference between a subject that has
 // an account here and one that does not.
+//
+// A row that names account zero is refused rather than returned. No account
+// has that id, so the row is a store bug, and the two callers of this method
+// both spend the UserID directly, one to authorize a request and one to mint a
+// session. Zero would be the identity of everybody at once.
 func (b bearerVerifier) VerifyJWT(ctx context.Context, rawToken string) (porte.Identity, error) {
 	claims, err := b.tokens.Verify(ctx, rawToken)
 	if err != nil {
@@ -74,6 +86,9 @@ func (b bearerVerifier) VerifyJWT(ctx context.Context, rawToken string) (porte.I
 	stored, err := b.identities.Find(ctx, b.issuer, claims.Subject)
 	if err != nil {
 		return porte.Identity{}, fmt.Errorf("porte/oidc: no local identity for subject %q: %w", claims.Subject, err)
+	}
+	if stored.UserID == 0 {
+		return porte.Identity{}, fmt.Errorf("porte/oidc: the identity row for subject %q names no account", claims.Subject)
 	}
 	return porte.Identity{
 		UserID:  stored.UserID,

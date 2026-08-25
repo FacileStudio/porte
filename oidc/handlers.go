@@ -32,6 +32,12 @@ const backchannelLogoutEvent = "http://schemas.openid.net/event/backchannel-logo
 // rather than an endpoint that 500s. RouteLogout is not here at all any more —
 // it belongs to porte/session, which owns the credential whether or not this
 // app federates. Mount the manager as well as the kit.
+//
+// RouteDeviceExchange has a second condition on top of that one: it appears
+// only when Config.MachineAudience is set, because without an audience there
+// is no verifier and the route could do nothing but refuse. Its absence is a
+// 404, which is exactly what the CLI reads as "this app has not shipped the
+// exchange" before falling back to the loopback flow.
 func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteConfig, k.handleConfig)
 	if !k.Enabled() {
@@ -45,6 +51,9 @@ func (k *Kit) Mount(router chi.Router) {
 	router.Get(porte.RouteCallback, k.handleCallback)
 	router.Post(porte.RouteExchange, k.handleExchange)
 	router.Post(porte.RouteBackchannelLogout, k.handleBackchannelLogout)
+	if k.bearer != nil {
+		router.Post(porte.RouteDeviceExchange, k.handleDeviceExchange)
+	}
 }
 
 func (k *Kit) handleConfig(w http.ResponseWriter, _ *http.Request) {
@@ -374,6 +383,96 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 	}
 	httpjson.WriteJSON(w, http.StatusOK, porte.ExchangeResponse{
 		UserID: strconv.FormatInt(code.UserID, 10),
+		Token:  token,
+	})
+}
+
+// handleDeviceExchange is the suite's half: an access token the provider's
+// device grant already issued goes in, this app's own session token comes out.
+// It is what makes one `facile login` serve every CLI. The alternative, a CLI
+// storing the provider's token in the slot where it keeps its own session, is
+// a login that stops working when that token expires an hour later.
+//
+// It composes three pieces that already existed and adds no verification of
+// its own: the same bearerVerifier the Authorization header path uses, the
+// same (issuer, sub) lookup the login callback matches on, and the same
+// Manager.Issue that mints every other session. What is new is only that the
+// token arrives in a request body instead of a header.
+//
+// # The audience this trusts, and what that means
+//
+// The token is verified against Config.MachineAudience, the same audience as
+// the per-request bearer path, because Registre mints one token per `facile
+// login` run and the CLI presents that one token to every tool. Today that
+// audience is `facile-cli`: the device grant's token carries the client id it
+// was requested under, and the facile-cli client declares no audiences of its
+// own. So an operator turns this on by setting OIDC_MACHINE_AUDIENCE=facile-cli
+// alongside the issuer, and that setting is a statement with teeth: **any
+// holder of a token Registre minted for facile-cli can obtain a session at
+// this app, as whoever that token names.** facile-cli is a public client, so
+// anyone can start its device grant; what stands between that and a session
+// here is the human approving the code at the provider, and the requirement
+// below that the subject already have an account.
+//
+// The orthodox alternative, Registre declaring `audiences: [<every tool>]` on
+// facile-cli so each app checks its own client id, was not taken. It buys no
+// isolation, because one token still has to open every tool and would name
+// every one of them in aud; it costs a Registre deploy whenever a tool is
+// added; and
+// it needs a change in a repo this one cannot make. Splitting the audience in
+// two, so the exchange trusted a stricter value than the header path, was not
+// taken either: this endpoint mints a session that outlives the token it was
+// traded for, so a token already accepted on every route by the header path is
+// not made safer by a second name on this one.
+//
+// # Refusals
+//
+// No account is ever created here. A verified subject with no row in
+// porte_identities is refused, because account creation belongs to the login
+// callback, which is the path that holds a verified email. Provisioning from a
+// bearer would let anyone the provider will mint a token for materialise an
+// account in every app at once. Every refusal answers the same 401 with the
+// same message, so the response says nothing about which check failed or
+// whether the subject has an account here, and the identity store is only
+// consulted after the cryptographic and claim checks have passed, so the
+// latency says nothing either.
+//
+// No CSRF header is required, and that is not an omission. The suite's default
+// is the opposite because the default transport is a cookie a browser attaches
+// on its own; here there is no ambient credential to abuse, because the caller
+// must put a token it holds into the request body, which a cross-site form
+// cannot do. Requiring the header would only break the CLI, which is not a browser.
+//
+// The response carries a credential, so it is no-store per OAuth 2.1 §7.1, and
+// the request carries one, so neither the token nor any error quoting it is
+// ever logged.
+func (k *Kit) handleDeviceExchange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+
+	var request porte.DeviceExchangeRequest
+	if err := httpjson.DecodeJSON(w, r, &request); err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	if request.AccessToken == "" {
+		httpjson.WriteError(w, errors.Invalid("missing access_token"))
+		return
+	}
+
+	identity, err := k.bearer.VerifyJWT(r.Context(), request.AccessToken)
+	if err != nil {
+		k.logger.Debug("porte: device exchange refused", slog.Any("error", err))
+		httpjson.WriteError(w, errors.Unauthorized("invalid access token"))
+		return
+	}
+
+	token, _, err := k.sessions.Issue(r.Context(), identity.UserID, "")
+	if err != nil {
+		httpjson.WriteError(w, err)
+		return
+	}
+	httpjson.WriteJSON(w, http.StatusOK, porte.ExchangeResponse{
+		UserID: strconv.FormatInt(identity.UserID, 10),
 		Token:  token,
 	})
 }

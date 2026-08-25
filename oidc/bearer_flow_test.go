@@ -11,9 +11,14 @@ import (
 
 // accessToken mints what registre hands an app after a human signs in: an
 // RS256 access token for this client, carrying the user's subject.
-func (p *provider) accessToken() string {
+func (p *provider) accessToken() string { return p.accessTokenWith(nil) }
+
+// accessTokenWith is accessToken with a hook that tampers with the honest
+// claims before they are signed, so a test can produce a token that is wrong
+// in exactly one way and still signed by the real key.
+func (p *provider) accessTokenWith(mutate func(map[string]any)) string {
 	now := time.Now()
-	return p.sign(map[string]any{
+	claims := map[string]any{
 		"iss":   p.issuer(),
 		"sub":   p.subject,
 		"aud":   "test-client",
@@ -21,7 +26,11 @@ func (p *provider) accessToken() string {
 		"nbf":   now.Unix(),
 		"exp":   now.Add(5 * time.Minute).Unix(),
 		"email": p.email,
-	})
+	}
+	if mutate != nil {
+		mutate(claims)
+	}
+	return p.sign(claims)
 }
 
 // whoami calls the harness's authenticated route carrying a bearer token.

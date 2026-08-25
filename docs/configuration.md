@@ -15,7 +15,7 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_REDIRECT_URL` | with issuer | — | Must match the redirect URI registered on the provider |
 | `OIDC_SUCCESS_URL` | with issuer | — | Where the browser lands after a successful callback |
 | `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
-| `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS. **Its presence is what enables bearer-JWT verification**, for machine and human principals alike |
+| `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS. **Its presence is what enables bearer-JWT verification**, for machine and human principals alike, and what mounts `POST /auth/oidc/device/exchange`. Set it to `facile-cli` to accept a suite CLI login |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
 `porte` does not read the environment itself. An app builds a `Config` however it already builds
@@ -59,7 +59,7 @@ draw the password form in the first place.
 | `SSOOnly` | `false` | Local password routes are not registered |
 | `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
-| `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline. Empty disables the JWT branch; requires `Issuer`. See [Bearer JWTs from the issuer](#bearer-jwts-from-the-issuer) below |
+| `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline. Empty disables the JWT branch and the device exchange; requires `Issuer`. See [Bearer JWTs from the issuer](#bearer-jwts-from-the-issuer) below |
 | `SessionTTL` | `30 days` | Browser session lifetime |
 | `SessionIdleTTL` | `7 days` | How long a browser session may go unused before it stops authenticating |
 | `ClaimsTTL` | `5 minutes` | How long a cached role claim is trusted |
@@ -303,3 +303,53 @@ The rules the branch lives by:
   one outbound fetch per request, aimed at the provider every app shares.
 - **Introspection is deliberately out of scope.** Offline verification is what makes the check
   free; a per-request call to the issuer would reintroduce the dependency this exists to remove.
+
+### The device exchange, and what `facile-cli` costs you
+
+The same setting mounts `POST /auth/oidc/device/exchange`. A CLI trades the access token it
+already holds from the provider's device grant (RFC 8628) for this app's own session token:
+
+```
+POST /api/auth/oidc/device/exchange
+{"access_token": "<the token the provider issued>"}
+→ 200 {"user_id": "42", "token": "<this app's session>"}
+```
+
+This is what makes one `facile login` serve every tool. The CLI runs the device grant once,
+gets one token, and trades it at each tool, because writing the provider's token into the slot
+where a CLI keeps its own session is a login that stops working when that token expires.
+
+**The audience is the whole security decision, so set it deliberately.** Registre issues the
+CLI's token to the `facile-cli` client and the token carries `aud: ["facile-cli"]`, so an app
+that wants the exchange sets:
+
+```
+OIDC_MACHINE_AUDIENCE=facile-cli
+```
+
+That is a statement with teeth. **Any holder of a token Registre minted for `facile-cli` can
+obtain a session at this app, as whoever that token names.** `facile-cli` is a public client, so
+anyone can start its device grant; what stands between a stranger and a session here is the
+human approving the code at the provider, and the requirement that the subject already have an
+account. There is one audience, not two: the exchange checks the same value as the header path,
+because a token the header path already accepts on every route is not made safer by giving the
+exchange a second name to check.
+
+**Leaving `OIDC_MACHINE_AUDIENCE` empty means the route is not mounted and answers 404**, which
+is deliberate rather than a gap. An app with no audience cannot tell a Registre token from a
+forgery, so it must not pretend to serve the exchange, and 404 is precisely the signal
+`facile login` reads as "this app has not shipped it" before falling back to the loopback flow.
+The corollary binds an app that *does* mount it: the CLI probes with a POST carrying an empty
+body, so every bad request must be refused on its merits (400 or 401) and never with a 404.
+
+Everything the header path refuses, the exchange refuses identically, with one 401 and one
+message. That covers bad signature, wrong issuer, wrong audience, expired, not yet valid,
+unknown kid, no subject, and a subject with no row in `porte_identities`. No account is created here. A verified
+subject nobody has seen before is refused, because account creation belongs to the login
+callback, which is the path that holds a verified email; provisioning from a bearer would let
+anyone the provider will mint a token for materialise an account in every app at once.
+
+No CSRF header is required, and that is not an oversight. The suite's default is the opposite
+because the default transport is a cookie a browser attaches on its own; here there is no
+ambient credential to abuse, since the caller must put a token it holds into the request body,
+which a cross-site form cannot do.

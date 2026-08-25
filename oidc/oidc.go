@@ -71,6 +71,13 @@ type Kit struct {
 	oauth    oauth2.Config
 	logger   *slog.Logger
 	now      func() time.Time
+
+	// bearer verifies issuer-signed JWTs offline. It is non-nil exactly
+	// when Config.MachineAudience is set, and its presence is what mounts
+	// RouteDeviceExchange. An app with no audience to check against has no
+	// way to verify a device token, so it does not serve the route at all
+	// rather than serving one that can only refuse.
+	bearer session.JWTVerifier
 }
 
 // New performs discovery and returns a kit. It is the boot path, so every
@@ -128,9 +135,11 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 		return nil, err
 	}
 	if cfg.MachineAudience != "" {
-		if err := attachBearerVerifier(ctx, cfg, deps); err != nil {
+		bearer, err := attachBearerVerifier(ctx, cfg, deps)
+		if err != nil {
 			return nil, err
 		}
+		kit.bearer = bearer
 	}
 	// The manager fills Identity.Roles through this kit, and this kit
 	// needs the manager to issue sessions. Something has to be built first.

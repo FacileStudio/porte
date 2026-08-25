@@ -57,6 +57,7 @@ Path constants, so an app and its frontend cannot disagree about a string.
 | `RouteLogin` | `GET /auth/oidc` |
 | `RouteCallback` | `GET /auth/oidc/callback` |
 | `RouteExchange` | `POST /auth/oidc/exchange` |
+| `RouteDeviceExchange` | `POST /auth/oidc/device/exchange` |
 | `RouteLogout` | `POST /auth/logout` |
 | `RouteSyncProfile` | `POST /auth/sync-profile` |
 | `RouteBackchannelLogout` | `POST /auth/backchannel-logout` |
@@ -105,7 +106,8 @@ overrides the per-request `X-Forwarded-Proto` test upward and never downward.
 | `ConfigResponse` | `/auth/config` | `sso_only`, `oidc_enabled` |
 | `CredentialsRequest` | `/auth/register`, `/auth/login` | `email`, `name` (register only), `password` |
 | `ExchangeRequest` | `/auth/oidc/exchange` | `code` |
-| `ExchangeResponse` | `/auth/oidc/exchange`, `/auth/register`, `/auth/login` | `user_id`, `token` |
+| `DeviceExchangeRequest` | `/auth/oidc/device/exchange` | `access_token` |
+| `ExchangeResponse` | `/auth/oidc/exchange`, `/auth/oidc/device/exchange`, `/auth/register`, `/auth/login` | `user_id`, `token` |
 | `LogoutResponse` | `/auth/logout` | `logged_out` |
 | `SyncProfileResponse` | `/auth/sync-profile` | `synced` |
 
@@ -514,7 +516,15 @@ answer to the configuration alone.
 
 `POST /auth/oidc/exchange` sets `Cache-Control: no-store`. It is `porte`'s token endpoint in
 everything but name, and OAuth 2.1 §7.1 requires it of any response carrying a credential. The
-back-channel logout endpoint and the CLI code page do the same.
+device exchange, the back-channel logout endpoint and the CLI code page do the same.
+
+`POST /auth/oidc/device/exchange` answers 400 to a body it cannot read or one with no
+`access_token` in it, 401 to any token it will not accept, and 200 with `{"user_id", "token"}`
+otherwise. It is mounted only when `OIDC_MACHINE_AUDIENCE` is set, and its 404 when it is not is
+load-bearing: that is how `facile login` learns an app has not shipped the exchange and falls
+back to the loopback flow. An app that mounts it therefore must never answer 404. The CLI
+probes with an empty body, which is why an empty body earns a 400. See
+[Bearer JWTs from the issuer](configuration.md#bearer-jwts-from-the-issuer).
 
 `POST /auth/sync-profile` compares the `sub` in the UserInfo response against the stored subject
 and answers 401 without writing anything when they differ. OpenID Connect Core §5.3.2 requires

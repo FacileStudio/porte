@@ -301,13 +301,21 @@ func (p *provider) handleUserinfo(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sign produces a compact RS256 JWT the kit's JWKS-backed verifier accepts.
+// sign produces a compact RS256 JWT the kit's JWKS-backed verifier accepts,
+// under the one kid this provider publishes.
 func (p *provider) sign(claims map[string]any) string {
-	header, _ := json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT", "kid": "test-key"})
+	return signJWT(p.key, "test-key", claims)
+}
+
+// signJWT is sign with the kid spelled out, so a test can present a token
+// signed under a key id the provider's JWKS does not carry, which is what a
+// rotated-out key and a forged header both look like on the wire.
+func signJWT(key *rsa.PrivateKey, kid string, claims map[string]any) string {
+	header, _ := json.Marshal(map[string]string{"alg": "RS256", "typ": "JWT", "kid": kid})
 	payload, _ := json.Marshal(claims)
 	signing := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
 	digest := sha256.Sum256([]byte(signing))
-	signature, err := rsa.SignPKCS1v15(rand.Reader, p.key, crypto.SHA256, digest[:])
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
 	if err != nil {
 		panic(err)
 	}

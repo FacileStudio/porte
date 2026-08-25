@@ -223,6 +223,7 @@ GET  /auth/config          {"sso_only": bool, "oidc_enabled": bool}   no auth
 GET  /auth/oidc            302 to the IdP                             no auth
 GET  /auth/oidc/callback   sets session cookie, 302 to OIDC_SUCCESS_URL   no auth
 POST /auth/oidc/exchange   one-time code → bearer token (CLI path)    no auth, code required
+POST /auth/oidc/device/exchange  issuer access token → this app's session   no auth, token required
 POST /auth/logout          {"logged_out": true}, clears the cookie    session required
 POST /auth/sync-profile    refresh profile from the IdP               session required
 POST /auth/backchannel-logout   IdP-initiated session kill            logout token, no session
@@ -291,6 +292,18 @@ and the full RFC 8628 device flow delegated to Authentik, which supports it nati
 upgrade replaces the copy-paste UX with `gh`-style `user_code` entry and belongs in v1.x.
 Store refresh material in the OS keychain, never a JSON file — a CLI-side concern, documented
 here because six CLIs will read this spec.
+
+**The device half landed 2026-08-25, and it is not the deferred item above.** Registre runs the
+RFC 8628 grant; `porte` never speaks it. What `porte` added is the last hop, `POST
+/auth/oidc/device/exchange`: the CLI runs the grant once against the provider, gets one access
+token, and trades it at each tool for that tool's own session. Writing the provider's token into
+the slot where a CLI keeps its session is a login that stops working when that token expires, so
+the trade is not optional. The handler verifies the token through the same JWKS verifier the
+Authorization header path uses, resolves `sub` through `porte_identities`, and calls
+`Manager.Issue`. It mounts only when `OIDC_MACHINE_AUDIENCE` is set, because an app with no
+audience cannot verify anything, and its 404 in that state is the signal `facile login` reads as
+"not shipped". The client half lives in `facile`, which probes the route before running the
+grant so a tool without it never makes a human read a code off one screen for nothing.
 
 ### 5c. Claims, roles, and freshness
 
