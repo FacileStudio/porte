@@ -3,7 +3,7 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
-## Unreleased
+## v0.4.0 — 2026-08-25
 
 **One CLI login for the suite: `POST /auth/oidc/device/exchange`.** A CLI trades the access
 token it holds from the provider's device grant (RFC 8628) for this app's own session token.
