@@ -171,11 +171,88 @@ logs in through SSO, end customers (an e-commerce site's buyers, who will never 
 Authentik account) through email/password or a second OIDC provider. `porte_identities` is
 designed for that from v0.1 even though v0.1 wires only one provider.
 
-### v0.4 — `porte/espace`
+### v0.5 — `porte/spaces`
 
-A **subpackage**, same repo, same tags. `Space` / `SpaceMember` models, membership queries and
-`RequireRole(spaceID, role)`. Apps without spaces (Journal, Comptoir) simply do not import it —
-the pattern already used by `tronc/migrate`, `tronc/testdb` and `caisse/pg`.
+A **subpackage**, same repo, same tags. Membership queries and role resolution: `Role`, `Ladder`,
+`Membership`, `Store`, `Scope` and the `Guard` that answers `Resolve`, `Require`, `CanLeave` and
+`AssignableBy`. Apps without spaces (Journal, Comptoir) simply do not import it — the pattern
+already used by `tronc/migrate`, `tronc/testdb` and `caisse/pg`.
+
+**Two names changed between the plan and the code.** The package is `spaces`, not `espace`,
+because every other subpackage is an English mechanism name (`oidc`, `pg`, `session`, `local`,
+`avatarfs`) and every app already calls the concept `Space` in its own source — `schemas/space.go`,
+`modules/spaces`, `SpaceMember`, muse's `SpaceSwitcher`. And **v0.4 was taken** by the OIDC device
+exchange before this was built, so it lands as **v0.5.0**.
+
+**The role ladder is configurable rather than fixed at three roles.** This is the one design change
+against the plan, and Vision forced it: `internal/siteaccess/siteaccess.go:29` gates every write on
+`owner|admin|editor`, with `viewer` below. A package hard-coding owner/admin/member would have left
+Vision holding its own copy of the guard, which is one more copy from the package built to end them.
+So `Ladder` is a list of roles ordered by privilege, `Default()` is the suite's three, and every
+check the package makes is a comparison inside a ladder rather than a switch over named roles. A
+role the ladder does not rank is unknown, not weak: it fails every check rather than scoring zero.
+
+**Four invariants, each currently violated by at least one adopter.** They are the reason the
+package exists, and `spaces/spacestest.Conformance(t, newStore)` is how an adopter inherits the
+proof rather than only the code — it runs them against the app's *own* `Store`.
+
+1. **Membership is the only key.** No instance-admin bypass anywhere in the package, and no hook to
+   add one. An app that wants staff inside a space grants them a membership, where it is listed and
+   revocable. A bypass inside `porte` would be invisible to every app importing it.
+2. **A space id is checked before it is usable.** An empty id is personal scope in `Resolve`, and
+   never touches the `Store`; any non-empty id goes through `Store.Membership`. A `Scope` that
+   reports `Resolved` and carries a space id is therefore proof of membership in that space. A
+   refusal returns the zero `Scope`, and the zero `Scope` reports `Resolved() == false` and
+   `Personal() == false`, so a caller that ignores the error holds nothing usable.
+3. **A space always has a reachable owner.** `CanLeave` refuses with `ErrSoleOwner` when the caller
+   holds the ladder's top rank and is the only member who does. It does *not* refuse an owner with a
+   peer, which three apps do — that makes ownership transfer the only exit from a space two people
+   own equally.
+4. **No privilege escalation.** `AssignableBy(actor Scope, target Role)` is false when target
+   outranks actor. An admin may appoint a peer admin and may not mint an owner.
+
+**Three signatures answer to the invariants rather than to convenience.**
+
+- `Require(ctx, userID, spaceID, min)` refuses an empty space id with `ErrNotMember`. Passing every
+  minimum on an absent id is fail-open on empty input, and the realistic exploit is a gate and a use
+  reading the id from different places — `Require(ctx, uid, r.Header.Get("X-Space"), RoleAdmin)`
+  with no header, then a handler acting on the id in the body. A handler that genuinely serves both
+  shapes calls `Resolve` and branches on `Scope.Personal`.
+- `AssignableBy` takes the resolved `Scope`, not the actor's `Role`. Two plain roles invite passing
+  both straight off the wire, which checks the request against itself. `Scope` carries an unexported
+  marker only `Guard` sets, so `Scope{UserID: "mallory", Role: RoleOwner}` still compiles and grants
+  nothing.
+- `Resolve` requires the returned row to carry **both** ids and both to equal what was asked for. An
+  absent id is not agreement: `SELECT role FROM ... WHERE space_id=$1 AND user_id=$2` is the most
+  natural `Store`, and treating its blank ids as a match would disarm the cross-check for exactly
+  the implementation most apps write. `Spaces` applies the same rule to every row it lists, because
+  that list is what a space switcher renders.
+
+**`CanLeave` is time-of-check to time-of-use, and the adopter has to close it.** It counts, the
+caller deletes, and two owners leaving at the same instant both count two and both pass. The
+package cannot fix that without a database dependency it refuses to take, so the contract is on the
+caller: run `CanLeave` and the `DELETE` **in one transaction, with the space's membership rows
+locked** — `SELECT ... FOR UPDATE` over the rows `CountRole` counts, or a serializable transaction
+with a retry. Sablier, Agenda and Plume ship the unlocked count-then-delete today; importing the
+package without the lock reproduces their bug.
+
+**The conformance suite asserts content, not row counts.** `Conformance` checks that every
+`Membership` a `Store` returns carries ids populated from the row and matching the arguments, that
+roles come back as they were stored, and that `Memberships` lists the caller's own rows and no
+others. Counting alone certified a store that blanked the ids and one that promoted every listed row
+to owner. `ConformanceWithLadder(t, newStore, ladder)` runs the same suite on an app's own
+vocabulary — Vision forced `Ladder` to be configurable, and proving the guard on the default ladder
+would prove nothing about the guard Vision ships. The ladder must rank at least three roles: the
+suite needs a top, a middle and a bottom to tell a refusal from an escalation.
+
+**A ladder built by `NewLadder` is never the zero `Ladder`.** `Guard` substitutes `Default()` only
+for the unset one, so `NewLadder(cfg.Roles...)` over a misconfigured config refuses every role
+instead of silently inheriting the suite's three. `Ladder.Configured()` reports which one an app is
+holding.
+
+One argument order was reversed against this section's original sketch: `CanLeave(ctx, userID,
+spaceID)` matches `Resolve` and `Require` rather than taking the space first. Both parameters are
+strings, nothing would catch a swap, and the two calls sit in the same handler.
 
 Evidence: `Space`/`SpaceMember` is copy-pasted in Nuage, Sablier, Agenda, Courrier and Plume,
 and as `Workspace` in Vision. Already drifted — `modules/spaces/types.go` is 54/49/40/39/45
@@ -183,16 +260,26 @@ lines with five different hashes, and the wire contracts genuinely diverge (`ID`
 Courrier and an int64 in Nuage; Nuage wraps lists, Courrier returns bare arrays).
 
 **Scope limit, deliberate:** models, membership and role resolution only. **No CRUD, no
-invitation flow, no HTTP routes.** Those stay in each app, because converging them would mean
-migrating six SvelteKit frontends, and because the authorization logic is the only part where
-drift is a security bug rather than cosmetics. If spaces ever grow a real product surface —
+invitation flow, no HTTP routes, and no GORM.** Those stay in each app, because converging them
+would mean migrating six SvelteKit frontends, and because the authorization logic is the only part
+where drift is a security bug rather than cosmetics. If spaces ever grow a real product surface —
 email invitations, quotas, per-space billing — that is when it earns its own repo.
 
-`FacileID` carries a unique index, which only makes sense if the same space is meant to exist
-in several apps. Confirmed intent: **sync via Antenne later**, so the whole park's spaces work
-together. Treat `FacileID` as the sync key from the start, even though the sync comes later.
-Check first: the `enveloppe` contract keys on `actor_email` and will need to carry a *space*
-identity — that is a change to `enveloppe`, to make before `porte/espace`, not during.
+The limit went one step further than planned once the code existed: **the package carries no
+persisted model either.** `Space`/`SpaceMember` is where the five copies diverge hardest — `ID` is
+a string in Courrier and an `int64` in Nuage — and a shared struct would have made adoption a
+migration in six databases before the guard could run in any of them. So the app keeps its table
+and implements a three-method `Store` over it, converting to `Membership` at the boundary; ids
+cross that boundary as strings, which every app can produce. Standard library only, so a package
+every app's authorization depends on drags neither an ORM nor a router into every binary.
+
+`FacileID` still carries a unique index in the apps, which only makes sense if the same space is
+meant to exist in several apps. Confirmed intent: **sync via Antenne later**, so the whole park's
+spaces work together. Treat `FacileID` as the sync key from the start, even though the sync comes
+later, and note that nothing in `porte/spaces` blocks it — the sync operates on the app's own table,
+which the package never claims. Still to check: the `enveloppe` contract keys on `actor_email` and
+will need to carry a *space* identity. That is a change to `enveloppe`, and it gates the sync, not
+this package — which is why `porte/spaces` shipped without waiting for it.
 
 ---
 
@@ -381,9 +468,9 @@ No `RequireRole` middleware for IdP roles, and no policy engine. The app writes 
 five lines, which is the smaller of the two options §7 Q4 posed and the one that keeps all three
 production role models working untouched.
 
-**Do not confuse this with `porte/espace` (v0.4).** Space membership is app-local data — the
-spaces live in the app's own database — so `espace.RequireRole(spaceID, role)` resolves
-membership, not IdP claims. Two different axes that must not be merged: a claim says what
+**Do not confuse this with `porte/spaces` (v0.5).** Space membership is app-local data — the
+spaces live in the app's own database — so `spaces.Guard.Require(ctx, userID, spaceID, role)`
+resolves membership, not IdP claims. Two different axes that must not be merged: a claim says what
 Authentik thinks of you globally; a membership says what this app's data says about you in one
 space.
 
@@ -598,7 +685,8 @@ porte/oidc      the engine: the flow, the six OIDC routes, the avatar guard
 porte/local     email and password: argon2id, register, login, set-password
 porte/pg        the identity tables and the four stores. database/sql only, no ORM
 porte/avatarfs  a filesystem AvatarStore and the handler that serves it
-porte/espace    v0.4. Space/SpaceMember, membership, RequireRole
+porte/spaces    v0.5. membership and role resolution. no models, no routes, standard library only
+porte/spaces/spacestest  the conformance suite an adopter runs against its own Store
 ```
 
 **`porte/session` extracted 2026-08-09, and it is the decision this section got most wrong.**
@@ -941,6 +1029,10 @@ which is still what a manual revocation goes through when the IdP is not the tri
    per-space authorization.
 4. **The e-commerce demo**, greenfield and outside the suite, which forces the non-Authentik
    issuer test on day one.
-5. **v0.4 `porte/espace`** — still gated on `enveloppe` learning to carry a space identity, as
-   §4 records. Do not start it before Nuage: Nuage is the app whose spaces should decide the
-   shape, and building the package first would buy a v0.4 that breaks it.
+5. **v0.5 `porte/spaces`** — shipped, and the two conditions this item set turned out to apply to
+   different halves of it. The *models* were what Nuage and the `enveloppe` space identity had to
+   decide, and the package no longer ships models, so neither gates it; §4 records why. The
+   *guard* was never in question — seven apps had already written it, three wrong — so it was
+   read out of them rather than designed ahead of them. First adopter still decides the ergonomics:
+   the shape to watch is whether `Store` over an app's own table is genuinely five lines, and
+   whether `spacestest.Conformance` fails on the three apps that got an invariant wrong.
