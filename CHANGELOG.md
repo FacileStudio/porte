@@ -109,6 +109,124 @@ eleven apps share. It is now one refetch per `minRefetchInterval` (30s). A rotat
 published before signing with the new key is already cached and unaffected; the floor costs at
 most half a minute of refusals on a rotation that skipped that step.
 
+## v0.5.0 — 2026-08-28
+
+**`porte/spaces`: the space-membership guard seven apps wrote separately, and three wrote wrong.**
+Sablier, Courrier, Agenda, Plume, Nuage, Vision and Antenne each own a spaces module, each with its
+own answer to "is this caller allowed to act in this space". `modules/spaces/types.go` is
+54/49/40/39/45 lines across five of them with five different hashes. The module is additive: an app
+that has no spaces never imports it, the way `tronc/migrate` and `caisse/pg` are optional.
+
+It numbers **v0.5.0 and not v0.4.0** — SPEC §4 planned it as v0.4 and the OIDC device exchange took
+that tag first.
+
+**Four rules, and each one is a bug somebody shipped.**
+
+- **Membership is the only key.** No instance-admin bypass, no superuser flag, and no hook to add
+  one. Nuage carries `users.is_admin` one package away from its space guard and, to its credit, does
+  not consult it there; the point of putting the rule in a library is that the day somebody wants to,
+  the answer is a membership row, which is listed in the member screen and revocable. A bypass inside
+  `porte` would be invisible to every app that imported it.
+- **A space id is checked before it is usable.** An empty id is personal scope in `Resolve` and
+  never touches the store; every non-empty id goes through `Store.Membership`. A `Scope` carrying a
+  space id is therefore proof of membership in it, and there is no constructor that makes one
+  otherwise: the struct holds an unexported marker that only `Guard` sets, so
+  `Scope{UserID: "mallory", SpaceID: "victim", Role: RoleOwner}` still compiles — every adopter
+  builds these in middleware — and reports `Resolved() == false`. A refusal returns the zero
+  `Scope`, and the zero `Scope` reports neither resolved nor personal, so a caller that ignores the
+  error gets nothing usable. That last clause used to be prose rather than behaviour:
+  `Scope{}.Personal()` was `true`, so ignoring an error and branching on it ran the personal-data
+  path for user `""`.
+- **A space always has a reachable owner.** Sablier, Nuage and Agenda count the owners before letting
+  one leave. Courrier and Plume refuse *every* owner outright, which is not the same rule: it makes
+  ownership transfer the only exit from a space two people own equally. `CanLeave` returns
+  `ErrSoleOwner` on the count, not on the rank.
+- **No privilege escalation.** Agenda's `AddMember` checks that the actor is owner or admin, then
+  passes the requested role through `normalizeRole`, which accepts `owner`
+  (`modules/spaces/service.go:155`). An admin can mint an owner and be promoted by it.
+  `AssignableBy(actor Scope, target Role)` is false whenever target outranks actor; granting one's
+  own rank stays allowed, because appointing a peer admin is what every member screen already does.
+  It takes the resolved `Scope` and not a second `Role` string, because two plain roles invite
+  passing both straight off the wire, which checks the request against itself. The caller already
+  holds the `Scope` that `Require` returned, so it costs nothing; an unresolved or personal one
+  grants nothing.
+
+**`Require` refuses an empty space id.** Passing every minimum on personal scope is fail-open on
+empty input. The realistic exploit is a gate and a use reading the id from different places:
+`Require(ctx, uid, r.Header.Get("X-Space"), RoleAdmin)` returns nil when the header is absent, and
+the handler then acts on a space id taken from the body. Personal scope comes from `Resolve`, which
+is explicit about it; a handler serving both shapes calls `Resolve` and branches on
+`Scope.Personal`.
+
+**`Resolve` requires the row to carry both ids, and both to match.** Skipping an id the store left
+empty reads as caution and is the opposite: `SELECT role FROM ... WHERE space_id=$1 AND user_id=$2`
+is the most natural `Store` an app writes, it returns `Membership{Role: "owner"}` with two blank
+ids, and treating blank as agreement would disarm the whole defence for exactly that app. A row
+missing an id is `ErrNotMember`. `Spaces` applies the same identity rule per row rather than
+filtering on ladder validity alone, because a store's bad join would otherwise reach the caller with
+a nil error, and a space switcher renders precisely that list.
+
+**An explicitly empty `Ladder` is not `Default()`.** `NewLadder` marks what it builds, so `Guard`
+substitutes the suite's three roles only for the unset ladder. An app assembling its vocabulary from
+configuration and getting it wrong refuses every role rather than silently inheriting
+owner/admin/member. `Ladder.Configured()` reports which one it is holding.
+
+**`CanLeave` is time-of-check to time-of-use, and says so.** It counts the owners, the caller
+deletes, and two owners leaving at the same instant both count two and both pass. The package cannot
+close that without the database dependency it exists to refuse, so the contract sits on the caller
+and in the godoc: run `CanLeave` and the `DELETE` in one transaction with the space's membership
+rows locked — `SELECT ... FOR UPDATE` over the rows `CountRole` counts, or a serializable
+transaction with a retry. Sablier, Agenda and Plume ship the unlocked count-then-delete today, so
+importing the package without the lock reproduces their bug with a certificate attached.
+
+**The role ladder is configurable, against the plan's fixed three.** Vision gates every write on
+`owner|admin|editor` with `viewer` below (`internal/siteaccess/siteaccess.go:29`). A package
+hard-coding owner/admin/member would have left Vision holding its own copy of the guard, which is one
+more copy from the package built to end them. So `Ladder` is a list ordered by privilege, `Default()`
+is the suite's three, and every check is a comparison inside a ladder rather than a switch over
+names.
+
+**A role the ladder does not rank is unknown, not weak.** Plume's `normalizeRole` returns
+`RoleMember` for anything it does not recognise, so a corrupt or renamed value in the column becomes
+a valid low role instead of a refusal. Here `Ladder.AtLeast` is false when *either* side is unranked,
+`Resolve` returns `ErrUnknownRole` rather than a `Scope` when the store hands back a role it cannot
+rank, and `Require` refuses a minimum the caller invented before it ever reads the table. A typo
+closes a door.
+
+**No models, and that went further than the plan.** SPEC §4 promised `Space`/`SpaceMember` structs
+alongside the guard. Those structs are where the copies diverge hardest — `ID` is a string in
+Courrier and an `int64` in Nuage — so shipping them would have made adoption a migration in six
+databases before the guard could run in any of them. The app keeps its table and implements a
+three-method `Store` over it, converting at the boundary; ids cross as strings. Standard library
+only: no GORM, no chi, no models. The package every app's authorization depends on brings nothing
+into the binary.
+
+**`spaces/spacestest.Conformance(t, newStore)` is how an adopter inherits the proof and not only the
+code.** It seeds a fixture — one space with a sole owner, one with two — through a `Seeder` the store
+implements, then runs the invariants against the app's *own* table. Copying the guard was never the
+hard part; knowing that the query underneath it still answers honestly after somebody edits a
+`WHERE` clause is. The guard defends itself against that too: `Resolve` builds the `Scope` from its
+arguments rather than from the returned row, and refuses a row whose ids disagree with what was
+asked, so a wrong `WHERE` is a failed lookup and not a membership in somebody else's space.
+
+**The suite asserts what a store returns, not how much of it.** Counting rows certifies the two
+stores that matter most: one that blanks the ids on every row, which is the shape that disarms
+`Resolve`'s cross-check, and one whose `Memberships` promotes every row to owner. Both were written
+as probes, both passed the counting suite, and both fail the current one. So `Conformance` now
+checks that ids come back populated from the row and matching the arguments, that roles survive the
+round trip, and that `Memberships` lists the caller's own rows and no others.
+
+**`ConformanceWithLadder(t, newStore, ladder)` runs the suite on an app's own vocabulary.** The
+suite always built `Default()`, so Vision — the app that forced `Ladder` to be configurable — could
+not put its own `owner|admin|editor|viewer` through it, and a conformance run that proves the guard
+on a vocabulary the app does not use proves nothing about the guard the app ships. The fixture takes
+its three ranks from the ladder's top, second and bottom, so the ladder must rank at least three
+roles; the suite needs a top, a middle and a bottom to tell a refusal from an escalation.
+
+**One argument order was reversed against the spec.** `CanLeave(ctx, userID, spaceID)` matches
+`Resolve` and `Require` instead of taking the space first. Both parameters are strings, nothing would
+catch a swap, and the two calls sit in the same handler.
+
 ## v0.3.1 — 2026-08-22
 
 **`SPEC.md` calls the event bus Antenne.** Two forward-looking passages still named Nook: §4's
