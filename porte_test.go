@@ -131,6 +131,58 @@ func TestLoginFailureLandsOnTheLoginPageWithTheReason(t *testing.T) {
 	}
 }
 
+// The code page and a CLI's loopback page are the two porte draws itself, and
+// a page that names nobody is one a human cannot tell from any other process
+// asking them to sign in. Every suite app is served from its own subdomain, so
+// the name is already in SuccessURL and no deployment has to repeat it.
+func TestAppLabelDerivesTheNameFromTheSuccessURL(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  porte.Config
+		want string
+	}{
+		{"the subdomain is the name", porte.Config{SuccessURL: "https://courrier.facile.studio/inbox"}, "Courrier"},
+		{"a landing path changes nothing", porte.Config{SuccessURL: "https://app.test/dashboard?x=1"}, "App"},
+		{"an explicit name wins", porte.Config{SuccessURL: "https://courrier.facile.studio/", AppName: "Courrier CLI"}, "Courrier CLI"},
+		{"whitespace is not a name", porte.Config{SuccessURL: "https://courrier.facile.studio/", AppName: "  "}, "Courrier"},
+		{"an address holds no name", porte.Config{SuccessURL: "https://127.0.0.1:8080/"}, porte.DefaultAppName},
+		{"neither does a relative path", porte.Config{SuccessURL: "/dashboard"}, porte.DefaultAppName},
+		{"nor does nothing at all", porte.Config{}, porte.DefaultAppName},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.cfg.AppLabel(); got != tc.want {
+				t.Fatalf("AppLabel() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The logo is a guess, and it is safe to guess because the page removes an
+// image that fails to load. Like LoginFailure, it replaces SuccessURL's path
+// rather than appending to it: an app landing on /inbox serves its mark at
+// /logo.svg, not at /inbox/logo.svg.
+func TestLogoDefaultsToTheSuccessOrigin(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  porte.Config
+		want string
+	}{
+		{"the origin, not the landing page", porte.Config{SuccessURL: "https://courrier.facile.studio/inbox"}, "https://courrier.facile.studio/logo.svg"},
+		{"the query goes too", porte.Config{SuccessURL: "https://app.test/dashboard?tab=1#top"}, "https://app.test/logo.svg"},
+		{"an explicit URL wins", porte.Config{SuccessURL: "https://app.test/", LogoURL: "https://cdn.test/mark.png"}, "https://cdn.test/mark.png"},
+		{"a relative SuccessURL has no origin", porte.Config{SuccessURL: "/dashboard"}, ""},
+		{"and neither does nothing at all", porte.Config{}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.cfg.Logo(); got != tc.want {
+				t.Fatalf("Logo() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDisplayNamePrecedence(t *testing.T) {
 	cases := []struct {
 		name   string

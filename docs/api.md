@@ -11,6 +11,7 @@ Every exported symbol, package by package. The reasoning for each decision is in
 | `porte/local` | Email and password: argon2id, register, login, set-password | `porte`, `porte/session`, `golang.org/x/crypto/argon2`, tronc, chi |
 | `porte/pg` | The identity tables and the four stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore` and the handler that serves it | the standard library |
+| `porte/loopback` | The CLI's half of the CLI login: the listener, the login URL, the pages | the standard library |
 
 **The contract package depends on nothing outside the standard library, and that is a constraint
 rather than a coincidence.** An app's stores and domain code compile against plain types and
@@ -95,6 +96,8 @@ eight adopters.
 | `Resolved() Config` | A copy with zero durations replaced by their defaults |
 | `HTTPS() bool` | Whether the app is served over TLS, read off `RedirectURL` or `SuccessURL` |
 | `IdleTimeout() time.Duration` | The browser session idle window: zero `SessionIdleTTL` means the default, negative means disabled |
+| `AppLabel() string` | The name for the pages `porte` renders itself: `AppName`, then `SuccessURL`'s first DNS label, then `DefaultAppName` |
+| `Logo() string` | The logo for those pages: `LogoURL`, then `SuccessURL`'s origin plus `/logo.svg`, then empty |
 
 `HTTPS` exists so the `Secure` cookie attribute has a source that a proxy cannot revoke. It
 overrides the per-request `X-Forwarded-Proto` test upward and never downward.
@@ -748,3 +751,55 @@ stable per identity, so the same URL serves different bytes after a profile re-s
 max-age would leave the old face on screen until someone cleared their browser cache by hand.
 Five minutes is the suite's profile sync interval, so a stale avatar outlives its replacement by
 at most one interval while still being served from cache on every page of a session.
+
+## porte/loopback
+
+The client half of the CLI login, which three CLIs had each written and none the same way. A CLI
+imports it, porte/oidc serves the other end, and a change to one is now visible from the other.
+
+`Listen() (*Listener, error)` binds `127.0.0.1` on an ephemeral port. The kernel picks it, so two
+shells can run a login at once without coordinating, and it is bound **before** the login URL is
+built so nothing can claim the port the URL names in between. The caller must `Close` it.
+
+| Symbol | What it does |
+|---|---|
+| `Listener.AppName string` | The tool the pages name. Empty draws a page that reads and names nobody |
+| `Listen() (*Listener, error)` | Binds the loopback socket |
+| `(*Listener) Port() int` | The bound port, which the login URL carries |
+| `(*Listener) LoginURL(origin, mount, state string) string` | The address the browser starts at |
+| `(*Listener) WaitForCode(ctx, state string) (string, error)` | Serves the callback, returns the one-time code |
+| `(*Listener) Close() error` | Releases the port, safe after `WaitForCode` |
+| `RandomState() (string, error)` | A fresh nonce for one login |
+| `OpenBrowser(rawURL string) bool` | Best effort; false means print the URL instead |
+| `ErrTimeout` | The browser never finished inside the window. The one failure worth offering to retry |
+
+`mount` is the path the app serves `porte` under, `/api` for every suite app today and `""` for
+one serving its API from the root. It is a parameter because it is the app's decision and not
+`porte`'s: the routes are relative to whatever router carries them. Three CLIs hardcoded `/api`,
+and the first app to move would have broken all three at once, silently. A login URL with the
+wrong path is not an error: the browser completes an ordinary web login, the user sees their
+dashboard, and the listener waits three minutes for a redirect nobody sends.
+
+`WaitForCode` accepts **only** a request to `/` that carries a code and echoes `state` back.
+Anything else is answered and ignored while the listener keeps waiting. Both halves are
+load-bearing: a browser asks for `/favicon.ico` unprompted and ending the login over that is a
+failure nobody can diagnose, while accepting a mismatched state lets any page the user has open
+hit `http://127.0.0.1:<port>/?code=…` and hand the CLI a session that is not the user's. Refusing
+one without the other trades a session hijack for a denial of service.
+
+It gives up after three minutes with `ErrTimeout`, or immediately on a cancelled context, where
+it returns `context.Canceled` unchanged so a CLI's existing Ctrl-C path needs nothing new. On
+success it holds the socket open for two more seconds so the page finishes reaching the browser:
+without that grace the process exits on the next line and the user's reward for signing in is a
+reset connection.
+
+The pages are the same markup `porte`'s code page uses, rendered with no logo. This server is a
+CLI binary answering on `127.0.0.1`, and a page that fetches an image over the network is a page
+that hangs on the laptop whose network is the thing being fixed. A refused callback renders that
+page with a 400 rather than `http.Error`'s `text/plain`, and says the login is still open,
+because it is.
+
+**Standard library only**, apart from `porte`'s own stdlib-only packages, and it is tested rather
+than trusted: every CLI in the suite links this, so an import added here is an import added to
+five binaries. The one that would look harmless in review is `tronc/httpjson`, where a single
+call to write a JSON error would pull `tronc` into all of them.

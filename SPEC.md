@@ -309,6 +309,8 @@ Authentik → in-house IdP swap a config change rather than a rewrite.
 | `OIDC_CLIENT_SECRET` | with issuer | |
 | `OIDC_REDIRECT_URL` | with issuer | Must match the Authentik application |
 | `OIDC_SUCCESS_URL` | with issuer | Where the browser lands after a successful callback |
+| `OIDC_APP_NAME` | no | The name on the two pages porte renders itself. Empty derives it from `OIDC_SUCCESS_URL`'s first DNS label |
+| `OIDC_LOGO_URL` | no | The logo on those pages. Empty derives `OIDC_SUCCESS_URL`'s origin plus `/logo.svg` |
 | `OIDC_CLAIMS_SCOPE` | no | The scope carrying the `roles` claim (§5c). Its presence enables claims handling |
 | `OIDC_MACHINE_AUDIENCE` | no | This app's own client id. Its presence enables bearer-JWT verification on the header path |
 | `OIDC_CLI_AUDIENCE` | no | The CLI's client id. Its presence mounts `POST /auth/oidc/device/exchange`, and nothing else does |

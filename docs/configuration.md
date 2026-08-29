@@ -14,6 +14,8 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_CLIENT_SECRET` | with issuer | — | Client secret |
 | `OIDC_REDIRECT_URL` | with issuer | — | Must match the redirect URI registered on the provider |
 | `OIDC_SUCCESS_URL` | with issuer | — | Where the browser lands after a successful callback |
+| `OIDC_APP_NAME` | no | derived | The name on the two pages `porte` renders itself. Empty takes `OIDC_SUCCESS_URL`'s first DNS label |
+| `OIDC_LOGO_URL` | no | derived | The logo on those pages. Empty takes `OIDC_SUCCESS_URL`'s origin plus `/logo.svg` |
 | `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
 | `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS on the `Authorization` header path. **Its presence is what enables bearer-JWT verification.** Set it to **this app's own client id**, which is what a service account's token is addressed to |
 | `OIDC_CLI_AUDIENCE` | no | — | Audience a CLI's device-grant token must carry at `POST /auth/oidc/device/exchange`. **Its presence is what mounts that route**, and it alone. Set it to **the CLI's client id**, `facile-cli` for the suite |
@@ -58,6 +60,8 @@ draw the password form in the first place.
 | `RedirectURL` | — | Required once `Issuer` is set |
 | `SuccessURL` | — | Required once `Issuer` is set |
 | `SSOOnly` | `false` | Local password routes are not registered |
+| `AppName` | derived | The name on the pages `porte` renders itself. Empty derives it from `SuccessURL`, then falls back to `DefaultAppName` |
+| `LogoURL` | derived | The logo on those pages. Empty derives `SuccessURL`'s origin plus `/logo.svg`. A file that is absent costs nothing |
 | `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |
 | `ClaimsScope` | — | Scope carrying the `roles` claim. Empty disables claims handling |
 | `MachineAudience` | — | Audience a bearer JWT must carry to be verified offline on the header path. Empty disables that branch; requires `Issuer`. See [Bearer JWTs from the issuer](#bearer-jwts-from-the-issuer) below |
@@ -77,6 +81,33 @@ resolves it instead.
 |---|---|
 | `HTTPS() bool` | Whether the app is served over TLS, according to `RedirectURL` or `SuccessURL` rather than a proxy header |
 | `IdleTimeout() time.Duration` | The idle window, or zero when it is disabled |
+| `AppLabel() string` | The name to print on `porte`'s own pages: `AppName`, then `SuccessURL`'s first DNS label capitalised, then `DefaultAppName` |
+| `Logo() string` | The logo URL for those pages: `LogoURL`, then `SuccessURL`'s origin plus `/logo.svg`, then empty |
+
+### The two pages `porte` draws itself
+
+Almost every browser-visible moment belongs to the app. A successful callback redirects to
+`OIDC_SUCCESS_URL` and a failed one to the app's own login page, which is what
+`Config.LoginFailure` is for: a library that renders over an app's chrome is a library shipping
+a second design system nobody asked for.
+
+Two moments have nowhere to redirect to. A CLI login with no loopback listener has to show the
+one-time code, and a CLI's own loopback listener has to say something once the browser lands on
+`127.0.0.1`. Both were unstyled defaults until v0.5.2, which is the divergence these two
+variables close: the failure path had been given a real page and the success path had not.
+
+Neither needs a deployment to set it. `AppName` comes from `SuccessURL`'s first DNS label, so
+`https://courrier.facile.studio/inbox` reads as **Courrier**, and every app in the suite is
+served from its own subdomain already. `LogoURL` comes from the same origin plus `/logo.svg`,
+which every suite app serves. Guessing is safe there because the page removes an image that
+fails to load: an app without that file shows its name alone, not a broken icon.
+
+The fallback is `DefaultAppName`, `Sign-in`, and it is deliberately generic. A `SuccessURL` that
+is an IP address or a relative path carries no name, and a page headed **127** would be a worse
+answer than a page that admits it does not know.
+
+A CLI's loopback page carries **no logo at all**, whatever is configured. It is served from
+`127.0.0.1` by a binary that must not need the network to draw its own page.
 
 ### The idle window
 

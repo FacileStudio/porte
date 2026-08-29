@@ -3,6 +3,62 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## Unreleased
+
+**The success page got the treatment the failure page already had.** `Config.LoginFailure`
+settled this once: a browser-reachable failure lands on the app's own login page, because writing
+`{"code":"invalid_argument"}` into a user's address bar is the app asking a human to read a wire
+format. The CLI code page never got the same call. It was ten lines of unstyled HTML with no app
+name, no logo, no dark mode and a hardcoded `#f4f4f5`, which is what a user saw at the one moment
+`porte` could not hand the page back to the app at all.
+
+It is now the same page a CLI's own loopback listener draws, and it names the app. That matters
+beyond looks: this page and the loopback page are the two `porte` renders itself, and a page
+naming nobody is one a human cannot tell from a phishing page that asked for the same login. The
+markup lives in `internal/handoff` because it is served from two processes, the app's API and
+every CLI binary, and two copies of a page become two pages the first time only one is edited.
+
+**Two new optional variables, neither of which needs a deployment.** `OIDC_APP_NAME`
+(`Config.AppName`) and `OIDC_LOGO_URL` (`Config.LogoURL`) name and illustrate those pages.
+`Config.AppLabel()` falls back to `SuccessURL`'s first DNS label, so
+`https://courrier.facile.studio/inbox` reads as **Courrier** and every app in the suite is
+already served from its own subdomain. `Config.Logo()` falls back to the same origin plus
+`/logo.svg`, which every suite app serves. Guessing is safe there because the page removes an
+image that fails to load, so an app without that file shows its name alone rather than a broken
+icon. The last resort is `DefaultAppName`, `Sign-in`, and it is generic on purpose: a
+`SuccessURL` that is an IP address holds no name, and a page headed **127** would be worse than
+one that admits it does not know. Neither variable is in `Validate`'s required set and neither
+refuses a boot, because both are cosmetic and a cosmetic setting is not worth a failed deploy.
+
+**`porte/loopback`: the client half, once instead of three times.** `mycelium`, `courrier-cli`
+and `nuage-cli` had each written the loopback listener, and the differences between the copies
+were not deliberate: two answered a mismatched callback with `text/plain` through `http.Error`
+and one drew a page, and `mycelium` answered even a successful login with `text/plain`. The best of the three is now here, next to the server that answers it, so a change to
+one end is visible from the other. `Listen`, `LoginURL`, `RandomState`, `OpenBrowser`,
+`WaitForCode`, `Close`, and `ErrTimeout` for the one failure a CLI should offer to retry.
+
+Two things changed while lifting it. The `/api` mount prefix is a parameter now, because it is
+the app's decision and not `porte`'s, and hardcoding it meant the first app to move would have
+broken all three CLIs at once and silently: a login URL with the wrong path is not an error, the
+browser completes an ordinary web login and the listener waits out its three minutes. And a
+refused callback renders the page with a 400 instead of `http.Error`'s `text/plain`, saying the
+login is still open, because it is.
+
+Every security property came across intact and is now tested rather than described. A mismatched
+`cli_state` is refused **and** the login keeps waiting: refusing without waiting trades a session
+hijack for a denial of service, since any page the user has open can hit
+`http://127.0.0.1:<port>/?code=…`, and waiting without refusing hands that page a session that is
+not the user's. A request with no code does the same, because a browser asks for `/favicon.ico`
+unprompted. The two second shutdown grace stays, so the page finishes arriving instead of the
+process exiting on the next line and rewarding a completed login with a reset connection.
+
+**The package is standard library only, and a test says so rather than a comment.** Every CLI in
+the suite links `porte/loopback`, so an import added there is an import added to five binaries.
+`TestLoopbackDependsOnTheStandardLibraryAlone` walks `go list -deps` and fails on anything that
+is neither stdlib nor one of `porte`'s own stdlib-only packages. The import that would have
+looked harmless in review is `tronc/httpjson`: one call to write a JSON error response, and
+`tronc` is in all five.
+
 ## v0.4.0 — 2026-08-25
 
 **One CLI login for the suite: `POST /auth/oidc/device/exchange`.** A CLI trades the access

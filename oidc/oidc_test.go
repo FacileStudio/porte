@@ -358,12 +358,13 @@ func TestTheOIDCRoutesAreAbsentWhenOIDCIsDisabled(t *testing.T) {
 
 func extractCode(t *testing.T, page string) string {
 	t.Helper()
-	start := strings.Index(page, "<code>")
-	end := strings.Index(page, "</code>")
+	const opening = `<output id="c">`
+	start := strings.Index(page, opening)
+	end := strings.Index(page, "</output>")
 	if start < 0 || end < start {
 		t.Fatalf("no code in the success page: %s", page)
 	}
-	return page[start+len("<code>") : end]
+	return page[start+len(opening) : end]
 }
 
 func quote(value string) string {
@@ -391,6 +392,42 @@ func TestNewRefusesAKitAndManagerBuiltFromDifferentConfigs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "OIDC_SUCCESS_URL") {
 		t.Fatalf("the error does not name the variable that disagrees: %v", err)
+	}
+}
+
+// The code page is one of two places porte draws HTML instead of redirecting to
+// the app, so it is the one page where porte owes the user the app's name: a
+// page that names nobody is one they cannot tell from a phishing page that
+// asked for the same login. It also carries the credential itself, which is
+// what no-store is for (OAuth 2.1 §7.1).
+//
+// testKit's SuccessURL is https://app.test/, so both the name and the logo here
+// are derived rather than configured.
+func TestTheCodePageNamesTheAppAndRefusesToBeCached(t *testing.T) {
+	kit := testKit(t, newMemory(), time.Now())
+
+	recorder := httptest.NewRecorder()
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "", "")
+
+	if got := recorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/html", got)
+	}
+	if got := recorder.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store on a response carrying a credential", got)
+	}
+
+	page := recorder.Body.String()
+	if code := extractCode(t, page); code == "" {
+		t.Error("the page carries no code, so there is nothing to paste")
+	}
+	if !strings.Contains(page, "<span>App</span>") {
+		t.Errorf("the page does not name the app:\n%s", page)
+	}
+	if !strings.Contains(page, "https://app.test/logo.svg") {
+		t.Errorf("the page carries no logo:\n%s", page)
+	}
+	if !strings.Contains(page, "valid for 60 seconds") {
+		t.Errorf("the page does not say how long the code lasts:\n%s", page)
 	}
 }
 
