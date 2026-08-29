@@ -142,25 +142,6 @@ func (g Guard) CanLeave(ctx context.Context, userID, spaceID string) error {
 	return nil
 }
 
-// AssignableBy reports whether the actor holding actor may grant target to
-// somebody else. It is false when target outranks actor, so an admin cannot
-// mint an owner and then be promoted by it.
-//
-// It takes a Scope rather than a Role so that the actor's rank cannot be
-// asserted by the caller. Two plain Roles invite passing both straight off the
-// wire, which checks the request against itself; a Scope only exists if
-// Resolve built it, and an unresolved or personal one grants nothing. The
-// caller already holds the Scope that Require returned.
-//
-// Granting one's own rank is allowed: an admin may appoint a peer admin,
-// which is what every adopter's member screen already does.
-func (g Guard) AssignableBy(actor Scope, target Role) bool {
-	if !actor.Resolved() || actor.Personal() {
-		return false
-	}
-	return g.ladder().AtLeast(actor.Role, target)
-}
-
 // Spaces returns every membership the user holds, for the space switcher and
 // for scoping a list query.
 //

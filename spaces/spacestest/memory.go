@@ -8,8 +8,10 @@
 // user's rows silently disarms every guard above it.
 //
 // The suite asserts what a Store returns, not only how much of it: ids
-// populated from the row and matching what was asked for, roles preserved, and
-// Memberships listing the caller's own rows and no others.
+// matching what was asked for, roles preserved per space, and Memberships
+// listing the caller's own rows and no others. Conformance's own godoc records
+// the one thing it cannot see from outside — a Store that returns the ids it
+// was handed rather than the ids it read.
 package spacestest
 
 import (

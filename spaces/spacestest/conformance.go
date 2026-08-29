@@ -11,6 +11,14 @@ import (
 // ranks; space B has two members at the top rank, which is the only difference
 // that makes CanLeave interesting.
 //
+// UserCoOwner holds the top rank in B and the bottom rank in A, deliberately.
+// The role is the one field a Store cannot fabricate from the arguments it was
+// handed, so one user holding two different roles is what pins a lookup to the
+// space it was asked about. Without that row every multi-space user held the
+// same rank everywhere, and a Store returning the first row it found for the
+// user — a GORM First() with the space id left out of the Where — answered the
+// right role by luck and passed.
+//
 // The user ids are named after the suite's roles for readability. Under a
 // custom ladder they still name the top, middle and bottom ranks of that
 // ladder rather than owner, admin and member.
@@ -42,6 +50,18 @@ type fixture struct {
 // It is deliberately small. It does not test the app's CRUD, its routes or
 // its wire shapes — only the rules whose drift is a security bug, which are
 // the only rules the spaces package claims.
+//
+// What it cannot see: a Store that builds the Membership it returns out of the
+// arguments it was handed rather than out of the row it read. A lookup that is
+// correctly scoped returns the same two ids either way, so no black-box suite
+// can tell them apart, and running the suite on real ids instead of these
+// fixture names does not change that. What the suite does catch is the half
+// that causes harm — a lookup that is not scoped to the space, echoed ids or
+// not — through three assertions: a member of one space resolving in another,
+// Store.Membership answering across spaces, and UserCoOwner's two different
+// roles. Ids built from the arguments are still a defect worth refusing in
+// review, because they disarm Guard.Resolve's cross-check the day the WHERE
+// clause loses a column. The suite is not the place that will tell you.
 func Conformance(t *testing.T, newStore func() spaces.Store) {
 	t.Helper()
 	ConformanceWithLadder(t, newStore, spaces.Default())
@@ -96,6 +116,7 @@ func seeded(t *testing.T, newStore func() spaces.Store, ladder spaces.Ladder, ro
 		{SpaceID: SpaceA, UserID: UserMember, Role: f.bottom},
 		{SpaceID: SpaceB, UserID: UserOwner, Role: f.top},
 		{SpaceID: SpaceB, UserID: UserCoOwner, Role: f.top},
+		{SpaceID: SpaceA, UserID: UserCoOwner, Role: f.bottom},
 	}
 	for _, member := range f.rows {
 		if err := seeder.Seed(context.Background(), member); err != nil {

@@ -48,7 +48,7 @@ reasoning behind both.
 | `porte/local` | Email and password: argon2id, register, login | `porte/session`, `x/crypto`, tronc, chi |
 | `porte/pg` | The identity tables and the stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore`: atomic writes, a guarded key, and an `http.Handler` that serves them | the standard library |
-| `porte/spaces` | Space membership authorization: the role ladder, `Resolve`, `Require`, `CanLeave`, `AssignableBy`. No CRUD, no routes, no ORM | the standard library |
+| `porte/spaces` | Space membership authorization: the role ladder, `Resolve`, `Require`, `CanLeave`, `AssignableBy`/`AssignableOver`. No CRUD, no routes, no ORM | the standard library |
 | `porte/spaces/spacestest` | `Conformance(t, newStore)` and `ConformanceWithLadder`: the invariants, run against an app's own `Store` and its own role vocabulary | `porte/spaces`, `testing` |
 
 The contract package depends on nothing outside the standard library, and that is a constraint
