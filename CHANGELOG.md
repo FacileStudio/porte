@@ -109,6 +109,54 @@ eleven apps share. It is now one refetch per `minRefetchInterval` (30s). A rotat
 published before signing with the new key is already cached and unaffected; the floor costs at
 most half a minute of refusals on a rotation that skipped that step.
 
+## v0.5.1 — 2026-08-29
+
+**`AssignableBy` answered half the question, and the other half is the demotion.** It compares the
+actor's rank to the role being granted and never sees the role the person being modified already
+holds, so `AssignableBy(adminScope, RoleMember)` is true whoever that member is, including the
+space's owner. An adopter gating a role change on it lets an admin hand "member" to the owner and
+strand the space with nobody who can administer it, invite to it, or delete it, and nobody left
+inside can undo it. Agenda's own guard has the same shape: its rank check guards upward and leaves
+the mirror image open. Found by review before any adopter shipped it. Both apps that consume v0.5.0
+are safe, and neither is safe because of this package: Sablier gates a role change on owner and
+refuses a duplicate member, and Nuage refuses to change an owner's role before the call is reached.
+An unrelated guard covering it is not the same as the library covering it, which is what adopter
+three would have discovered.
+
+**`AssignableOver(actor Scope, current, target Role) bool` is the complete check**, false unless the
+actor ranks at or above both roles. It is what a member screen calls. `AssignableBy` keeps its
+signature and its behaviour and narrows to the case it is actually right for, granting a role to
+somebody who holds none, and its godoc now says what it does not check and points here. That is the
+whole of the change: additive, so v0.5.0 callers keep compiling and only gain a method.
+
+`current` is a plain `Role` and not a second `Scope`, against the reasoning that put a `Scope` in
+`AssignableBy`. The actor's rank is an assertion about the caller and must be proved. The member's
+current role is a row the caller has just read, usually inside the transaction that is about to
+update it, and routing it back through the `Store` would hand out a value that can change before the
+write lands, which is the `CanLeave` bug in a new place. So the godoc carries the obligation instead:
+`current` comes from the app's own row, never from the request body. A role the ladder does not rank
+is refused rather than scored zero, as everywhere else here. It counts nobody: an owner demoting the
+last owner passes, which is `CanLeave`'s `ErrSoleOwner` shape and needs the same count under the same
+lock.
+
+**The conformance suite could not tell a store's own rows from the arguments it was handed.** Both
+adopters had been mutated to return `Membership{SpaceID: spaceID, UserID: userID, Role: row.Role}`,
+the documented anti-pattern, and `Conformance` stayed green in both. Reproduced here against an
+echoing store with no alias shim anywhere: still green. **No black-box suite can catch that one, and
+seeding an adopter's real ids instead of these fixture names would not have changed it**, because a
+correctly scoped lookup returns the same two ids whether it read them or echoed them. Ids built from
+the arguments remain a defect to refuse in review, since they disarm `Resolve`'s cross-check the day
+the `WHERE` clause loses a column, and `Conformance`'s godoc now says plainly that it is not the
+thing that will tell you.
+
+**What the suite can catch, it now catches one step further.** The half that causes harm is a lookup
+not scoped to the space, and the role is the one field a store cannot fabricate out of its arguments.
+Every multi-space user in the fixture used to hold the same rank in both spaces, so a store answering
+with the first row it found for that user, a GORM `First()` missing the space id in its `Where`, got
+the right role by luck and passed. `UserCoOwner` now holds the top rank in B and the bottom rank in
+A. That store fails on the existing content assertions, verified by writing it, and an adopter whose
+store is honest sees no change beyond one more seeded row.
+
 ## v0.5.0 — 2026-08-28
 
 **`porte/spaces`: the space-membership guard seven apps wrote separately, and three wrote wrong.**
