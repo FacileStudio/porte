@@ -3,7 +3,7 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
-## Unreleased
+## v0.5.2 — 2026-08-29
 
 **The success page got the treatment the failure page already had.** `Config.LoginFailure`
 settled this once: a browser-reachable failure lands on the app's own login page, because writing
@@ -33,9 +33,10 @@ refuses a boot, because both are cosmetic and a cosmetic setting is not worth a 
 **`porte/loopback`: the client half, once instead of three times.** `mycelium`, `courrier-cli`
 and `nuage-cli` had each written the loopback listener, and the differences between the copies
 were not deliberate: two answered a mismatched callback with `text/plain` through `http.Error`
-and one drew a page, and `mycelium` answered even a successful login with `text/plain`. The best of the three is now here, next to the server that answers it, so a change to
-one end is visible from the other. `Listen`, `LoginURL`, `RandomState`, `OpenBrowser`,
-`WaitForCode`, `Close`, and `ErrTimeout` for the one failure a CLI should offer to retry.
+and one drew a page, and `mycelium` answered even a successful login with `text/plain`. The best
+of the three is now here, next to the server that answers it, so a change to one end is visible
+from the other. `Listen`, `LoginURL`, `RandomState`, `OpenBrowser`, `WaitForCode`, `Close`, and
+`ErrTimeout` for the one failure a CLI should offer to retry.
 
 Two things changed while lifting it. The `/api` mount prefix is a parameter now, because it is
 the app's decision and not `porte`'s, and hardcoding it meant the first app to move would have
