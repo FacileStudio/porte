@@ -95,7 +95,8 @@ CREATE TABLE IF NOT EXISTS porte_login_codes (
 	consumed_at timestamptz
 );
 ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS consumed_at timestamptz;
-`
+
+` + KeySchema
 
 // Store is the entry point: one value over a *sql.DB that hands out the four
 // stores porte asks for.
