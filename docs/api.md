@@ -9,6 +9,7 @@ Every exported symbol, package by package. The reasoning for each decision is in
 | `porte/session` | The credential: issuance, the cookie, the middleware, `POST /auth/logout` | `porte`, `tronc/errors`, `tronc/httpjson`, chi |
 | `porte/oidc` | The engine: the flow, the six OIDC routes, the avatar guard | `porte`, `porte/session`, go-oidc, oauth2, tronc, chi |
 | `porte/local` | Email and password: argon2id, register, login, set-password | `porte`, `porte/session`, `golang.org/x/crypto/argon2`, tronc, chi |
+| `porte/magiclink` | Passwordless sign-in: an emailed one-time link | `porte`, `porte/session`, tronc, chi |
 | `porte/pg` | The identity tables and the four stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore` and the handler that serves it | the standard library |
 | `porte/loopback` | The CLI's half of the CLI login: the listener, the login URL, the pages | the standard library |
@@ -64,6 +65,8 @@ Path constants, so an app and its frontend cannot disagree about a string.
 | `RouteBackchannelLogout` | `POST /auth/backchannel-logout` |
 | `RouteRegister` | `POST /auth/register` |
 | `RouteLoginLocal` | `POST /auth/login` |
+| `RouteMagicLink` | `POST /auth/magic-link` |
+| `RouteMagicLinkConsume` | `POST /auth/magic-link/consume` |
 
 The first three are served at these exact paths with these exact response shapes by all six Go
 apps today, which is what makes them safe to freeze. The last two are where every app in the
@@ -310,6 +313,16 @@ It returns `ErrCodeConsumed` when the code was already spent, and `ErrNotFound` 
 existed — distinguishing a replay from a typo is worth one error value, because a code that was
 valid a moment ago and is being presented a second time means either the CLI retried or somebody
 else is holding it.
+
+### MagicLinkStore
+
+`Create`, `Consume`, `CountSince`, `DeleteExpired`.
+
+`Create` stores the link and ends the user's older unconsumed links in the same atomic step.
+`Consume(ctx, tokenHash, now)` is one conditional update and returns `ErrNotFound` for every dead
+link without saying which kind. `CountSince(ctx, LinkKey{UserID, IP}, since)` counts spent and
+superseded links too, matches every field that is set, and counts nothing for a zero key.
+`DeleteExpired(ctx, cutoff)` takes `now - MagicLinkRateWindow` to keep what the limits need.
 
 ### AvatarStore
 
@@ -663,9 +676,27 @@ of its own that returns before `porte` is reached. Without it a login form answe
 account" in a millisecond and "wrong password" in sixty, which is the same oracle as different
 error messages, only harder to notice in review.
 
+## porte/magiclink
+
+`New(Config, Deps) (*Kit, error)`, then `Mount(chi.Router)` or `Request` and `Consume` from your own
+handlers.
+
+`Config`: `TTL` (15 minutes), `MaxPerEmail` (5 per hour), `MaxPerIP` (20 per hour).
+
+`Deps`: `Links` (a `porte.MagicLinkStore`), `Sessions`, `FindUser` (returns `ErrNotFound` for anyone
+who may not receive a link), `Send` (runs after the response), `BuildLink` (point it at a page of the
+app, never the API), and the optional `Allow` and `Now`.
+
+`Request(ctx, email, ip)` returns nil for unknown, malformed, ineligible and rate-limited callers.
+`Consume(ctx, w, r, token)` returns `porte.ErrMagicLinkInvalid` for every dead link, and otherwise the
+user id and a session token with the cookie set. `Wait()` drains pending mail on shutdown.
+
+`magiclinktest.Conformance(t, newStore, newUser)` runs the store contract against an app's own store.
+`pg.Store.MagicLinks()` is the default.
+
 ## porte/pg
 
-`New(db *sql.DB) *Store`, then `Users()`, `Identities()`, `Sessions()` and `LoginCodes()`.
+`New(db *sql.DB) *Store`, then `Users()`, `Identities()`, `Sessions()`, `LoginCodes()` and `MagicLinks()`.
 
 `Users()` implements `porte.UserStore` **and** `porte.PasswordUserStore`, so an app on the default
 tables passes the same value to `oidc.Deps.Users` and `local.Deps.Users`. An app with its own

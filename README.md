@@ -50,11 +50,13 @@ reasoning behind both.
 | `porte/session` | The credential: issuance, the cookie, the middleware, `POST /auth/logout` | the contract, tronc, chi |
 | `porte/oidc` | The engine: the flow, the routes, the avatar fetch | `porte/session`, go-oidc, oauth2, tronc, chi |
 | `porte/local` | Email and password: argon2id, register, login | `porte/session`, `x/crypto`, tronc, chi |
+| `porte/magiclink` | Passwordless sign-in: a one-time emailed link, single use, rate limited, landing in the same session | `porte/session`, tronc, chi |
 | `porte/pg` | The identity tables and the stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore`: atomic writes, a guarded key, and an `http.Handler` that serves them | the standard library |
 | `porte/loopback` | The CLI's half of the CLI login: the loopback listener, the login URL, the pages a browser lands on | the standard library |
 | `porte/spaces` | Space membership authorization: the role ladder, `Resolve`, `Require`, `CanLeave`, `AssignableBy`/`AssignableOver`. No CRUD, no routes, no ORM | the standard library |
 | `porte/spaces/spacestest` | `Conformance(t, newStore)` and `ConformanceWithLadder`: the invariants, run against an app's own `Store` and its own role vocabulary | `porte/spaces`, `testing` |
+| `porte/magiclink/magiclinktest` | `Conformance(t, newStore, newUser)`: single use, supersession and the rate counts, run against an app's own `MagicLinkStore` | `porte`, `testing` |
 
 The contract package depends on nothing outside the standard library, and that is a constraint
 rather than a coincidence: an app's stores and domain code never compile against `go-oidc`,

@@ -3,6 +3,35 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## Unreleased
+
+**`porte/magiclink`: passwordless sign-in, once instead of per app.** A user who should not hold a
+password asks for a link by email and signs in with it. The kit is `Request`, `Consume` and
+`POST /auth/magic-link` plus `POST /auth/magic-link/consume`; a successful consume calls
+`Sessions.IssueCookie`, so it lands in the same cookie session as a password or federated login.
+
+Decisions, with their reasons:
+
+- **Consume is POST only and no GET is mounted.** Mail scanners prefetch every URL in a message, and
+  a GET that signed in would be spent before the human clicked.
+- **Supersession is inside `Create`.** A separate invalidate call lets two racing requests leave two
+  live links. `porte/pg` serialises them with a row lock on the user.
+- **The rate limit is silent.** A limit that only known addresses can trip is an enumeration oracle,
+  so `Request` returns nil over a limit and logs it.
+- **The mail goes out after the response**, because SMTP latency would otherwise answer "does this
+  address have an account". `Kit.Wait` drains pending mail on shutdown.
+- **One error for every dead link**, `porte.ErrMagicLinkInvalid`, status 401. The store does not
+  separate a replay from a typo as login codes do.
+- **Tokens use `NewToken` and `HashToken`** (URL-safe base64, SHA-256 hex), the shape sessions and
+  login codes already have, not a second spelling for links.
+
+Added to the contract: `MagicLinkStore`, `MagicLink`, `LinkKey`, `ErrMagicLinkInvalid`, the two
+route constants, `DefaultMagicLinkTTL` (15 minutes), `MagicLinkRateWindow` and the wire shapes. Added
+to `porte/pg`: `Store.MagicLinks()` and the `porte_magic_links` table in `Schema`, which is
+`CREATE ... IF NOT EXISTS` and so applies to a live database by re-running it. Added
+`porte/magiclink/magiclinktest`, the conformance suite and an in-memory store. Nothing existing
+changes, so this is a minor bump when it ships.
+
 ## v0.5.2 — 2026-08-29
 
 **The success page got the treatment the failure page already had.** `Config.LoginFailure`

@@ -292,6 +292,59 @@ which the package never claims. Still to check: the `enveloppe` contract keys on
 will need to carry a *space* identity. That is a change to `enveloppe`, and it gates the sync, not
 this package — which is why `porte/spaces` shipped without waiting for it.
 
+### `porte/magiclink`
+
+A **subpackage**, same repo, same tags, next to `porte/local`. A one-time link by email for the user
+who should not hold a password at all. Ardoise's clients are the first: they sign in twice a year,
+and a password they forget is a reset mail they would have received anyway. The TypeScript sibling
+(`@facile/magiclink`) lives in its own repo, as every TS sibling does, and both implement one
+behaviour list so they can be reviewed against each other.
+
+It depends on `porte/session` and not on `porte/oidc`, for the reason `porte/local` does. A
+successful consume calls `Sessions.IssueCookie`, so a link login has the same cookie, idle window and
+logout as every other porte login.
+
+**The token is porte's token.** `porte.NewToken` and `porte.HashToken`: 32 random bytes, URL-safe
+base64, stored as a SHA-256 hex string. The plan for this package said hex bytes and a `[]byte`
+hash; the SPEC already freezes one credential shape for sessions and login codes, and a second
+spelling for links would be the drift this repo exists to end. The store takes `string` hashes like
+`SessionStore` and `LoginCodeStore`.
+
+**Eight behaviours, each pinned by a test.**
+
+1. **Single use is one conditional `UPDATE`**: hash matches, `consumed_at IS NULL`, `expires_at >
+   now`, `RETURNING user_id`. The package never reads then writes.
+2. **Supersession lives inside `Create`**, not in a separate `InvalidateForUser`. Two requests for
+   one account racing each other would each invalidate, then each insert, and leave two live links.
+   `pg` takes a row lock on the user inside the transaction; the conformance suite fires concurrent
+   creates and requires exactly one survivor. Ended links stay as consumed rows so the limits keep
+   counting them.
+3. **Every dead link is one error**, `porte.ErrMagicLinkInvalid`, status 401: unknown, expired,
+   spent, superseded, or a user `Deps.Allow` has since refused. The store returns `ErrNotFound` for
+   all of them and does not distinguish a replay, unlike `ErrCodeConsumed` on login codes, because a
+   login code is 60 seconds and an alarm on its replay is worth the leak; a link sits in a mailbox
+   for a quarter of an hour.
+4. **`Request` returns nil for everything that is not a fault**: an unknown address, a malformed
+   one, an ineligible account, and a caller over a limit. A rate limit that only known addresses
+   could trip would be an enumeration oracle in its own right, so the limit is silent and logged.
+5. **The mail is sent after the response**. SMTP latency is the one step whose duration gives the
+   address away, so `Deps.Send` runs in a detached goroutine and `Kit.Wait` drains it on shutdown. An
+   unknown address still generates and hashes a token and asks the store the same two counts. What it
+   does not do is the insert, and that gap is stated rather than hidden.
+6. **Limits are store counts**, 5 per account and 20 per source address per hour by default. The
+   per-source count sees stored links only, so a flood of unknown addresses is not counted; it also
+   costs the flooder a hash each and sends nothing. Behind a proxy the app puts chi's `RealIP` in
+   front of the routes, and only for a proxy it trusts.
+7. **Consume is POST only.** No GET route exists to forget to disable. The app's emailed link points
+   at a page of its own with a button, because scanners prefetch every URL in a message.
+8. **Eligibility is the app's call**, at both ends: `Deps.FindUser` decides who may receive a link,
+   and the optional `Deps.Allow` re-checks at consume time, so a client banned after the mail went
+   out cannot use it. The token is spent before `Allow` runs.
+
+`magiclinktest.Conformance(t, newStore, newUser)` is how an adopter inherits the proof against its
+own store, in the style of `spacestest`. `porte/pg` ships `porte_magic_links` in `Schema`, applied
+through the app's migrations like every other porte table.
+
 ---
 
 ## 5. The frozen contract
@@ -331,6 +384,8 @@ POST /auth/sync-profile    refresh profile from the IdP               session re
 POST /auth/backchannel-logout   IdP-initiated session kill            logout token, no session
 POST /auth/register        v0.2, porte/local. {user_id, token} + cookie   no auth
 POST /auth/login           v0.2, porte/local. {user_id, token} + cookie   no auth
+POST /auth/magic-link     porte/magiclink. {ok: true}, always 202        no auth
+POST /auth/magic-link/consume  porte/magiclink. {user_id, token} + cookie   no auth, token required
 ```
 
 `POST /auth/logout` is mounted by `porte/session`, not by either kit (§8). The two local routes
@@ -696,10 +751,12 @@ porte/          the contract. types, interfaces, wire shapes. standard library o
 porte/session   the credential: issuance, the cookie, the middleware, POST /auth/logout
 porte/oidc      the engine: the flow, the six OIDC routes, the avatar guard
 porte/local     email and password: argon2id, register, login, set-password
+porte/magiclink  passwordless sign-in: an emailed one-time link, request and consume
 porte/pg        the identity tables and the four stores. database/sql only, no ORM
 porte/avatarfs  a filesystem AvatarStore and the handler that serves it
 porte/spaces    v0.5. membership and role resolution. no models, no routes, standard library only
 porte/spaces/spacestest  the conformance suite an adopter runs against its own Store
+porte/magiclink/magiclinktest  the conformance suite for a MagicLinkStore, plus an in-memory one
 ```
 
 **`porte/session` extracted 2026-08-09, and it is the decision this section got most wrong.**
