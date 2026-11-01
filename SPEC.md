@@ -333,13 +333,18 @@ spelling for links would be the drift this repo exists to end. The store takes `
    does not do is the insert, and that gap is stated rather than hidden.
 6. **Limits are store counts**, 5 per account and 20 per source address per hour by default. The
    per-source count sees stored links only, so a flood of unknown addresses is not counted; it also
-   costs the flooder a hash each and sends nothing. Behind a proxy the app puts chi's `RealIP` in
-   front of the routes, and only for a proxy it trusts.
-7. **Consume is POST only.** No GET route exists to forget to disable. The app's emailed link points
-   at a page of its own with a button, because scanners prefetch every URL in a message.
+   costs the flooder a hash each and sends nothing. The source address is `RemoteAddr`, because
+   porte reads `X-Forwarded-For` nowhere. Behind a proxy that makes the limit global, so an app
+   sets `Config.ClientIP` to read a header its own proxy overwrites.
+7. **Consume is POST only and requires `X-Facile-CSRF`.** No GET route exists to forget to disable.
+   The app's emailed link points at a page of its own with a button, because scanners prefetch every
+   URL in a message. The header is checked before the token is touched: consume is public but it
+   sets a cookie, and a cross-site form post carrying an attacker's own link would otherwise sign
+   the victim's browser in as the attacker. The request route needs no header.
 8. **Eligibility is the app's call**, at both ends: `Deps.FindUser` decides who may receive a link,
-   and the optional `Deps.Allow` re-checks at consume time, so a client banned after the mail went
-   out cannot use it. The token is spent before `Allow` runs.
+   and the required `Deps.Allow` re-checks at consume time, so a client banned after the mail went
+   out cannot use it. It is required so that forgetting it fails at boot instead of signing in a
+   banned account. The token is spent before `Allow` runs.
 
 `magiclinktest.Conformance(t, newStore, newUser)` is how an adopter inherits the proof against its
 own store, in the style of `spacestest`. `porte/pg` ships `porte_magic_links` in `Schema`, applied

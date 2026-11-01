@@ -104,10 +104,17 @@ func (k *Kit) deliver(ctx context.Context, who target, token string) {
 	link := k.deps.BuildLink(token)
 	detached := context.WithoutCancel(ctx)
 	k.sends.Go(func() {
+		defer k.recoverSend(who)
 		sendCtx, cancel := context.WithTimeout(detached, sendTimeout)
 		defer cancel()
 		if err := k.deps.Send(sendCtx, who.email, link); err != nil {
 			k.logger.Error("magic link email failed", "user_id", who.userID, "error", err)
 		}
 	})
+}
+
+func (k *Kit) recoverSend(who target) {
+	if recovered := recover(); recovered != nil {
+		k.logger.Error("magic link email panicked", "user_id", who.userID, "panic", recovered)
+	}
 }

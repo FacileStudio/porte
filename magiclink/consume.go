@@ -34,9 +34,6 @@ func (k *Kit) Consume(ctx context.Context, w http.ResponseWriter, r *http.Reques
 }
 
 func (k *Kit) allowed(ctx context.Context, userID int64) error {
-	if k.deps.Allow == nil {
-		return nil
-	}
 	ok, err := k.deps.Allow(ctx, userID)
 	if err != nil {
 		return errors.Internal("failed to check the account", err)

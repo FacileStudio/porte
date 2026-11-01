@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS porte_magic_links (
 CREATE INDEX IF NOT EXISTS porte_magic_links_user_idx ON porte_magic_links (user_id, created_at);
 CREATE INDEX IF NOT EXISTS porte_magic_links_ip_idx ON porte_magic_links (ip, created_at)
 	WHERE ip <> '';
+CREATE INDEX IF NOT EXISTS porte_magic_links_expiry_idx ON porte_magic_links (expires_at);
 
 ` + KeySchema
 

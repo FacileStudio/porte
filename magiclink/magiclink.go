@@ -27,6 +27,7 @@ package magiclink
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"net/mail"
 	"strings"
 	"sync"
@@ -60,6 +61,18 @@ type Config struct {
 	// MaxPerIP caps the links issued to accounts from one source address per
 	// [porte.MagicLinkRateWindow]. Defaults to DefaultMaxPerIP.
 	MaxPerIP int
+
+	// ClientIP resolves the source address of a request for the per-source
+	// limit and for the stored link. Nil means the host part of RemoteAddr,
+	// which is the only address porte trusts by itself.
+	//
+	// Behind a reverse proxy RemoteAddr is the proxy, every caller shares one
+	// bucket, and twenty requests an hour locks everyone out. Set this to
+	// read the header your own proxy writes, and only a header a client
+	// cannot forge: one that the proxy overwrites rather than appends to.
+	// It applies to [Kit.Mount] only; an app calling [Kit.Request] passes the
+	// address itself.
+	ClientIP func(r *http.Request) string
 }
 
 // Deps are the app's half of the flow.
@@ -84,7 +97,12 @@ type Deps struct {
 
 	// Allow is checked after the token is spent, and refuses a user who has
 	// become ineligible since the link was sent: banned, suspended,
-	// deactivated. The link is spent either way. Nil allows everyone.
+	// deactivated. The link is spent either way.
+	//
+	// It is required, not optional. A nil default that allowed everyone would
+	// let an app forget it and sign in a banned account with a link mailed
+	// before the ban. An app with no such state passes a function that
+	// always says yes.
 	Allow func(ctx context.Context, userID int64) (bool, error)
 
 	// Now is the clock. Nil means time.Now.
@@ -108,6 +126,7 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 		"FindUser":  deps.FindUser == nil,
 		"Send":      deps.Send == nil,
 		"BuildLink": deps.BuildLink == nil,
+		"Allow":     deps.Allow == nil,
 	} {
 		if missing {
 			return nil, errors.Failed("porte/magiclink: Deps." + name + " is required")
@@ -129,8 +148,10 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 	return &Kit{cfg: cfg, deps: deps, logger: logger}, nil
 }
 
-// Wait blocks until every email handed to [Deps.Send] has finished. Call it on
-// shutdown so a link is not lost between the response and the mail server.
+// Wait blocks until every email handed to [Deps.Send] has finished, each bounded
+// by a 30 second timeout. Call it on shutdown, after the HTTP server has stopped
+// accepting requests, so a link is not lost between the response and the mail
+// server. Calling it while requests are still arriving races the wait group.
 func (k *Kit) Wait() { k.sends.Wait() }
 
 func (k *Kit) now() time.Time {
@@ -145,9 +166,9 @@ func invalidLink() error {
 }
 
 func normalizeEmail(email string) (string, bool) {
-	normalized := strings.ToLower(strings.TrimSpace(email))
-	if _, err := mail.ParseAddress(normalized); err != nil {
+	parsed, err := mail.ParseAddress(strings.TrimSpace(email))
+	if err != nil {
 		return "", false
 	}
-	return normalized, true
+	return strings.ToLower(parsed.Address), true
 }

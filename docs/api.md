@@ -322,7 +322,8 @@ else is holding it.
 `Consume(ctx, tokenHash, now)` is one conditional update and returns `ErrNotFound` for every dead
 link without saying which kind. `CountSince(ctx, LinkKey{UserID, IP}, since)` counts spent and
 superseded links too, matches every field that is set, and counts nothing for a zero key.
-`DeleteExpired(ctx, cutoff)` takes `now - MagicLinkRateWindow` to keep what the limits need.
+`DeleteExpired(ctx, cutoff)` takes `now - MagicLinkRateWindow` to keep what the limits need. Nothing
+calls it for you: schedule it, as with `LoginCodeStore.DeleteExpired`.
 
 ### AvatarStore
 
@@ -681,15 +682,23 @@ error messages, only harder to notice in review.
 `New(Config, Deps) (*Kit, error)`, then `Mount(chi.Router)` or `Request` and `Consume` from your own
 handlers.
 
-`Config`: `TTL` (15 minutes), `MaxPerEmail` (5 per hour), `MaxPerIP` (20 per hour).
+`Config`: `TTL` (15 minutes), `MaxPerEmail` (5 per hour), `MaxPerIP` (20 per hour), and `ClientIP`,
+which resolves the source address for `Mount`'s handlers. Nil means the host of `RemoteAddr`, the only
+address porte trusts by itself; behind a proxy every caller then shares one bucket, so set it to read
+a header your own proxy overwrites.
 
 `Deps`: `Links` (a `porte.MagicLinkStore`), `Sessions`, `FindUser` (returns `ErrNotFound` for anyone
 who may not receive a link), `Send` (runs after the response), `BuildLink` (point it at a page of the
-app, never the API), and the optional `Allow` and `Now`.
+app, never the API), `Allow` (required: re-checks the user after the link is spent, so an account banned
+since the mail went out is refused), and the optional `Now`.
+
+`POST /auth/magic-link/consume` requires the `X-Facile-CSRF` header, checked before the token is read,
+because it sets a cookie. `POST /auth/magic-link` does not.
 
 `Request(ctx, email, ip)` returns nil for unknown, malformed, ineligible and rate-limited callers.
 `Consume(ctx, w, r, token)` returns `porte.ErrMagicLinkInvalid` for every dead link, and otherwise the
-user id and a session token with the cookie set. `Wait()` drains pending mail on shutdown.
+user id and a session token with the cookie set. `Wait()` drains pending mail on shutdown; call it after the HTTP server has stopped accepting requests.
+A panic in `Send` is recovered and logged.
 
 `magiclinktest.Conformance(t, newStore, newUser)` runs the store contract against an app's own store.
 `pg.Store.MagicLinks()` is the default.

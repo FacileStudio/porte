@@ -3,7 +3,7 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
-## Unreleased
+## v0.6.0 — 2026-11-01
 
 **`porte/magiclink`: passwordless sign-in, once instead of per app.** A user who should not hold a
 password asks for a link by email and signs in with it. The kit is `Request`, `Consume` and
@@ -22,6 +22,19 @@ Decisions, with their reasons:
   address have an account". `Kit.Wait` drains pending mail on shutdown.
 - **One error for every dead link**, `porte.ErrMagicLinkInvalid`, status 401. The store does not
   separate a replay from a typo as login codes do.
+- **Consume requires `X-Facile-CSRF`.** It is public but sets a cookie, so a cross-site form post
+  with an attacker's own link would sign the victim in as the attacker. The header is checked before
+  the token is read, so a forged request cannot spend a link. Found in review before release.
+- **`Deps.Allow` is required.** An optional re-check that defaults to allowing everyone is one an app
+  forgets, and a client banned after the mail went out would still sign in.
+- **The source address is `RemoteAddr`, and `Config.ClientIP` is the escape hatch.** porte reads
+  `X-Forwarded-For` nowhere. Behind a proxy `RemoteAddr` is the proxy, which turns "20 per source per
+  hour" into 20 per hour for everyone, so an app behind its own proxy resolves the address itself.
+- **The address is the parsed one.** `Camille <a@b>` mails `a@b`, not the display form.
+- **A panicking mailer is recovered**: the send runs in a goroutine no HTTP middleware covers.
+- **`pg` locks with `FOR NO KEY UPDATE`**, which serialises link creation without conflicting with the
+  `FOR KEY SHARE` a session insert takes, and counts with one statement per key shape so the indexes
+  are usable.
 - **Tokens use `NewToken` and `HashToken`** (URL-safe base64, SHA-256 hex), the shape sessions and
   login codes already have, not a second spelling for links.
 
@@ -30,7 +43,7 @@ route constants, `DefaultMagicLinkTTL` (15 minutes), `MagicLinkRateWindow` and t
 to `porte/pg`: `Store.MagicLinks()` and the `porte_magic_links` table in `Schema`, which is
 `CREATE ... IF NOT EXISTS` and so applies to a live database by re-running it. Added
 `porte/magiclink/magiclinktest`, the conformance suite and an in-memory store. Nothing existing
-changes, so this is a minor bump when it ships.
+changes, so it is a minor bump: **v0.6.0**.
 
 ## v0.5.2 — 2026-08-29
 

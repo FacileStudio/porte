@@ -143,6 +143,7 @@ state comparison. Written once here instead of six times in the apps.
 | **v0.3.0** | Password identities keyed on the account id instead of the mutable email, per OIDC Core §5.7. `local.Kit.ChangePassword` confirms the current password, ends the other logins and rotates the caller's session; `SetPassword` refuses an account that already has one. **Breaking:** `SetPassword` loses its `email` parameter, `SessionStore` gains `DeleteLogins` |
 | **v0.4.0** | `POST /auth/oidc/device/exchange`: a CLI trades its provider token for this app's own session, on its own audience |
 | **v0.5.0** | `porte/spaces` — membership and role resolution, and the conformance suite an adopter runs against its own table. Purely additive: an app without spaces does not import it |
+| **v0.6.0** | `porte/magiclink` — passwordless sign-in by an emailed one-time link, and its store conformance suite. Purely additive: an app without links does not import it |
 
 The first adopter turned out to be Journal — the one app with no OIDC of its own, so the wiring
 added a path instead of replacing six hundred lines of one. It kept its own `users` table and
