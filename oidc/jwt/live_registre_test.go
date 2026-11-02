@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+// suiteCIAudience is the aud registre stamps on suite-ci tokens: Courrier's
+// client id, per the suite standard and registre's seed.yaml.
+const suiteCIAudience = "tniN7PWx8mSOCwVAAvYpBexYnMFWAM5flt19rNl0"
+
 // TestAVerifierConsumesALiveRegistreToken is the consumer half of the
 // machine-token contract: a real client_credentials token from the deployed
 // registre verifies through this package — signature from its live JWKS, iss,
@@ -36,7 +40,7 @@ func TestAVerifierConsumesALiveRegistreToken(t *testing.T) {
 	}
 	accessToken := mintClientCredentials(t, discovery, clientID, clientSecret)
 
-	verifier, err := New(context.Background(), Config{Issuer: issuer, Audience: "courrier"})
+	verifier, err := New(context.Background(), Config{Issuer: issuer, Audience: suiteCIAudience})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
