@@ -132,3 +132,41 @@ func TestTheMachineAudienceDoesNotMountTheExchange(t *testing.T) {
 		t.Fatalf("the exchange answered %d with only a machine audience set, want 404", traded.StatusCode)
 	}
 }
+
+func TestTheScopeGateRunsThroughTheWholeKit(t *testing.T) {
+	h := newHarness(t, func(cfg *porte.Config) {
+		cfg.MachineAudience = "test-client"
+		cfg.ScopePrefix = "courrier"
+	})
+	saveIdentity(t, h.stores, h.idp.issuer(), h.idp.subject, 7)
+
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+		want   int
+	}{
+		{"read scope", func(c map[string]any) { c["scope"] = "courrier.read"; c["act"] = map[string]any{"sub": "bulle"} }, http.StatusOK},
+		{"no scope claim", nil, http.StatusForbidden},
+		{"another app's scope", func(c map[string]any) { c["scope"] = "agenda.read" }, http.StatusForbidden},
+	}
+	for _, c := range cases {
+		response := whoami(t, h, h.idp.accessTokenWith(c.mutate))
+		_ = response.Body.Close()
+		if response.StatusCode != c.want {
+			t.Errorf("%s answered %d, want %d", c.name, response.StatusCode, c.want)
+		}
+	}
+
+	response := whoami(t, h, h.idp.accessTokenWith(func(c map[string]any) {
+		c["scope"] = "courrier.read"
+		c["act"] = map[string]any{"sub": "bulle"}
+	}))
+	defer func() { _ = response.Body.Close() }()
+	var identity porte.Identity
+	if err := json.NewDecoder(response.Body).Decode(&identity); err != nil {
+		t.Fatalf("decoding the identity: %v", err)
+	}
+	if identity.Actor != "bulle" || len(identity.Scopes) != 1 || identity.Scopes[0] != "courrier.read" {
+		t.Errorf("identity = %+v, want actor bulle and scope courrier.read", identity)
+	}
+}

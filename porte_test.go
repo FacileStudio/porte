@@ -278,3 +278,23 @@ func TestConfigValidateRejectsCLIAudienceWithoutAnIssuer(t *testing.T) {
 		t.Fatal("the device exchange needs a provider to verify against")
 	}
 }
+
+func TestConfigValidateRejectsScopePrefixWithoutAMachineAudience(t *testing.T) {
+	cfg := porte.Config{
+		Issuer: "https://sso.test", ClientID: "c", ClientSecret: "s",
+		RedirectURL: "https://a.test/cb", SuccessURL: "https://a.test/", ScopePrefix: "courrier",
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("a scope prefix with no bearer JWT path to gate booted")
+	}
+	cfg.MachineAudience = "courrier"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("a complete scope configuration was refused: %v", err)
+	}
+}
+
+func TestConfigValidateRejectsScopePrefixWithoutAnIssuer(t *testing.T) {
+	if err := (porte.Config{ScopePrefix: "courrier"}).Validate(); err == nil {
+		t.Fatal("a scope prefix needs a provider")
+	}
+}

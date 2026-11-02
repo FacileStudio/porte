@@ -371,8 +371,11 @@ Authentik → in-house IdP swap a config change rather than a rewrite.
 | `OIDC_LOGO_URL` | no | The logo on those pages. Empty derives `OIDC_SUCCESS_URL`'s origin plus `/logo.svg` |
 | `OIDC_CLAIMS_SCOPE` | no | The scope carrying the `roles` claim (§5c). Its presence enables claims handling |
 | `OIDC_MACHINE_AUDIENCE` | no | This app's own client id. Its presence enables bearer-JWT verification on the header path |
+| `OIDC_SCOPE_PREFIX` | no | Gates bearer JWTs by their `scope` claim: `<prefix>.read` or `<prefix>.write` for GET, HEAD and OPTIONS, `<prefix>.write` for every other method. A JWT with no scope claim gets 403. Requires `OIDC_MACHINE_AUDIENCE`. Never touches cookie or opaque sessions |
 | `OIDC_CLI_AUDIENCE` | no | The CLI's client id. Its presence mounts `POST /auth/oidc/device/exchange`, and nothing else does |
 | `SSO_ONLY` | no | When true, local password routes are not registered at all |
+
+A verified bearer JWT also exposes `Identity.Scopes` (the space-separated `scope` claim) and `Identity.Actor` (`act.sub`, the client acting for the user; a nested `act` is ignored). `porte.ActorFrom(ctx)` reads the actor so an app can log "client X on behalf of user Y".
 
 Authentik application slug convention, unchanged: `sso.facile.studio/application/o/<app>/`.
 

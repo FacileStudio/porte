@@ -113,6 +113,18 @@ Facile app answers `{token, user}`, and `porte` has no idea what a user looks li
 `passwords.Mount` and calls `Register` and `Login` from its own handlers. That is the supported
 path, not a workaround.
 
+A service that acts for a signed-in user, such as Bulle, presents a short-lived JWT addressed to the
+app with a `scope` claim. Set `MachineAudience` to verify it and `ScopePrefix` to gate it:
+
+```go
+cfg.MachineAudience = "<this app's client id>"
+cfg.ScopePrefix = "courrier"
+```
+
+A GET then needs `courrier.read` or `courrier.write`, any other method needs `courrier.write`, and
+a token with no `scope` claim gets a 403. `porte.ActorFrom(ctx)` returns the client acting for the
+user, for audit lines. Cookie sessions are never gated.
+
 ## Why
 
 Six Go apps — Nuage, Courrier, Plume, Agenda, Vision, Sablier — ship roughly 900 lines of
@@ -144,6 +156,7 @@ state comparison. Written once here instead of six times in the apps.
 | **v0.4.0** | `POST /auth/oidc/device/exchange`: a CLI trades its provider token for this app's own session, on its own audience |
 | **v0.5.0** | `porte/spaces` — membership and role resolution, and the conformance suite an adopter runs against its own table. Purely additive: an app without spaces does not import it |
 | **v0.6.0** | `porte/magiclink` — passwordless sign-in by an emailed one-time link, and its store conformance suite. Purely additive: an app without links does not import it |
+| **v0.7.0** | Delegated bearer JWTs: `Identity.Scopes` and `Identity.Actor` from the `scope` and `act` claims, `porte.ActorFrom`, and `Config.ScopePrefix` (`OIDC_SCOPE_PREFIX`), which gates a bearer JWT to `<prefix>.read` for reads and `<prefix>.write` for writes. Purely additive: unset, nothing changes |
 
 The first adopter turned out to be Journal — the one app with no OIDC of its own, so the wiring
 added a path instead of replacing six hundred lines of one. It kept its own `users` table and

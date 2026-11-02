@@ -3,6 +3,35 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.7.0 — 2026-11-02
+
+**Delegated bearer tokens carry scope and actor, and an app can gate on scope.** Bulle acts for a
+signed-in user at Courrier, Agenda, Opus and Sablier with a 5-minute JWT that Registre mints by
+token exchange, addressed to one app, read-only. porte already verified that shape and mapped `sub`
+to the local user; what it could not do is say what the token may do, or who holds it.
+
+Decisions, with their reasons:
+
+- **The gate is opt-in per app through `Config.ScopePrefix`** (`OIDC_SCOPE_PREFIX`). Unset, every
+  valid JWT passes as before, so `suite-ci` and any other machine token keep working untouched.
+- **The method decides read versus write.** GET, HEAD and OPTIONS need `<prefix>.read` or
+  `<prefix>.write`; everything else needs `<prefix>.write`. It reuses the check the CSRF rule
+  already uses to call a request mutating, so the two cannot disagree.
+- **A JWT with no `scope` claim is refused when a prefix is set.** An absent claim must not mean
+  "everything".
+- **Every refusal is one 403 with one body.** The response does not say whether the claim was
+  missing, wrong-app or read-only.
+- **The gate covers JWTs only.** A cookie session or opaque bearer carries no scope and is never
+  gated. The device exchange route verifies its own token and is not a bearer route, so it is
+  unaffected.
+- **`act` is read one level deep.** `Identity.Actor` is `act.sub`. A nested `act` (a chain of
+  delegations) is ignored, so a token cannot launder a longer chain into a single trusted name.
+- **`ScopePrefix` without `MachineAudience` fails at boot**, since there is no JWT to gate.
+
+Added: `Identity.Scopes`, `Identity.Actor`, `porte.ActorFrom`, `Config.ScopePrefix`,
+`jwt.Claims.Scopes` and `jwt.Claims.Actor`. Nothing existing changes with the new field unset, so
+it is a minor bump: **v0.7.0**.
+
 ## v0.6.0 — 2026-11-01
 
 **`porte/magiclink`: passwordless sign-in, once instead of per app.** A user who should not hold a
