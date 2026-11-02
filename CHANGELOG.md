@@ -10,7 +10,9 @@ its code back on a custom-scheme redirect, such as `dev.facile.app:/auth`. Anoth
 device can register the same scheme and read that redirect, so the code is bound to a PKCE
 challenge: the app sends `challenge` (S256 of a secret verifier) at login and `verifier` at
 `POST /auth/oidc/exchange`. A stolen code is useless without the verifier, and a missing or
-wrong verifier answers the same 401 as an unknown code.
+wrong verifier answers the same 401 as an unknown code. The verifier must be 43 to 128
+unreserved characters (RFC 7636 section 4.1), because the challenge travels in a URL anyone can
+read and a short verifier could be guessed offline.
 
 The redirect target is `Config.MobileRedirect` (`OIDC_MOBILE_REDIRECT`) and nothing from the
 request, so the flow is not an open redirect. It must be an absolute https URL or a custom

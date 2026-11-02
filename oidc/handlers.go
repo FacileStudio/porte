@@ -179,6 +179,23 @@ func validChallenge(value string) bool {
 	return err == nil && len(decoded) == sha256.Size
 }
 
+// validVerifier accepts what RFC 7636 §4.1 allows for a code verifier: 43 to
+// 128 characters from the unreserved set. The challenge travels in a URL anyone
+// can read, so a short verifier from a careless client could be guessed offline.
+func validVerifier(value string) bool {
+	if len(value) < 43 || len(value) > 128 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '.', r == '_', r == '~':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // pkceChallenge is the S256 transform of RFC 7636 §4.2.
 func pkceChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
@@ -432,6 +449,10 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 
 	lookup := request.Code
 	if request.Verifier != "" {
+		if !validVerifier(request.Verifier) {
+			httpjson.WriteError(w, errors.Unauthorized("invalid or expired code"))
+			return
+		}
 		lookup += ":" + pkceChallenge(request.Verifier)
 	}
 	code, err := k.deps.Codes.Consume(r.Context(), porte.HashToken(lookup))

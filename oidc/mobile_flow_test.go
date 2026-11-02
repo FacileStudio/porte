@@ -175,3 +175,17 @@ func TestMobileRedirectConfigValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestMobileExchangeRefusesAVerifierOutsideRFC7636(t *testing.T) {
+	for name, verifier := range map[string]string{
+		"too short":   "short",
+		"too long":    strings.Repeat("a", 129),
+		"bad charset": strings.Repeat("a", 42) + "!",
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t, withMobileRedirect)
+			_, code := mobileCode(t, h, mobileQuery(challengeOf(verifier)))
+			assertUnknownCode(t, exchangeBody(t, h, fmt.Sprintf(`{"code":%q,"verifier":%q}`, code, verifier)))
+		})
+	}
+}
