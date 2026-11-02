@@ -125,8 +125,8 @@ func (m *memory) DeleteExpired(_ context.Context, now time.Time) (int64, error) 
 	defer m.mu.Unlock()
 	var deleted int64
 	for hash, session := range m.sessions {
-		// A nil expiry is a named API token. The real store spares them
-		// and so does this one, or the test would prove nothing.
+
+
 		if session.ExpiresAt.IsZero() || !session.ExpiresAt.Before(now) {
 			continue
 		}
@@ -327,7 +327,7 @@ func TestASessionIdleForTooLongIsRefused(t *testing.T) {
 		t.Fatalf("an idle session authenticated: %d", recorder.Code)
 	}
 
-	// And the dead row is gone, so replaying the token costs nothing.
+
 	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
 		t.Fatal("the idled-out session row survived")
 	}
@@ -359,7 +359,7 @@ func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
 	}
 	token := issue(t, manager, 1)
 
-	// Well past the idle window, well inside the absolute one.
+
 	manager.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 24*time.Hour) }
 	recorder := httptest.NewRecorder()
 	authenticated(manager).ServeHTTP(recorder, cookieRequest(manager, token))
@@ -404,7 +404,7 @@ func TestAnUnprefixedCookieIsRefusedOverHTTPSByDefault(t *testing.T) {
 		t.Fatalf("an unprefixed cookie authenticated over https: %d", recorder.Code)
 	}
 
-	// The prefixed one, same token, is accepted.
+
 	request = httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set("X-Forwarded-Proto", "https")
 	request.AddCookie(&http.Cookie{Name: "__Host-" + porte.SessionCookieName, Value: token})
@@ -462,7 +462,7 @@ func TestSessionCookieIsHostPrefixedBehindTLS(t *testing.T) {
 	if cookie.Name != "__Host-"+porte.SessionCookieName {
 		t.Fatalf("cookie name = %q, want the __Host- prefixed form", cookie.Name)
 	}
-	// The prefix is only honoured by a browser when all three hold.
+
 	if !cookie.Secure || cookie.Path != "/" || cookie.Domain != "" {
 		t.Fatalf("cookie = %+v, which a browser would reject under the __Host- prefix", cookie)
 	}
@@ -492,7 +492,7 @@ func TestConfiguredHTTPSForcesTheSecureAttribute(t *testing.T) {
 	manager.cfg.RedirectURL = "https://app.test/auth/oidc/callback"
 
 	recorder := httptest.NewRecorder()
-	// No TLS, no X-Forwarded-Proto: the misconfigured-proxy case.
+
 	manager.SetSessionCookie(recorder, httptest.NewRequest(http.MethodGet, "/", nil), "the-token")
 
 	if cookie := recorder.Result().Cookies()[0]; !cookie.Secure {
@@ -610,8 +610,8 @@ func TestOptionalAttachesAnIdentityWhenThereIsOneAndLetsAnonymousThrough(t *test
 		t.Fatalf("signed-in request = %d %q, want 200 42", signedIn.Code, signedIn.Body.String())
 	}
 
-	// A bad credential is not a 401 here, but it must not authenticate
-	// either — the route is public, the caller is simply not identified.
+
+
 	bad := httptest.NewRequest(http.MethodGet, "/", nil)
 	bad.Header.Set("Authorization", "Bearer not-a-real-token")
 	rejected := httptest.NewRecorder()
@@ -644,7 +644,7 @@ func TestIssueCookieMintsASessionTheNextRequestAuthenticates(t *testing.T) {
 		t.Fatalf("cookies = %+v, want one carrying the plaintext token", cookies)
 	}
 
-	// The browser sends exactly what was set, and it authenticates.
+
 	request := httptest.NewRequest(http.MethodGet, "/x", nil)
 	request.AddCookie(cookies[0])
 	recorder := httptest.NewRecorder()
@@ -752,8 +752,8 @@ func TestSweepDeletesExpiredSessionsAndSparesLabelledOnes(t *testing.T) {
 		t.Fatalf("Issue: %v", err)
 	}
 
-	// Past the absolute lifetime, so the browser session is expired and the
-	// labelled one — which never gets an expiry — is not.
+
+
 	manager.now = func() time.Time { return now.Add(porte.DefaultSessionTTL + time.Hour) }
 	if _, err := manager.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)

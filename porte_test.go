@@ -116,8 +116,8 @@ func TestResolvedFillsZeroDurations(t *testing.T) {
 }
 
 func TestLoginFailureLandsOnTheLoginPageWithTheReason(t *testing.T) {
-	// SuccessURL is a landing page, not the origin: appending would send a
-	// refused login to /dashboard/login, which is nowhere.
+
+
 	cfg := porte.Config{SuccessURL: "https://app.test/dashboard"}
 	got := cfg.LoginFailure("email not verified")
 	if got != "https://app.test/login?error=email+not+verified" {

@@ -319,8 +319,8 @@ func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int6
 	}
 
 	if port != "" {
-		// The host is ours, only the port came from the request, so
-		// this cannot be pointed anywhere but at the local machine.
+
+
 		query := url.Values{"code": {code}}
 		if cliState != "" {
 			query.Set("state", cliState)
@@ -367,8 +367,8 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 	case isErr(err, porte.ErrCodeConsumed):
-		// A replay, not a typo. Worth a log line: the code was valid
-		// once, so either the CLI retried or someone else has it.
+
+
 		k.logger.Warn("porte: login code replayed")
 		httpjson.WriteError(w, errors.Unauthorized("invalid or expired code"))
 		return
@@ -516,8 +516,8 @@ func (k *Kit) handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
 
 	stored, err := k.deps.Identities.Find(r.Context(), k.cfg.Issuer, subject)
 	if isErr(err, porte.ErrNotFound) {
-		// This user never signed in here. Nothing to revoke, and
-		// saying so would confirm who does have an account.
+
+
 		httpjson.WriteJSON(w, http.StatusOK, porte.LogoutResponse{LoggedOut: true})
 		return
 	}
@@ -559,9 +559,9 @@ func (k *Kit) verifyLogoutToken(ctx context.Context, rawToken string) (string, e
 		return "", errors.Unauthorized("logout token is missing the back-channel logout event")
 	}
 	if idToken.Subject == "" {
-		// A sid-only token would need a session index porte does not
-		// keep. Revoking every session of a subject is the coarser and
-		// safer answer, so the subject is required.
+
+
+
 		return "", errors.Unauthorized("logout token carries no subject")
 	}
 	return idToken.Subject, nil
@@ -592,8 +592,8 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 	source := k.tokenSource(r.Context(), stored.Tokens)
 	info, err := k.provider.UserInfo(r.Context(), source)
 	if err != nil {
-		// The refresh token is dead. Clearing it stops this call
-		// retrying a doomed round trip every five minutes forever.
+
+
 		k.logger.Warn("porte: profile sync failed, clearing tokens",
 			slog.Int64("user_id", identity.UserID), slog.Any("error", err))
 		stored.Tokens = porte.TokenSet{}
@@ -603,11 +603,11 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// OpenID Connect Core §5.3.2: the sub in a UserInfo response MUST be
-	// compared to the sub of the ID token, and the response rejected when
-	// they differ. go-oidc does not do it — it fetches and parses, nothing
-	// more — so without this line a provider or anything sitting between it
-	// and here can rewrite one user's profile with another user's claims.
+
+
+
+
+
 	if !porte.SecureCompare(info.Subject, stored.Subject) {
 		k.logger.Warn("porte: userinfo returned a different subject, refusing the sync",
 			slog.Int64("user_id", identity.UserID))
@@ -651,9 +651,9 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 	claims.AvatarURL = k.syncAvatar(r.Context(), claims)
 	claims.Tokens = stored.Tokens
 
-	// The same upsert the callback uses. Reusing it is why the app's
-	// product behaviour on first login — a display colour, first-user
-	// admin — cannot drift away from what a sync does.
+
+
+
 	if _, err := k.deps.Users.UpsertFromOIDC(r.Context(), claims); err != nil {
 		httpjson.WriteError(w, err)
 		return

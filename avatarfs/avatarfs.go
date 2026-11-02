@@ -103,9 +103,9 @@ func (s *Store) Put(_ context.Context, key string, data []byte, contentType stri
 		return "", err
 	}
 
-	// The temp name is dotted so that a crash between create and rename
-	// leaves something that is visibly not an avatar rather than a file
-	// the serving half would happily hand out.
+
+
+
 	temp, err := os.CreateTemp(s.dir, "."+name+".*")
 	if err != nil {
 		return "", fmt.Errorf("porte/avatarfs: creating a temp file in %s: %w", s.dir, err)
@@ -186,8 +186,8 @@ func (s *Store) name(rawURL string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("porte/avatarfs: %q is not a URL: %w", rawURL, err)
 	}
-	// Cleaning first is what turns "/avatars/../../etc/passwd" into a
-	// path that fails the prefix test instead of one that passes it.
+
+
 	cleaned := path.Clean("/" + strings.TrimPrefix(parsed.Path, "/"))
 	rest, found := strings.CutPrefix(cleaned, s.prefix+"/")
 	if !found {
@@ -210,10 +210,10 @@ func (s *Store) filename(key, contentType string) (string, error) {
 	if err := validateKey(key); err != nil {
 		return "", err
 	}
-	// The parameters are dropped rather than refused: porte's own fetch
-	// hands over a bare type, but a caller passing the header through
-	// verbatim means "image/png; charset=binary", and failing that is a
-	// confusing answer to a correct PNG.
+
+
+
+
 	bare, _, _ := strings.Cut(contentType, ";")
 	ext, ok := extensions[strings.ToLower(strings.TrimSpace(bare))]
 	if !ok {

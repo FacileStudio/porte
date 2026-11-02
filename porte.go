@@ -485,9 +485,9 @@ func (c Config) Validate() error {
 	case err != nil:
 		return fmt.Errorf("porte: OIDC_ISSUER is not a valid URL: %w", err)
 	case issuer.Scheme != "https" && issuer.Scheme != "http", issuer.Host == "":
-		// url.Parse accepts almost any string, so the parse error alone
-		// catches nothing: "sso.facile.studio" parses fine as a relative
-		// path and then fails discovery with an opaque error at boot.
+
+
+
 		return fmt.Errorf("porte: OIDC_ISSUER must be an absolute http(s) URL, got %q", c.Issuer)
 	}
 	missing := []string{}
@@ -573,6 +573,10 @@ type LogoutResponse struct {
 type SyncProfileResponse struct {
 	Synced bool `json:"synced"`
 }
+//
+// Verifier is the PKCE code verifier of the mobile flow. A code minted for a
+// mobile login redeems only with the verifier whose S256 hash was sent as the
+// challenge at login. It is empty for the CLI flow.
 
 func sorted(values []string) []string {
 	out := append([]string(nil), values...)

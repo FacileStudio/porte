@@ -65,8 +65,8 @@ func TestUpsertMatchesOnSubjectNotEmail(t *testing.T) {
 		t.Fatalf("first upsert: %v", err)
 	}
 
-	// The IdP renamed the account. Matching on the subject keeps it the
-	// same human; matching on email would have orphaned it.
+
+
 	again, err := users.UpsertFromOIDC(ctx, claims("sub-1", "camille.b@facile.studio", true))
 	if err != nil {
 		t.Fatalf("renamed upsert: %v", err)
@@ -86,15 +86,15 @@ func TestUpsertLinksAnExistingEmailOnlyWhenTheProviderVerifiedIt(t *testing.T) {
 		t.Fatalf("first upsert: %v", err)
 	}
 
-	// A different subject claiming the same address, unverified. Linking
-	// here is an account takeover primitive, so it must not link — and it
-	// must fail with something legible rather than a constraint violation.
+
+
+
 	if _, err := users.UpsertFromOIDC(ctx, claims("sub-2", "camille@facile.studio", false)); err == nil {
 		t.Fatal("an unverified email was allowed to reach an existing account")
 	}
 
-	// Verified, so the link is taken: this is the case of an account that
-	// predates oidc_subject being recorded.
+
+
 	linked, err := users.UpsertFromOIDC(ctx, claims("sub-3", "camille@facile.studio", true))
 	if err != nil {
 		t.Fatalf("verified link: %v", err)
@@ -288,8 +288,8 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("missing session gave %v, want ErrNotFound", err)
 	}
 
-	// Revoking by id is scoped to the owner, so guessing an integer gets
-	// you nothing.
+
+
 	if err := sessions.DeleteByID(ctx, userID+1000, created.ID); !stderrors.Is(err, porte.ErrNotFound) {
 		t.Fatalf("another user revoked the session (%v)", err)
 	}
@@ -336,10 +336,10 @@ func TestTouchDoesNotWriteInsideTheInterval(t *testing.T) {
 	sessions := store.Sessions()
 	userID := seedUser(t, store, "sub-1", "camille@facile.studio")
 
-	// Truncated to what timestamptz actually stores. Go's clock is
-	// nanosecond on Linux, so an untruncated value comes back different
-	// from what went in and the comparison below fails for a reason that
-	// has nothing to do with what this test is about.
+
+
+
+
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	mustCreate(t, sessions, porte.Session{TokenHash: "hash-1", UserID: userID, CreatedAt: now, LastUsedAt: now})
 
@@ -394,10 +394,10 @@ func TestALoginCodeIsConsumedExactlyOnce(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	// Raced rather than sequential: exactly-once is a claim about two
-	// exchanges arriving at the same instant, which is the case a CLI retry
-	// and an attacker replaying a captured code both produce. The single
-	// conditional UPDATE is what settles it.
+
+
+
+
 	const racers = 8
 	won := make(chan porte.LoginCode, racers)
 	lost := make(chan error, racers)
@@ -622,8 +622,8 @@ func TestTheConflictPathStillRefusesAnUnverifiedEmail(t *testing.T) {
 	if _, err := users.UpsertFromOIDC(ctx, claims("s1", "shared@example.test", true)); err != nil {
 		t.Fatalf("the first login failed: %v", err)
 	}
-	// A different subject, same address, and the provider will not vouch
-	// for it. This is the takeover attempt.
+
+
 	_, err := users.UpsertFromOIDC(ctx, claims("s2", "shared@example.test", false))
 	if err == nil {
 		t.Fatal("an unverified email was linked to an account it does not own")
@@ -654,14 +654,14 @@ func TestPasswordUserStore(t *testing.T) {
 		t.Fatalf("FindByEmail = %d, %v; want %d", found, err, userID)
 	}
 
-	// The unique index is what actually stops a duplicate, since the app
-	// holds the lock rather than this store.
+
+
 	if _, err := users.CreateFromPassword(ctx, "camille@facile.studio", "Camille"); err == nil {
 		t.Fatal("a duplicate address was created")
 	}
 
-	// A password identity and an OIDC one on the same human, which is the
-	// arrangement v0.2 exists to allow.
+
+
 	identities := store.Identities()
 	for _, identity := range []porte.StoredIdentity{
 		{UserID: userID, Provider: porte.ProviderLocal, Subject: "camille@facile.studio", PasswordHash: "$argon2id$fake"},

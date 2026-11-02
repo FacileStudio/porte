@@ -151,8 +151,8 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 		}
 		kit.cliTokens = cliTokens
 	}
-	// The manager fills Identity.Roles through this kit, and this kit
-	// needs the manager to issue sessions. Something has to be built first.
+
+
 	if cfg.ClaimsEnabled() {
 		deps.Sessions.WithClaims(kit)
 	}
@@ -281,9 +281,9 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 			return porte.Claims{}, fmt.Errorf("porte/oidc: cannot parse the roles claim: %w", err)
 		}
 		if rolesOnly.Roles == nil {
-			// The other half of the startup guard. The scope was granted,
-			// so the mapping is what is missing, and the app would
-			// otherwise deny every role check without a single error.
+
+
+
 			return porte.Claims{}, fmt.Errorf(
 				"porte/oidc: scope %q was granted but no roles claim arrived — the provider is missing its scope mapping",
 				k.cfg.ClaimsScope)

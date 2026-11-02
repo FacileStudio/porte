@@ -157,23 +157,23 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// An address that already has an account is refused, whether or not that
-	// account has a password.
-	//
-	// Attaching one here would be an account takeover, and it was: an
-	// account created by SSO, or migrated in without a hash, went to
-	// whoever registered its address first — with a session issued on the
-	// spot. porte cannot prove the caller owns the mailbox, because porte
-	// has no mailer, so the only safe answer to "this address is already
-	// somebody" is no. The same human adding a password to their own
-	// account does it through SetPassword, from a request their existing
-	// session already authenticates.
-	//
-	// The refusal pays for a hash it does not need so that it costs about
-	// what creating an account costs. It is not perfect equalisation — the
-	// create path also writes two rows — but argon2 is the dominant term,
-	// and without this the response time alone answers "is this address
-	// registered" for every address an attacker cares to try.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	var userID int64
 	_, err = k.deps.Users.FindByEmail(ctx, email)
 	switch {

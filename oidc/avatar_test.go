@@ -12,7 +12,7 @@ import (
 func TestPrivateAddressesAreNotPublic(t *testing.T) {
 	private := []string{
 		"127.0.0.1", "::1", "10.0.0.1", "192.168.1.1", "172.16.0.1",
-		"169.254.169.254", // the cloud metadata service, the classic SSRF target
+		"169.254.169.254",
 		"0.0.0.0", "::", "fe80::1", "224.0.0.1", "::ffff:127.0.0.1",
 	}
 	for _, address := range private {
@@ -59,11 +59,11 @@ func TestNAT64WrappingAPublicAddressStaysPublic(t *testing.T) {
 
 func TestReservedIPv4RangesAreNotPublic(t *testing.T) {
 	for _, address := range []string{
-		"100.64.0.1",      // carrier-grade NAT
-		"192.0.2.1",       // TEST-NET-1
-		"198.18.0.1",      // benchmarking
-		"240.0.0.1",       // reserved
-		"255.255.255.255", // broadcast
+		"100.64.0.1",
+		"192.0.2.1",
+		"198.18.0.1",
+		"240.0.0.1",
+		"255.255.255.255",
 	} {
 		if isPublicIP(net.ParseIP(address)) {
 			t.Errorf("%s was treated as public", address)
@@ -88,8 +88,8 @@ func TestAvatarFetchRefusesAPrivateAddressAtDialTime(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// httptest listens on loopback, which is exactly the case the guard
-	// exists for: a valid https URL pointing inside the network.
+
+
 	_, _, err := FetchAvatar(context.Background(), server.URL)
 	if err == nil {
 		t.Fatal("fetched an avatar from loopback")

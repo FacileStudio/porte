@@ -546,8 +546,8 @@ func TestBrowserLoginFlowEndToEnd(t *testing.T) {
 		t.Fatalf("callback redirects to %q, want the success URL", got)
 	}
 
-	// The session cookie authenticates, and carries the provider's claims
-	// through the upsert.
+
+
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err := client.Do(request)
 	if err != nil {
@@ -568,7 +568,7 @@ func TestBrowserLoginFlowEndToEnd(t *testing.T) {
 		t.Fatalf("claims.Provider = %q, want the issuer", claims.Provider)
 	}
 
-	// The identity row exists under (provider, subject) with the tokens.
+
 	stored, err := identityStore{h.stores}.Find(context.Background(), h.idp.issuer(), "subject-1")
 	if err != nil {
 		t.Fatalf("identity row missing after the callback: %v", err)
@@ -681,10 +681,10 @@ func TestCallbackRefusesATamperedState(t *testing.T) {
 func TestCallbackWithoutTheFlowCookieIsRefused(t *testing.T) {
 	h := newHarness(t, nil)
 
-	// A bare client with no jar: the state cookie never comes back, which is
-	// also what a cross-site request forging the callback looks like. The
-	// client must not follow the refusal's redirect, or the assertion reads
-	// the login page's status instead of the refusal's.
+
+
+
+
 	response, err := h.client(t).Get(h.app.URL + porte.RouteCallback + "?code=x&state=y")
 	if err != nil {
 		t.Fatalf("GET callback: %v", err)
@@ -702,8 +702,8 @@ func TestCLILoginFlowEndToEnd(t *testing.T) {
 		t.Fatalf("CLI callback = %d, want the code page", callback.StatusCode)
 	}
 
-	// The page carries the code; a CLI's user pastes it. From the store's
-	// perspective exactly one pending code must exist, stored as a hash.
+
+
 	h.stores.memory.mu.Lock()
 	defer h.stores.memory.mu.Unlock()
 	if len(h.stores.codes) != 1 {
@@ -720,9 +720,9 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 	h := newHarness(t, nil)
 	client := h.client(t)
 
-	// Walk the CLI flow with a loopback port: the callback redirects to
-	// 127.0.0.1 with the code in the query, which is where the plaintext is
-	// observable without scraping HTML.
+
+
+
 	response, err := client.Get(h.app.URL + porte.RouteLogin + "?flow=cli&port=8123")
 	if err != nil {
 		t.Fatalf("GET login: %v", err)
@@ -749,7 +749,7 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 		t.Fatal("the loopback redirect carries no code")
 	}
 
-	// The exchange: code in, bearer out.
+
 	body := strings.NewReader(fmt.Sprintf(`{"code":%q}`, code))
 	response, err = http.Post(h.app.URL+porte.RouteExchange, "application/json", body)
 	if err != nil {
@@ -764,7 +764,7 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 		t.Fatalf("exchange = %d %+v, want 200 with a token", response.StatusCode, exchanged)
 	}
 
-	// The bearer authenticates without any cookie or CSRF header.
+
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	request.Header.Set("Authorization", "Bearer "+exchanged.Token)
 	response, err = http.DefaultClient.Do(request)
@@ -776,7 +776,7 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 		t.Fatalf("whoami with the bearer = %d, want 200", response.StatusCode)
 	}
 
-	// A replayed code finds nothing.
+
 	body = strings.NewReader(fmt.Sprintf(`{"code":%q}`, code))
 	response, err = http.Post(h.app.URL+porte.RouteExchange, "application/json", body)
 	if err != nil {
@@ -793,7 +793,7 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 	client := h.client(t)
 	_ = h.login(t, client, "")
 
-	// The session works before the logout.
+
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err := client.Do(request)
 	if err != nil {
@@ -804,7 +804,7 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 		t.Fatalf("whoami before the logout = %d, want 200", response.StatusCode)
 	}
 
-	// The IdP announces the logout over the back channel.
+
 	form := url.Values{"logout_token": {h.idp.logoutToken(nil)}}
 	response, err = http.PostForm(h.app.URL+porte.RouteBackchannelLogout, form)
 	if err != nil {
@@ -815,7 +815,7 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 		t.Fatalf("backchannel logout = %d, want 200", response.StatusCode)
 	}
 
-	// The session is dead.
+
 	request, _ = http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err = client.Do(request)
 	if err != nil {
@@ -832,8 +832,8 @@ func TestBackchannelLogoutRefusesAnIDToken(t *testing.T) {
 	client := h.client(t)
 	_ = h.login(t, client, "")
 
-	// An ID token carries a nonce and no events claim. Accepting one here
-	// would let anyone holding their own ID token log out anybody.
+
+
 	token := h.idp.logoutToken(func(claims map[string]any) {
 		claims["nonce"] = "some-nonce"
 	})
@@ -896,15 +896,15 @@ func TestRolesClaimRidesTheFlowWhenConfigured(t *testing.T) {
 }
 
 func TestCallbackFailsLoudlyWhenTheRolesClaimNeverArrives(t *testing.T) {
-	// The scope is advertised and configured, but the provider never emits
-	// the claim — the half-configured provider the startup guard cannot see.
+
+
 	h := newHarness(t, func(cfg *porte.Config) { cfg.ClaimsScope = "facile" })
 	h.idp.roles = nil
 
-	// The refusal is a 302 like the success is, so this asserts on where it
-	// points: a callback that landed on SuccessURL signed the caller in
-	// without the roles it is about to be authorized against, which is the
-	// silent-deny failure the guard exists for.
+
+
+
+
 	assertLoginRefused(t, h.login(t, h.client(t), ""))
 }
 
@@ -1049,9 +1049,9 @@ func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 		t.Fatalf("logout = %d %+v", response.StatusCode, body)
 	}
 
-	// The harness is plain http, so the prefixed name is neither written nor
-	// accepted by a browser here; the bare one is what must be expired.
-	// Clearing both spellings over https is asserted separately.
+
+
+
 	cleared := false
 	for _, cookie := range response.Cookies() {
 		if cookie.Name == porte.SessionCookieName && cookie.MaxAge < 0 {
@@ -1062,8 +1062,8 @@ func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 		t.Errorf("logout did not expire the %q cookie", porte.SessionCookieName)
 	}
 
-	// And the session is genuinely gone server-side, not merely forgotten
-	// by the browser.
+
+
 	request, _ = http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err = client.Do(request)
 	if err != nil {

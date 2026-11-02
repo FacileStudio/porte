@@ -369,10 +369,10 @@ func TestRegisteringAFederatedAddressIsRefused(t *testing.T) {
 		t.Fatalf("a password was attached to the victim's account: %d identities", len(identities))
 	}
 
-	// The refusal must not be cheaper than the creation it refuses, or the
-	// response time answers "does this address have an account" on its own.
-	// The floor is deliberately far below one argon2 hash: this asserts the
-	// hash happened at all, not how fast the machine is.
+
+
+
+
 	start := time.Now()
 	w, r = request()
 	_, _, _ = kit.Register(context.Background(), w, r, "someone@facile.studio", "", "another-long-password")

@@ -339,12 +339,12 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		return porte.Identity{}, errors.Unauthorized("missing auth")
 	}
 
-	// A cookie is attached by the browser whether or not the page meant to
-	// send it, which is the whole CSRF problem. SameSite=Lax stops the
-	// cross-site form post; this stops the rest, because a browser will not
-	// attach a custom header cross-site without a preflight the app never
-	// answers. Bearer callers are exempt: nothing attaches a header on
-	// their behalf.
+
+
+
+
+
+
 	if fromCookie && mutating(r) && r.Header.Get(porte.CSRFHeaderName) == "" {
 		return porte.Identity{}, errors.Forbidden("missing " + porte.CSRFHeaderName + " header")
 	}
@@ -369,8 +369,8 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		if fromCookie {
 			m.ClearCookie(w, r, porte.SessionCookieName)
 		}
-		// The row is dead either way, and leaving it costs a lookup on
-		// every replay of a token that will never authenticate again.
+
+
 		if err := m.store.Delete(r.Context(), hash); err != nil && !isNotFound(err) {
 			m.logger.Warn("porte: failed to drop a dead session", slog.Any("error", err))
 		}

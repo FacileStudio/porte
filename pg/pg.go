@@ -245,11 +245,11 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			return 0, fmt.Errorf("porte/pg: update user: %w", err)
 		}
 	case stderrors.Is(err, sql.ErrNoRows):
-		// A new subject whose email already belongs to somebody. Either
-		// the provider re-created the account — in which case linking
-		// on an unverified address is the account takeover this refuses
-		// — or two humans share an address, which they cannot. Saying
-		// so beats a raw unique-violation 500 on the login path.
+
+
+
+
+
 		var taken int64
 		switch err := tx.QueryRowContext(ctx,
 			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&taken); {
@@ -265,12 +265,12 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 		if claims.AvatarURL != "" {
 			avatarSource = "oidc"
 		}
-		// ON CONFLICT rather than a bare INSERT, because the check above
-		// is a read in a READ COMMITTED transaction and two first logins
-		// for the same new user — a double click, two tabs, a retried
-		// callback — both pass it and both arrive here. Letting the
-		// loser adopt the winner's row turns a unique-violation 500 on
-		// the login path into a second successful login.
+
+
+
+
+
+
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source)
 			VALUES ($1, $2, $3, $4, $5)
@@ -279,12 +279,12 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
 		).Scan(&userID)
 		if stderrors.Is(err, sql.ErrNoRows) {
-			// Somebody else inserted this email between the check above
-			// and here. Adopting their row is right when the provider
-			// verified the address — that is the same rule the fallback
-			// at the top of this method applies — and is the account
-			// takeover it refuses when the provider did not, so the
-			// guard is applied again rather than assumed.
+
+
+
+
+
+
 			if !claims.EmailVerified {
 				return 0, fmt.Errorf(
 					"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
@@ -300,8 +300,8 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 		return 0, fmt.Errorf("porte/pg: resolve user: %w", err)
 	}
 
-	// The link only. Tokens and roles arrive through Save, so this method
-	// stays the same shape an app implementing UserStore has to satisfy.
+
+
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO porte_identities (user_id, provider, subject)
 		VALUES ($1, $2, $3)
