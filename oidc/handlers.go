@@ -352,7 +352,6 @@ func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int6
 
 	if port != "" {
 
-
 		query := url.Values{"code": {code}}
 		if cliState != "" {
 			query.Set("state", cliState)
@@ -439,7 +438,6 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 	case isErr(err, porte.ErrCodeConsumed):
-
 
 		k.logger.Warn("porte: login code replayed")
 		httpjson.WriteError(w, errors.Unauthorized("invalid or expired code"))
@@ -589,7 +587,6 @@ func (k *Kit) handleBackchannelLogout(w http.ResponseWriter, r *http.Request) {
 	stored, err := k.deps.Identities.Find(r.Context(), k.cfg.Issuer, subject)
 	if isErr(err, porte.ErrNotFound) {
 
-
 		httpjson.WriteJSON(w, http.StatusOK, porte.LogoutResponse{LoggedOut: true})
 		return
 	}
@@ -632,8 +629,6 @@ func (k *Kit) verifyLogoutToken(ctx context.Context, rawToken string) (string, e
 	}
 	if idToken.Subject == "" {
 
-
-
 		return "", errors.Unauthorized("logout token carries no subject")
 	}
 	return idToken.Subject, nil
@@ -665,7 +660,6 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 	info, err := k.provider.UserInfo(r.Context(), source)
 	if err != nil {
 
-
 		k.logger.Warn("porte: profile sync failed, clearing tokens",
 			slog.Int64("user_id", identity.UserID), slog.Any("error", err))
 		stored.Tokens = porte.TokenSet{}
@@ -674,11 +668,6 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		httpjson.WriteJSON(w, http.StatusOK, porte.SyncProfileResponse{Synced: false})
 		return
 	}
-
-
-
-
-
 
 	if !porte.SecureCompare(info.Subject, stored.Subject) {
 		k.logger.Warn("porte: userinfo returned a different subject, refusing the sync",
@@ -722,9 +711,6 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	claims.AvatarURL = k.syncAvatar(r.Context(), claims)
 	claims.Tokens = stored.Tokens
-
-
-
 
 	if _, err := k.deps.Users.UpsertFromOIDC(r.Context(), claims); err != nil {
 		httpjson.WriteError(w, err)

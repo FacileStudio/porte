@@ -117,7 +117,6 @@ func TestResolvedFillsZeroDurations(t *testing.T) {
 
 func TestLoginFailureLandsOnTheLoginPageWithTheReason(t *testing.T) {
 
-
 	cfg := porte.Config{SuccessURL: "https://app.test/dashboard"}
 	got := cfg.LoginFailure("email not verified")
 	if got != "https://app.test/login?error=email+not+verified" {

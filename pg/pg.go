@@ -246,10 +246,6 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 		}
 	case stderrors.Is(err, sql.ErrNoRows):
 
-
-
-
-
 		var taken int64
 		switch err := tx.QueryRowContext(ctx,
 			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&taken); {
@@ -266,11 +262,6 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			avatarSource = "oidc"
 		}
 
-
-
-
-
-
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source)
 			VALUES ($1, $2, $3, $4, $5)
@@ -279,11 +270,6 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
 		).Scan(&userID)
 		if stderrors.Is(err, sql.ErrNoRows) {
-
-
-
-
-
 
 			if !claims.EmailVerified {
 				return 0, fmt.Errorf(
@@ -299,8 +285,6 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 	default:
 		return 0, fmt.Errorf("porte/pg: resolve user: %w", err)
 	}
-
-
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO porte_identities (user_id, provider, subject)

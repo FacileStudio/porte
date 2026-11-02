@@ -65,8 +65,6 @@ func TestUpsertMatchesOnSubjectNotEmail(t *testing.T) {
 		t.Fatalf("first upsert: %v", err)
 	}
 
-
-
 	again, err := users.UpsertFromOIDC(ctx, claims("sub-1", "camille.b@facile.studio", true))
 	if err != nil {
 		t.Fatalf("renamed upsert: %v", err)
@@ -86,14 +84,9 @@ func TestUpsertLinksAnExistingEmailOnlyWhenTheProviderVerifiedIt(t *testing.T) {
 		t.Fatalf("first upsert: %v", err)
 	}
 
-
-
-
 	if _, err := users.UpsertFromOIDC(ctx, claims("sub-2", "camille@facile.studio", false)); err == nil {
 		t.Fatal("an unverified email was allowed to reach an existing account")
 	}
-
-
 
 	linked, err := users.UpsertFromOIDC(ctx, claims("sub-3", "camille@facile.studio", true))
 	if err != nil {
@@ -288,8 +281,6 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("missing session gave %v, want ErrNotFound", err)
 	}
 
-
-
 	if err := sessions.DeleteByID(ctx, userID+1000, created.ID); !stderrors.Is(err, porte.ErrNotFound) {
 		t.Fatalf("another user revoked the session (%v)", err)
 	}
@@ -335,10 +326,6 @@ func TestTouchDoesNotWriteInsideTheInterval(t *testing.T) {
 	ctx := context.Background()
 	sessions := store.Sessions()
 	userID := seedUser(t, store, "sub-1", "camille@facile.studio")
-
-
-
-
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	mustCreate(t, sessions, porte.Session{TokenHash: "hash-1", UserID: userID, CreatedAt: now, LastUsedAt: now})
@@ -393,10 +380,6 @@ func TestALoginCodeIsConsumedExactlyOnce(t *testing.T) {
 	if err := codes.Create(ctx, porte.LoginCode{CodeHash: "code-1", UserID: userID, ExpiresAt: expiry}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-
-
-
-
 
 	const racers = 8
 	won := make(chan porte.LoginCode, racers)
@@ -623,7 +606,6 @@ func TestTheConflictPathStillRefusesAnUnverifiedEmail(t *testing.T) {
 		t.Fatalf("the first login failed: %v", err)
 	}
 
-
 	_, err := users.UpsertFromOIDC(ctx, claims("s2", "shared@example.test", false))
 	if err == nil {
 		t.Fatal("an unverified email was linked to an account it does not own")
@@ -654,13 +636,9 @@ func TestPasswordUserStore(t *testing.T) {
 		t.Fatalf("FindByEmail = %d, %v; want %d", found, err, userID)
 	}
 
-
-
 	if _, err := users.CreateFromPassword(ctx, "camille@facile.studio", "Camille"); err == nil {
 		t.Fatal("a duplicate address was created")
 	}
-
-
 
 	identities := store.Identities()
 	for _, identity := range []porte.StoredIdentity{

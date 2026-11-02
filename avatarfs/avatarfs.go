@@ -103,9 +103,6 @@ func (s *Store) Put(_ context.Context, key string, data []byte, contentType stri
 		return "", err
 	}
 
-
-
-
 	temp, err := os.CreateTemp(s.dir, "."+name+".*")
 	if err != nil {
 		return "", fmt.Errorf("porte/avatarfs: creating a temp file in %s: %w", s.dir, err)
@@ -187,7 +184,6 @@ func (s *Store) name(rawURL string) (string, error) {
 		return "", fmt.Errorf("porte/avatarfs: %q is not a URL: %w", rawURL, err)
 	}
 
-
 	cleaned := path.Clean("/" + strings.TrimPrefix(parsed.Path, "/"))
 	rest, found := strings.CutPrefix(cleaned, s.prefix+"/")
 	if !found {
@@ -210,9 +206,6 @@ func (s *Store) filename(key, contentType string) (string, error) {
 	if err := validateKey(key); err != nil {
 		return "", err
 	}
-
-
-
 
 	bare, _, _ := strings.Cut(contentType, ";")
 	ext, ok := extensions[strings.ToLower(strings.TrimSpace(bare))]

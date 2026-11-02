@@ -88,8 +88,6 @@ func TestAvatarFetchRefusesAPrivateAddressAtDialTime(t *testing.T) {
 	}))
 	defer server.Close()
 
-
-
 	_, _, err := FetchAvatar(context.Background(), server.URL)
 	if err == nil {
 		t.Fatal("fetched an avatar from loopback")

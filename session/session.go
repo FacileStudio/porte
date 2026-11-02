@@ -339,12 +339,6 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		return porte.Identity{}, errors.Unauthorized("missing auth")
 	}
 
-
-
-
-
-
-
 	if fromCookie && mutating(r) && r.Header.Get(porte.CSRFHeaderName) == "" {
 		return porte.Identity{}, errors.Forbidden("missing " + porte.CSRFHeaderName + " header")
 	}
@@ -369,7 +363,6 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		if fromCookie {
 			m.ClearCookie(w, r, porte.SessionCookieName)
 		}
-
 
 		if err := m.store.Delete(r.Context(), hash); err != nil && !isNotFound(err) {
 			m.logger.Warn("porte: failed to drop a dead session", slog.Any("error", err))

@@ -126,7 +126,6 @@ func (m *memory) DeleteExpired(_ context.Context, now time.Time) (int64, error) 
 	var deleted int64
 	for hash, session := range m.sessions {
 
-
 		if session.ExpiresAt.IsZero() || !session.ExpiresAt.Before(now) {
 			continue
 		}
@@ -327,7 +326,6 @@ func TestASessionIdleForTooLongIsRefused(t *testing.T) {
 		t.Fatalf("an idle session authenticated: %d", recorder.Code)
 	}
 
-
 	if _, err := store.Find(context.Background(), porte.HashToken(token)); err == nil {
 		t.Fatal("the idled-out session row survived")
 	}
@@ -358,7 +356,6 @@ func TestTheIdleWindowCanBeTurnedOff(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	token := issue(t, manager, 1)
-
 
 	manager.now = func() time.Time { return issued.Add(porte.DefaultSessionIdleTTL + 24*time.Hour) }
 	recorder := httptest.NewRecorder()
@@ -403,7 +400,6 @@ func TestAnUnprefixedCookieIsRefusedOverHTTPSByDefault(t *testing.T) {
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("an unprefixed cookie authenticated over https: %d", recorder.Code)
 	}
-
 
 	request = httptest.NewRequest(http.MethodGet, "/", nil)
 	request.Header.Set("X-Forwarded-Proto", "https")
@@ -610,8 +606,6 @@ func TestOptionalAttachesAnIdentityWhenThereIsOneAndLetsAnonymousThrough(t *test
 		t.Fatalf("signed-in request = %d %q, want 200 42", signedIn.Code, signedIn.Body.String())
 	}
 
-
-
 	bad := httptest.NewRequest(http.MethodGet, "/", nil)
 	bad.Header.Set("Authorization", "Bearer not-a-real-token")
 	rejected := httptest.NewRecorder()
@@ -643,7 +637,6 @@ func TestIssueCookieMintsASessionTheNextRequestAuthenticates(t *testing.T) {
 	if len(cookies) != 1 || cookies[0].Value != token {
 		t.Fatalf("cookies = %+v, want one carrying the plaintext token", cookies)
 	}
-
 
 	request := httptest.NewRequest(http.MethodGet, "/x", nil)
 	request.AddCookie(cookies[0])
@@ -751,8 +744,6 @@ func TestSweepDeletesExpiredSessionsAndSparesLabelledOnes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
-
-
 
 	manager.now = func() time.Time { return now.Add(porte.DefaultSessionTTL + time.Hour) }
 	if _, err := manager.Sweep(context.Background()); err != nil {

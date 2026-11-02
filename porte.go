@@ -500,8 +500,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("porte: OIDC_ISSUER is not a valid URL: %w", err)
 	case issuer.Scheme != "https" && issuer.Scheme != "http", issuer.Host == "":
 
-
-
 		return fmt.Errorf("porte: OIDC_ISSUER must be an absolute http(s) URL, got %q", c.Issuer)
 	}
 	missing := []string{}

@@ -369,10 +369,6 @@ func TestRegisteringAFederatedAddressIsRefused(t *testing.T) {
 		t.Fatalf("a password was attached to the victim's account: %d identities", len(identities))
 	}
 
-
-
-
-
 	start := time.Now()
 	w, r = request()
 	_, _, _ = kit.Register(context.Background(), w, r, "someone@facile.studio", "", "another-long-password")

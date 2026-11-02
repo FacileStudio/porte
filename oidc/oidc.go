@@ -152,7 +152,6 @@ func New(ctx context.Context, cfg porte.Config, deps Deps) (*Kit, error) {
 		kit.cliTokens = cliTokens
 	}
 
-
 	if cfg.ClaimsEnabled() {
 		deps.Sessions.WithClaims(kit)
 	}
@@ -281,8 +280,6 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 			return porte.Claims{}, fmt.Errorf("porte/oidc: cannot parse the roles claim: %w", err)
 		}
 		if rolesOnly.Roles == nil {
-
-
 
 			return porte.Claims{}, fmt.Errorf(
 				"porte/oidc: scope %q was granted but no roles claim arrived — the provider is missing its scope mapping",

@@ -45,11 +45,6 @@ func (k *Kit) Attach(ctx context.Context, identity *porte.Identity) {
 	refreshed, err := k.refreshRoles(ctx, stored)
 	if err != nil {
 
-
-
-
-
-
 		k.logger.Warn("porte: role refresh failed, keeping the cached claim",
 			slog.Int64("user_id", identity.UserID), slog.Any("error", err))
 		if err := k.deps.Identities.MarkRolesSynced(ctx, stored.Provider, stored.Subject, k.now()); err != nil {

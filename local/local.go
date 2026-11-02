@@ -157,23 +157,6 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 	var userID int64
 	_, err = k.deps.Users.FindByEmail(ctx, email)
 	switch {

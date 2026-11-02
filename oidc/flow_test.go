@@ -546,8 +546,6 @@ func TestBrowserLoginFlowEndToEnd(t *testing.T) {
 		t.Fatalf("callback redirects to %q, want the success URL", got)
 	}
 
-
-
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err := client.Do(request)
 	if err != nil {
@@ -567,7 +565,6 @@ func TestBrowserLoginFlowEndToEnd(t *testing.T) {
 	if claims.Provider != h.idp.issuer() {
 		t.Fatalf("claims.Provider = %q, want the issuer", claims.Provider)
 	}
-
 
 	stored, err := identityStore{h.stores}.Find(context.Background(), h.idp.issuer(), "subject-1")
 	if err != nil {
@@ -681,10 +678,6 @@ func TestCallbackRefusesATamperedState(t *testing.T) {
 func TestCallbackWithoutTheFlowCookieIsRefused(t *testing.T) {
 	h := newHarness(t, nil)
 
-
-
-
-
 	response, err := h.client(t).Get(h.app.URL + porte.RouteCallback + "?code=x&state=y")
 	if err != nil {
 		t.Fatalf("GET callback: %v", err)
@@ -702,8 +695,6 @@ func TestCLILoginFlowEndToEnd(t *testing.T) {
 		t.Fatalf("CLI callback = %d, want the code page", callback.StatusCode)
 	}
 
-
-
 	h.stores.memory.mu.Lock()
 	defer h.stores.memory.mu.Unlock()
 	if len(h.stores.codes) != 1 {
@@ -719,9 +710,6 @@ func TestCLILoginFlowEndToEnd(t *testing.T) {
 func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 	h := newHarness(t, nil)
 	client := h.client(t)
-
-
-
 
 	response, err := client.Get(h.app.URL + porte.RouteLogin + "?flow=cli&port=8123")
 	if err != nil {
@@ -749,7 +737,6 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 		t.Fatal("the loopback redirect carries no code")
 	}
 
-
 	body := strings.NewReader(fmt.Sprintf(`{"code":%q}`, code))
 	response, err = http.Post(h.app.URL+porte.RouteExchange, "application/json", body)
 	if err != nil {
@@ -764,7 +751,6 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 		t.Fatalf("exchange = %d %+v, want 200 with a token", response.StatusCode, exchanged)
 	}
 
-
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	request.Header.Set("Authorization", "Bearer "+exchanged.Token)
 	response, err = http.DefaultClient.Do(request)
@@ -775,7 +761,6 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("whoami with the bearer = %d, want 200", response.StatusCode)
 	}
-
 
 	body = strings.NewReader(fmt.Sprintf(`{"code":%q}`, code))
 	response, err = http.Post(h.app.URL+porte.RouteExchange, "application/json", body)
@@ -793,7 +778,6 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 	client := h.client(t)
 	_ = h.login(t, client, "")
 
-
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err := client.Do(request)
 	if err != nil {
@@ -804,7 +788,6 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 		t.Fatalf("whoami before the logout = %d, want 200", response.StatusCode)
 	}
 
-
 	form := url.Values{"logout_token": {h.idp.logoutToken(nil)}}
 	response, err = http.PostForm(h.app.URL+porte.RouteBackchannelLogout, form)
 	if err != nil {
@@ -814,7 +797,6 @@ func TestBackchannelLogoutRevokesTheSessions(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("backchannel logout = %d, want 200", response.StatusCode)
 	}
-
 
 	request, _ = http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err = client.Do(request)
@@ -831,8 +813,6 @@ func TestBackchannelLogoutRefusesAnIDToken(t *testing.T) {
 	h := newHarness(t, nil)
 	client := h.client(t)
 	_ = h.login(t, client, "")
-
-
 
 	token := h.idp.logoutToken(func(claims map[string]any) {
 		claims["nonce"] = "some-nonce"
@@ -897,13 +877,8 @@ func TestRolesClaimRidesTheFlowWhenConfigured(t *testing.T) {
 
 func TestCallbackFailsLoudlyWhenTheRolesClaimNeverArrives(t *testing.T) {
 
-
 	h := newHarness(t, func(cfg *porte.Config) { cfg.ClaimsScope = "facile" })
 	h.idp.roles = nil
-
-
-
-
 
 	assertLoginRefused(t, h.login(t, h.client(t), ""))
 }
@@ -1049,9 +1024,6 @@ func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 		t.Fatalf("logout = %d %+v", response.StatusCode, body)
 	}
 
-
-
-
 	cleared := false
 	for _, cookie := range response.Cookies() {
 		if cookie.Name == porte.SessionCookieName && cookie.MaxAge < 0 {
@@ -1061,8 +1033,6 @@ func TestLogoutRevokesTheSessionAndClearsBothCookieSpellings(t *testing.T) {
 	if !cleared {
 		t.Errorf("logout did not expire the %q cookie", porte.SessionCookieName)
 	}
-
-
 
 	request, _ = http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	response, err = client.Do(request)

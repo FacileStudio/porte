@@ -80,8 +80,6 @@ func FetchAvatar(ctx context.Context, pictureURL string) (data []byte, contentTy
 		return nil, "", fmt.Errorf("porte: unsupported avatar content type %q", contentType)
 	}
 
-
-
 	data, err = io.ReadAll(io.LimitReader(response.Body, MaxAvatarBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("porte: reading the avatar failed: %w", err)
@@ -158,7 +156,6 @@ func isPublicIP(ip net.IP) bool {
 func embeddedIPv4(ip net.IP) net.IP {
 	if mapped := ip.To4(); mapped != nil {
 
-
 		if len(ip) == net.IPv6len && !mapped.Equal(ip) {
 			return mapped
 		}
@@ -175,7 +172,6 @@ func embeddedIPv4(ip net.IP) net.IP {
 
 		return net.IPv4(ip[2], ip[3], ip[4], ip[5])
 	case isZeros(ip[:12]) && !isZeros(ip[12:]):
-
 
 		return net.IPv4(ip[12], ip[13], ip[14], ip[15])
 	}
