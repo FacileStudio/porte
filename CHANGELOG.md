@@ -3,6 +3,20 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.8.0 — 2026-11-02
+
+**Mobile login.** `?flow=mobile` lets a native app sign in through the system browser and get
+its code back on a custom-scheme redirect, such as `dev.facile.app:/auth`. Another app on the
+device can register the same scheme and read that redirect, so the code is bound to a PKCE
+challenge: the app sends `challenge` (S256 of a secret verifier) at login and `verifier` at
+`POST /auth/oidc/exchange`. A stolen code is useless without the verifier, and a missing or
+wrong verifier answers the same 401 as an unknown code.
+
+The redirect target is `Config.MobileRedirect` (`OIDC_MOBILE_REDIRECT`) and nothing from the
+request, so the flow is not an open redirect. It must be an absolute https URL or a custom
+scheme, with no fragment. Empty refuses the mobile flow. No schema change: the challenge is
+folded into the stored code hash, and the CLI flow is untouched.
+
 ## v0.7.0 — 2026-11-02
 
 **Delegated bearer tokens carry scope and actor, and an app can gate on scope.** Bulle acts for a

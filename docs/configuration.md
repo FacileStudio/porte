@@ -19,6 +19,7 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_CLAIMS_SCOPE` | no | — | The scope carrying the `roles` claim. **Its presence is what enables claims handling** |
 | `OIDC_MACHINE_AUDIENCE` | no | — | Audience a bearer JWT must carry to authenticate offline against the provider's JWKS on the `Authorization` header path. **Its presence is what enables bearer-JWT verification.** Set it to **this app's own client id**, which is what a service account's token is addressed to |
 | `OIDC_CLI_AUDIENCE` | no | — | Audience a CLI's device-grant token must carry at `POST /auth/oidc/device/exchange`. **Its presence is what mounts that route**, and it alone. Set it to **the CLI's client id**, `facile-cli` for the suite |
+| `OIDC_MOBILE_REDIRECT` | no | — | Where the mobile login sends the browser with the one-time code. An absolute https URL or a custom scheme URI such as `dev.facile.app:/auth`, with no fragment. **Empty refuses `?flow=mobile`.** It is never read from the request |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
 `porte` does not read the environment itself. An app builds a `Config` however it already builds

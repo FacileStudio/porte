@@ -2,6 +2,8 @@ package oidc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	stderrors "errors"
 	"fmt"
 	"log/slog"
@@ -116,10 +118,20 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pending := flow{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier()}
-	if r.URL.Query().Get(porte.FlowParam) == porte.FlowCLI {
+	switch r.URL.Query().Get(porte.FlowParam) {
+	case porte.FlowCLI:
 		pending.CLI = true
 		pending.Port = loopbackPort(r.URL.Query().Get(porte.PortParam))
 		pending.CLIState = cliState(r.URL.Query().Get(porte.StateParam))
+	case porte.FlowMobile:
+		challenge := r.URL.Query().Get(porte.ChallengeParam)
+		if k.cfg.MobileRedirect == "" || !validChallenge(challenge) {
+			k.fail(w, r, "could not start the login")
+			return
+		}
+		pending.Mobile = true
+		pending.Challenge = challenge
+		pending.CLIState = cliState(r.URL.Query().Get("state"))
 	}
 
 	encoded, err := pending.encode()
@@ -155,6 +167,22 @@ func cliState(value string) string {
 		}
 	}
 	return value
+}
+
+// validChallenge accepts exactly what an S256 PKCE challenge looks like: the
+// unpadded base64url of a 32-byte SHA-256 digest, 43 characters.
+func validChallenge(value string) bool {
+	if len(value) != 43 {
+		return false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size
+}
+
+// pkceChallenge is the S256 transform of RFC 7636 §4.2.
+func pkceChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // loopbackPort returns the port a CLI is listening on, or "" if the value is
@@ -199,6 +227,10 @@ func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	if pending.CLI {
 		k.issueLoginCode(w, r, userID, pending.Port, pending.CLIState)
+		return
+	}
+	if pending.Mobile {
+		k.issueMobileCode(w, r, userID, pending)
 		return
 	}
 
@@ -347,6 +379,42 @@ func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int6
 	})
 }
 
+// issueMobileCode ends the mobile flow. The code is bound to the challenge by
+// hashing them together, so a code intercepted on the custom-scheme redirect
+// is useless without the verifier that never left the app. The redirect target
+// is Config.MobileRedirect and nothing from the request.
+func (k *Kit) issueMobileCode(w http.ResponseWriter, r *http.Request, userID int64, pending flow) {
+	code, err := porte.NewToken()
+	if err != nil {
+		k.logger.Error("porte: failed to issue a login code", slog.Any("error", err))
+		k.fail(w, r, "could not complete the login")
+		return
+	}
+	if err := k.deps.Codes.Create(r.Context(), porte.LoginCode{
+		CodeHash:  porte.HashToken(code + ":" + pending.Challenge),
+		UserID:    userID,
+		ExpiresAt: k.now().Add(k.cfg.LoginCodeTTL),
+	}); err != nil {
+		k.logger.Error("porte: failed to store the login code", slog.Any("error", err))
+		k.fail(w, r, "could not complete the login")
+		return
+	}
+	target, err := url.Parse(k.cfg.MobileRedirect)
+	if err != nil {
+		k.logger.Error("porte: the mobile redirect is not a URL", slog.Any("error", err))
+		k.fail(w, r, "could not complete the login")
+		return
+	}
+	query := target.Query()
+	query.Set("code", code)
+	if pending.CLIState != "" {
+		query.Set("state", pending.CLIState)
+	}
+	target.RawQuery = query.Encode()
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, target.String(), http.StatusFound)
+}
+
 // handleExchange is the CLI's half: one-time code in, bearer token out. This
 // is porte's token endpoint in everything but name, so it answers under the
 // no-store OAuth 2.1 §7.1 requires of any response carrying a credential.
@@ -363,7 +431,11 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := k.deps.Codes.Consume(r.Context(), porte.HashToken(request.Code))
+	lookup := request.Code
+	if request.Verifier != "" {
+		lookup += ":" + pkceChallenge(request.Verifier)
+	}
+	code, err := k.deps.Codes.Consume(r.Context(), porte.HashToken(lookup))
 	switch {
 	case err == nil:
 	case isErr(err, porte.ErrCodeConsumed):

@@ -373,6 +373,7 @@ Authentik → in-house IdP swap a config change rather than a rewrite.
 | `OIDC_MACHINE_AUDIENCE` | no | This app's own client id. Its presence enables bearer-JWT verification on the header path |
 | `OIDC_SCOPE_PREFIX` | no | Gates bearer JWTs by their `scope` claim: `<prefix>.read` or `<prefix>.write` for GET, HEAD and OPTIONS, `<prefix>.write` for every other method. A JWT with no scope claim gets 403. Requires `OIDC_MACHINE_AUDIENCE`. Never touches cookie or opaque sessions |
 | `OIDC_CLI_AUDIENCE` | no | The CLI's client id. Its presence mounts `POST /auth/oidc/device/exchange`, and nothing else does |
+| `OIDC_MOBILE_REDIRECT` | no | Where the mobile login sends the browser with the code. Absolute https URL or custom scheme URI, no fragment. Empty refuses the mobile flow |
 | `SSO_ONLY` | no | When true, local password routes are not registered at all |
 
 A verified bearer JWT also exposes `Identity.Scopes` (the space-separated `scope` claim) and `Identity.Actor` (`act.sub`, the client acting for the user; a nested `act` is ignored). `porte.ActorFrom(ctx)` reads the actor so an app can log "client X on behalf of user Y".
@@ -445,6 +446,14 @@ single-use). The success page displays it for copy-paste; a CLI that started a l
 receives it directly and the paste is the fallback. The CLI exchanges it at
 `POST /auth/oidc/exchange` for a bearer token. This is Plume's existing flow with the `sync.Map`
 replaced by the database, so it survives redeploys and replicas.
+
+**Mobile login** is the same flow with PKCE bound to the code, because a custom-scheme redirect
+can be claimed by another app on the device. The app generates a verifier, sends
+`/auth/oidc?flow=mobile&challenge=<S256 of the verifier>&state=<nonce>`, and the callback
+redirects to `OIDC_MOBILE_REDIRECT` (config only, never the request) with `code` and `state`.
+The code is stored as `HashToken(code + ":" + challenge)`, so `POST /auth/oidc/exchange` with
+`{"code", "verifier"}` finds it only when the verifier matches. A missing or wrong verifier
+answers the same 401 as an unknown code.
 
 **API tokens** are not a separate mechanism: an API token is a session row with a `label`, a
 long or absent expiry, and `last_used_at` for auditability. Courrier and Agenda have already

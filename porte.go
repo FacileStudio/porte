@@ -124,6 +124,9 @@ const (
 	FlowCLI    = "cli"
 	PortParam  = "port"
 	StateParam = "cli_state"
+
+	FlowMobile     = "mobile"
+	ChallengeParam = "challenge"
 )
 
 // SessionCookieName is the browser session cookie. Courrier and Agenda already
@@ -190,6 +193,14 @@ type Config struct {
 
 	// SuccessURL is where the browser lands after a successful callback.
 	SuccessURL string
+
+	// MobileRedirect is where the mobile login flow (?flow=mobile) sends the
+	// browser with the one-time code. It comes from here and never from the
+	// request, so the flow cannot be turned into an open redirect. Empty
+	// refuses the mobile flow. It must be an absolute https URL or a custom
+	// scheme URI such as dev.facile.app:/auth, with no fragment.
+	// Env: OIDC_MOBILE_REDIRECT.
+	MobileRedirect string
 
 	// FailureURL is where the browser lands when a login fails, with the
 	// reason in an `error` query parameter. Empty means /login on
@@ -444,6 +455,9 @@ func (c Config) Enabled() bool { return c.Issuer != "" }
 // OIDC is off, and each one enables a different surface, so each says which
 // variable is the one to remove.
 func (c Config) validateWithoutIssuer() error {
+	if c.MobileRedirect != "" {
+		return errors.New("porte: OIDC_MOBILE_REDIRECT is set but OIDC_ISSUER is empty")
+	}
 	for name, audience := range map[string]string{
 		"OIDC_MACHINE_AUDIENCE": c.MachineAudience,
 		"OIDC_CLI_AUDIENCE":     c.CLIAudience,
@@ -505,6 +519,24 @@ func (c Config) Validate() error {
 		return fmt.Errorf("porte: OIDC_ISSUER is set but %s %s empty",
 			strings.Join(sorted(missing), ", "), plural(len(missing), "is", "are"))
 	}
+	return c.validateMobileRedirect()
+}
+
+func (c Config) validateMobileRedirect() error {
+	if c.MobileRedirect == "" {
+		return nil
+	}
+	target, err := url.Parse(c.MobileRedirect)
+	switch {
+	case err != nil, !target.IsAbs(), strings.Contains(c.MobileRedirect, "#"):
+		return fmt.Errorf("porte: OIDC_MOBILE_REDIRECT must be an absolute URI without a fragment, got %q", c.MobileRedirect)
+	case target.Scheme == "http":
+		return fmt.Errorf("porte: OIDC_MOBILE_REDIRECT must be https or a custom scheme, got %q", c.MobileRedirect)
+	case target.Scheme == "https" && target.Host == "":
+		return fmt.Errorf("porte: OIDC_MOBILE_REDIRECT has no host, got %q", c.MobileRedirect)
+	case target.Scheme == "javascript", target.Scheme == "data", target.Scheme == "file", target.Scheme == "blob":
+		return fmt.Errorf("porte: OIDC_MOBILE_REDIRECT scheme %q is not allowed", target.Scheme)
+	}
 	return nil
 }
 
@@ -541,8 +573,13 @@ type CredentialsRequest struct {
 
 // ExchangeRequest is the body of POST /auth/oidc/exchange: a CLI trading its
 // one-time login code for a bearer token.
+//
+// Verifier is the PKCE code verifier of the mobile flow. A code minted for a
+// mobile login redeems only with the verifier whose S256 hash was sent as the
+// challenge at login. It is empty for the CLI flow.
 type ExchangeRequest struct {
-	Code string `json:"code"`
+	Code     string `json:"code"`
+	Verifier string `json:"verifier,omitempty"`
 }
 
 // DeviceExchangeRequest is the body of POST /auth/oidc/device/exchange: a CLI
@@ -573,10 +610,6 @@ type LogoutResponse struct {
 type SyncProfileResponse struct {
 	Synced bool `json:"synced"`
 }
-//
-// Verifier is the PKCE code verifier of the mobile flow. A code minted for a
-// mobile login redeems only with the verifier whose S256 hash was sent as the
-// challenge at login. It is empty for the CLI flow.
 
 func sorted(values []string) []string {
 	out := append([]string(nil), values...)

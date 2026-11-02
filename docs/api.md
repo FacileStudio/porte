@@ -535,6 +535,18 @@ answer to the configuration alone.
 everything but name, and OAuth 2.1 §7.1 requires it of any response carrying a credential. The
 device exchange, the back-channel logout endpoint and the CLI code page do the same.
 
+### Mobile login
+
+`GET /auth/oidc?flow=mobile&challenge=<c>&state=<s>` starts the mobile flow. `challenge` is the
+unpadded base64url SHA-256 of a verifier the app keeps (43 characters). `state` is an optional
+nonce of letters, digits, `-` and `_`, up to 128 characters, echoed back. Without a valid
+challenge, or with `OIDC_MOBILE_REDIRECT` unset, the login fails.
+
+After sign-in the callback redirects to `OIDC_MOBILE_REDIRECT?code=<code>&state=<s>`. The app
+then posts `{"code", "verifier"}` to `POST /auth/oidc/exchange`. The code redeems only with the
+verifier that produced the challenge. A missing or wrong verifier answers the same 401 as an
+unknown code.
+
 `POST /auth/oidc/device/exchange` answers 400 to a body it cannot read or one with no
 `access_token` in it, 401 to any token it will not accept, and 200 with `{"user_id", "token"}`
 otherwise. It is mounted only when `OIDC_CLI_AUDIENCE` is set, and its 404 when it is not is
