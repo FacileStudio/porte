@@ -3,6 +3,19 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## directory/v0.1.0 — 2026-11-03
+
+**Shared spaces from Registre.** `github.com/FacileStudio/porte/directory` is a nested module with
+its own tag, so an app adopts it without moving its pin on porte itself. Registre owns spaces,
+members and roles; an app pulls the whole snapshot with its own OIDC client credentials and
+applies it. The snapshot is the full state rather than a change stream, so applying it is
+idempotent and a lost, repeated or reordered nudge costs nothing: delivery is at-least-once and
+the next pull carries the truth. The app pulls at boot, every five minutes, and two seconds after
+Registre posts to `/api/registre/sync`. That nudge is unauthenticated on purpose, because it
+carries nothing; the pull it triggers is the authenticated part. `Import` hands Registre an app's
+pre-existing shared spaces once, and Registre remembers the app imported, so a restart can never
+re-add someone an owner removed.
+
 ## v0.8.0 — 2026-11-02
 
 **Mobile login.** `?flow=mobile` lets a native app sign in through the system browser and get
