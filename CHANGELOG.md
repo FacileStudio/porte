@@ -3,6 +3,34 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## v0.9.0 — 2026-11-03
+
+**`porte/devicelogin`: the CLI login that works over SSH.** Every suite CLI signed in through
+`porte/loopback`, which redirects the browser to `127.0.0.1`. On a remote machine that address is
+the user's laptop, not the CLI's host, so the login failed. The new package runs the RFC 8628
+device grant against Registre (`facile-cli`, `openid email profile`) and trades the access token
+at the app's `POST /auth/oidc/device/exchange`. The user opens one link; nothing is typed or
+pasted.
+
+Decisions, with their reasons:
+
+- **`Login` probes the exchange before anything else.** An empty-body POST answers 404 only when
+  the route is not mounted, and porte guarantees a mounted route never does. So
+  `ErrExchangeNotMounted` arrives before a line is printed, and the CLI falls back to loopback
+  without having asked the user to approve something it cannot use.
+- **A 401 on the exchange is `ErrAccountNotLinked`.** The exchange looks the subject up in
+  `porte_identities` and never provisions, so the usual cause is an account that has never signed
+  in to that app in a browser. The CLI says so instead of "invalid access token".
+- **Discovery reads the root document only.** Registre answers per-app discovery paths with its
+  dashboard's HTML.
+- **Plaintext is refused everywhere but loopback**: the issuer, the endpoints it names, the
+  verification URIs the CLI opens, and the app origin the token is posted to.
+- **Standard library only**, enforced by a test, as for `porte/loopback`. It reuses
+  `loopback.OpenBrowser` and nothing else.
+
+Ported from `sonde-cli/internal/devicegrant` and `facile/internal/authflow`. Additive, so a minor
+bump: **v0.9.0**.
+
 ## directory/v0.1.0 — 2026-11-03
 
 **Shared spaces from Registre.** `github.com/FacileStudio/porte/directory` is a nested module with

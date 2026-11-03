@@ -33,6 +33,8 @@ reasoning behind both.
   and leaves CLI and API tokens alone because a nightly job is idle by design
 - Gives every CLI the same login: browser opens, user signs in, a one-time code comes back.
   The listener is included, in `porte/loopback`, so five CLIs stop each writing their own
+- Signs a CLI in over SSH too: `porte/devicelogin` runs the device grant against Registre and
+  trades the token at the app's device exchange, with one link to open and nothing to paste
 - Draws the two pages it cannot hand back to the app, the code page and a CLI's loopback
   page, with the app's own name and logo, derived from `OIDC_SUCCESS_URL` and needing no
   deployment to set them
@@ -54,6 +56,7 @@ reasoning behind both.
 | `porte/pg` | The identity tables and the stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore`: atomic writes, a guarded key, and an `http.Handler` that serves them | the standard library |
 | `porte/loopback` | The CLI's half of the CLI login: the loopback listener, the login URL, the pages a browser lands on | the standard library |
+| `porte/devicelogin` | The CLI's default login: the RFC 8628 device grant against Registre, then the app's device exchange | the standard library |
 | `porte/spaces` | Space membership authorization: the role ladder, `Resolve`, `Require`, `CanLeave`, `AssignableBy`/`AssignableOver`. No CRUD, no routes, no ORM | the standard library |
 | `porte/spaces/spacestest` | `Conformance(t, newStore)` and `ConformanceWithLadder`: the invariants, run against an app's own `Store` and its own role vocabulary | `porte/spaces`, `testing` |
 | `porte/magiclink/magiclinktest` | `Conformance(t, newStore, newUser)`: single use, supersession and the rate counts, run against an app's own `MagicLinkStore` | `porte`, `testing` |

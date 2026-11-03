@@ -484,6 +484,11 @@ the exchange stays a boundary. Its 404 when unset is the signal `facile login` r
 "not shipped". The client half lives in `facile`, which probes the route before running the
 grant so a tool without it never makes a human read a code off one screen for nothing.
 
+**The client half moved into `porte/devicelogin` in v0.9.0.** Every suite CLI had a loopback
+login that fails over SSH, and two had their own copy of the grant. The package is the default
+login for all of them: probe the exchange, run the grant, print one link, trade the token. A 404
+on the probe is `ErrExchangeNotMounted` and the CLI falls back to `porte/loopback`.
+
 ### 5c. Claims, roles, and freshness
 
 Authorization has three layers, and conflating them is how auth libraries turn into frameworks:
@@ -771,6 +776,8 @@ porte/local     email and password: argon2id, register, login, set-password
 porte/magiclink  passwordless sign-in: an emailed one-time link, request and consume
 porte/pg        the identity tables and the four stores. database/sql only, no ORM
 porte/avatarfs  a filesystem AvatarStore and the handler that serves it
+porte/loopback  the CLI's loopback listener for ?flow=cli. standard library only
+porte/devicelogin  the CLI's default login: device grant, then device exchange. standard library only
 porte/spaces    v0.5. membership and role resolution. no models, no routes, standard library only
 porte/spaces/spacestest  the conformance suite an adopter runs against its own Store
 porte/magiclink/magiclinktest  the conformance suite for a MagicLinkStore, plus an in-memory one

@@ -13,6 +13,7 @@ Every exported symbol, package by package. The reasoning for each decision is in
 | `porte/pg` | The identity tables and the four stores over them | `database/sql` |
 | `porte/avatarfs` | A filesystem `AvatarStore` and the handler that serves it | the standard library |
 | `porte/loopback` | The CLI's half of the CLI login: the listener, the login URL, the pages | the standard library |
+| `porte/devicelogin` | The CLI's default login: the device grant, then the device exchange | the standard library |
 
 **The contract package depends on nothing outside the standard library, and that is a constraint
 rather than a coincidence.** An app's stores and domain code compile against plain types and
@@ -855,3 +856,50 @@ because it is.
 than trusted: every CLI in the suite links this, so an import added here is an import added to
 five binaries. The one that would look harmless in review is `tronc/httpjson`, where a single
 call to write a JSON error would pull `tronc` into all of them.
+
+## porte/devicelogin
+
+The CLI's default login, and the client half of `POST /auth/oidc/device/exchange`. It runs the
+RFC 8628 device grant against Registre, then trades the provider's access token for the app's own
+session. Nothing listens on a port and nothing is typed or pasted, so it works over SSH, where
+`porte/loopback`'s redirect to `127.0.0.1` lands on the wrong machine.
+
+| Symbol | What it does |
+|---|---|
+| `Login(ctx, Options) (Session, error)` | The whole flow: probe, discover, authorize, print one line, open the browser, poll, exchange |
+| `Mounted(ctx, appOrigin, mount string) (bool, error)` | Empty-body POST to the exchange route. 404 is false, any other status true |
+| `Discover(ctx, issuer string) (Endpoints, error)` | Reads the root discovery document only |
+| `(Endpoints) Authorize(ctx, clientID, scope string) (Authorization, error)` | RFC 8628 §3.1, public client, no secret |
+| `(Endpoints) Poll(ctx, clientID string, auth Authorization) (string, error)` | Waits for approval, returns the provider's access token |
+| `Exchange(ctx, appOrigin, mount, accessToken string) (Session, error)` | `POST <appOrigin><mount>/auth/oidc/device/exchange` |
+| `(Authorization) Link() string` | `verification_uri_complete`, or `verification_uri` when the provider sent no complete one |
+| `Session{Token, UserID string}` | The app's bearer session, for the CLI to store where it stores a token today |
+| `DefaultIssuer`, `DefaultClientID`, `DefaultScope` | `https://sso.facile.studio`, `facile-cli`, `openid email profile` |
+
+`Options` takes `AppOrigin` (required), `Mount` (`"/api"` for every suite app, `""` for the root,
+as in `loopback.LoginURL`), `Issuer`, `ClientID`, `Scope`, `Out` (default `os.Stderr`) and
+`OpenBrowser` (default `loopback.OpenBrowser`; pass one returning false for `--no-browser`).
+
+`Login` calls `Mounted` before anything else, so `ErrExchangeNotMounted` arrives before a line is
+printed and the CLI can fall back to `porte/loopback` without having shown a link for nothing.
+The line it prints names `verification_uri_complete`, with the user code only as a hint to check
+the page against.
+
+| Error | Meaning |
+|---|---|
+| `ErrExchangeNotMounted` | The app answered 404 on the exchange. Fall back to `porte/loopback` |
+| `ErrAccountNotLinked` | The app answered 401. The exchange never provisions, so the account has never signed in there in a browser. Tell the user: "Sign in once at <server> in a browser, then run login again." |
+| `ErrNoDeviceGrant` | Discovery names no device endpoint, or lists grants without RFC 8628's |
+| `ErrDenied` | The user refused at the provider (`access_denied`) |
+| `ErrExpired` | `expired_token`, or `expires_in` passed with no approval. Worth offering to retry |
+
+Polling honours `interval`, adds five seconds on every `slow_down` (cumulative, RFC 8628 §3.5),
+keeps waiting on `authorization_pending`, and retries a transport error until the code expires. A
+cancelled context returns `ctx.Err()` unchanged.
+
+The issuer, both discovered endpoints, the verification URIs and the app origin must be https, or
+http on loopback. Everything the grant trusts comes out of the discovery document, and the
+exchange body carries the provider's token.
+
+**Standard library only**, apart from `porte/loopback` for `OpenBrowser`, and tested the same way
+`porte/loopback` is.

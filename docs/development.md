@@ -95,6 +95,7 @@ session.go     Session, LoginCode, SessionStore, LoginCodeStore, AvatarStore
 token.go       NewToken, HashToken, SecureCompare
 oidc/          the engine: the flow, the seven routes, the middleware, the avatar guard
 loopback/      the CLI's half of the CLI login: the listener, the login URL, the pages
+devicelogin/   the CLI's default login: the device grant, then the device exchange
 internal/      handoff, the markup porte/oidc and porte/loopback both serve
 pg/            the identity tables and the four stores over them
 docs/          Configuration, development, API
