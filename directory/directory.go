@@ -51,17 +51,34 @@ type Member struct {
 
 // Space is one shared space and everyone in it. ID is Registre's, stable
 // across renames; an app stores it on its own space row to link the two.
+// Entitlements are the plan values Ardoise computed for the space, keyed by
+// feature (such as "nuage.storage_gb"), each a JSON bool or integer limit
+// where -1 means unlimited. Nil or empty means no values were pushed yet, and
+// porte/forfait then falls back to each feature's default.
 type Space struct {
-	ID      string   `json:"id"`
-	Name    string   `json:"name"`
-	Members []Member `json:"members"`
+	ID           string                     `json:"id"`
+	Name         string                     `json:"name"`
+	Members      []Member                   `json:"members"`
+	Entitlements map[string]json.RawMessage `json:"entitlements,omitempty"`
+}
+
+// Person carries the entitlements of one person's personal scope: the
+// resources they hold outside any space. Ardoise sets each value to the most
+// generous one across the spaces the person owns. Subject is their Registre
+// `sub`.
+type Person struct {
+	Subject      string                     `json:"sub"`
+	Entitlements map[string]json.RawMessage `json:"entitlements,omitempty"`
 }
 
 // Snapshot is every shared space as Registre holds it now. Version rises on
 // every change, so an app can skip applying a snapshot it already applied.
+// People lists the personal-scope entitlements; a snapshot from a Registre
+// that predates them simply has none.
 type Snapshot struct {
-	Version int64   `json:"version"`
-	Spaces  []Space `json:"spaces"`
+	Version int64    `json:"version"`
+	Spaces  []Space  `json:"spaces"`
+	People  []Person `json:"people,omitempty"`
 }
 
 // ImportMember is one person an app already had in a space before Registre

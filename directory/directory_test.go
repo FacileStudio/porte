@@ -58,3 +58,35 @@ func TestTheNudgeHandlerAcceptsOnlyPost(t *testing.T) {
 		}
 	}
 }
+
+// TestTheSnapshotCarriesEntitlements pins the additive wire shape: a snapshot
+// from an older Registre still decodes, and the new fields round-trip raw.
+func TestTheSnapshotCarriesEntitlements(t *testing.T) {
+	var old Snapshot
+	if err := json.Unmarshal([]byte(`{"version":3,"spaces":[{"id":"a","name":"A","members":[]}]}`), &old); err != nil {
+		t.Fatalf("decode an old snapshot: %v", err)
+	}
+	if old.People != nil || old.Spaces[0].Entitlements != nil {
+		t.Errorf("an old snapshot decoded entitlements: %+v", old)
+	}
+	body := `{"version":4,"spaces":[{"id":"a","name":"A","members":[],"entitlements":{"glouton.access":true}}],` +
+		`"people":[{"sub":"u1","entitlements":{"nuage.storage_gb":500}}]}`
+	var snapshot Snapshot
+	if err := json.Unmarshal([]byte(body), &snapshot); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := string(snapshot.Spaces[0].Entitlements["glouton.access"]); got != "true" {
+		t.Errorf("space entitlement = %q, want true", got)
+	}
+	if len(snapshot.People) != 1 || snapshot.People[0].Subject != "u1" ||
+		string(snapshot.People[0].Entitlements["nuage.storage_gb"]) != "500" {
+		t.Errorf("people = %+v", snapshot.People)
+	}
+	encoded, err := json.Marshal(Snapshot{Version: 1, Spaces: []Space{{ID: "a"}}})
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if want := `{"version":1,"spaces":[{"id":"a","name":"","members":null}]}`; string(encoded) != want {
+		t.Errorf("encoded %s, want %s", encoded, want)
+	}
+}
