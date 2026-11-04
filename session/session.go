@@ -184,24 +184,32 @@ func (m *Manager) handleLogout(w http.ResponseWriter, r *http.Request) {
 // An app that wants named tokens to expire owns that policy: it holds the
 // label, so it can sweep or rotate them on whatever schedule it means.
 func (m *Manager) Issue(ctx context.Context, userID int64, label string) (string, porte.Session, error) {
+	return m.IssueFor(ctx, porte.Session{UserID: userID, Label: label})
+}
+
+// IssueFor is Issue for a session template: UserID and Label as for Issue,
+// and Provider and Subject to bind the session to the federated identity
+// that vouched for the login. A bound session is stored only while that
+// identity still belongs to UserID; when it no longer does, because a purge
+// removed it between the login and this call, nothing is stored and the
+// answer is a generic 401.
+func (m *Manager) IssueFor(ctx context.Context, template porte.Session) (string, porte.Session, error) {
 	token, err := porte.NewToken()
 	if err != nil {
 		return "", porte.Session{}, errors.Internal("failed to issue a session", err)
 	}
 	now := m.now()
-	var expiresAt time.Time
-	if label == "" {
-		expiresAt = now.Add(m.cfg.SessionTTL)
+	template.TokenHash = porte.HashToken(token)
+	template.CreatedAt, template.LastUsedAt = now, now
+	template.ExpiresAt = time.Time{}
+	if template.Label == "" {
+		template.ExpiresAt = now.Add(m.cfg.SessionTTL)
 	}
-	session, err := m.store.Create(ctx, porte.Session{
-		TokenHash:  porte.HashToken(token),
-		UserID:     userID,
-		Label:      label,
-		CreatedAt:  now,
-		LastUsedAt: now,
-		ExpiresAt:  expiresAt,
-	})
-	if err != nil {
+	session, err := m.store.Create(ctx, template)
+	switch {
+	case isNotFound(err):
+		return "", porte.Session{}, errors.Unauthorized("could not sign you in")
+	case err != nil:
 		return "", porte.Session{}, errors.Internal("failed to store the session", err)
 	}
 	return token, session, nil
@@ -215,7 +223,13 @@ func (m *Manager) Issue(ctx context.Context, userID int64, label string) (string
 // put its session where porte's middleware, its CSRF rule and its idle window
 // expect to find it, so adopting porte meant adopting it for half your logins.
 func (m *Manager) IssueCookie(ctx context.Context, w http.ResponseWriter, r *http.Request, userID int64) (string, porte.Session, error) {
-	token, session, err := m.Issue(ctx, userID, "")
+	return m.IssueCookieFor(ctx, w, r, porte.Session{UserID: userID})
+}
+
+// IssueCookieFor is IssueFor plus the Set-Cookie, as IssueCookie is Issue
+// plus the Set-Cookie. No cookie is set when the bound identity is gone.
+func (m *Manager) IssueCookieFor(ctx context.Context, w http.ResponseWriter, r *http.Request, template porte.Session) (string, porte.Session, error) {
+	token, session, err := m.IssueFor(ctx, template)
 	if err != nil {
 		return "", porte.Session{}, err
 	}

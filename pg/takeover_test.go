@@ -44,6 +44,16 @@ func identitiesOf(t *testing.T, db *sql.DB, userID int64) []string {
 	return out
 }
 
+// linkIdentity attaches a federated identity directly, as only
+// UpsertFromOIDC may through the store.
+func linkIdentity(t *testing.T, db *sql.DB, userID int64, provider, subject string) {
+	t.Helper()
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO porte_identities (user_id, provider, subject) VALUES ($1, $2, $3)`, userID, provider, subject); err != nil {
+		t.Fatalf("link %s: %v", provider, err)
+	}
+}
+
 // plant gives a user one row in every table a holder signs in with.
 func plant(t *testing.T, db *sql.DB, userID int64) {
 	t.Helper()
@@ -69,14 +79,12 @@ func TestAVerifiedLoginPurgesAPreRegisteredRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	for _, identity := range []porte.StoredIdentity{
-		{UserID: squatter, Provider: porte.ProviderLocal, Subject: porte.LocalSubject(squatter), PasswordHash: "x"},
-		{UserID: squatter, Provider: "https://other.idp", Subject: "att"},
-	} {
-		if err := store.Identities().Save(ctx, identity); err != nil {
-			t.Fatalf("save: %v", err)
-		}
+	if err := store.Identities().Save(ctx, porte.StoredIdentity{
+		UserID: squatter, Provider: porte.ProviderLocal, Subject: porte.LocalSubject(squatter), PasswordHash: "x",
+	}); err != nil {
+		t.Fatalf("save: %v", err)
 	}
+	linkIdentity(t, db, squatter, "https://other.idp", "att")
 	plant(t, db, squatter)
 	victim, err := store.Users().UpsertFromOIDC(ctx, claims("victim-sub", "victim@example.test", true))
 	if err != nil || victim != squatter {

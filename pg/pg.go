@@ -130,6 +130,16 @@ BEGIN
 	                WHERE table_schema = current_schema() AND table_name = 'porte_login_codes' AND column_name = 'consumed_at') THEN
 		ALTER TABLE porte_login_codes ADD COLUMN consumed_at timestamptz;
 	END IF;
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+	                WHERE table_schema = current_schema() AND table_name = 'porte_sessions' AND column_name = 'provider') THEN
+		ALTER TABLE porte_sessions ADD COLUMN provider text NOT NULL DEFAULT '',
+		                           ADD COLUMN subject text NOT NULL DEFAULT '';
+	END IF;
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+	                WHERE table_schema = current_schema() AND table_name = 'porte_login_codes' AND column_name = 'provider') THEN
+		ALTER TABLE porte_login_codes ADD COLUMN provider text NOT NULL DEFAULT '',
+		                              ADD COLUMN subject text NOT NULL DEFAULT '';
+	END IF;
 END
 $$;
 
@@ -243,11 +253,20 @@ func (s *IdentityStore) Find(ctx context.Context, provider, subject string) (por
 	return identity, nil
 }
 
-// Save inserts or updates by (provider, subject).
+// Save inserts or updates a password identity by (provider, subject), and
+// only updates a federated one, on the account it already belongs to.
+//
+// A federated identity is created by UpsertFromOIDC and nowhere else. A Save
+// that arrives after a purge deleted it, or after it moved to another
+// account, answers porte.ErrNotFound instead of writing it back: resurrecting
+// it would hand the purged holder the owner's account again.
 func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity) error {
 	roles, err := marshalRoles(identity.Roles)
 	if err != nil {
 		return err
+	}
+	if identity.Provider != porte.ProviderLocal {
+		return s.update(ctx, identity, roles)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO porte_identities
@@ -269,6 +288,32 @@ func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity)
 		nullTime(identity.RolesSyncedAt), nullTime(identity.SyncedAt))
 	if err != nil {
 		return fmt.Errorf("porte/pg: save identity: %w", err)
+	}
+	return nil
+}
+
+// update writes a federated identity's tokens and claims in place, and only
+// on the account it already belongs to.
+func (s *IdentityStore) update(ctx context.Context, identity porte.StoredIdentity, roles []byte) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE porte_identities
+		   SET password_hash   = $4,
+		       access_token    = $5,
+		       refresh_token   = $6,
+		       token_expiry    = $7,
+		       roles           = $8,
+		       roles_synced_at = $9,
+		       synced_at       = $10
+		 WHERE provider = $2 AND subject = $3 AND user_id = $1`,
+		identity.UserID, identity.Provider, identity.Subject, identity.PasswordHash,
+		identity.Tokens.AccessToken, identity.Tokens.RefreshToken,
+		nullTime(identity.Tokens.Expiry), roles,
+		nullTime(identity.RolesSyncedAt), nullTime(identity.SyncedAt))
+	if err != nil {
+		return fmt.Errorf("porte/pg: save identity: %w", err)
+	}
+	if updated, err := result.RowsAffected(); err != nil || updated == 0 {
+		return porte.ErrNotFound
 	}
 	return nil
 }
@@ -318,14 +363,27 @@ func (s *IdentityStore) ListByUser(ctx context.Context, userID int64) ([]porte.S
 }
 
 // Create stores a session and returns it with its id filled in.
+//
+// A bound session (Provider set) is inserted from a SELECT over its identity
+// row, taken FOR KEY SHARE: a purge that deletes the identity first leaves
+// nothing to select, and one that comes second waits for this insert to
+// commit and then deletes the session with the user's others.
 func (s *SessionStore) Create(ctx context.Context, session porte.Session) (porte.Session, error) {
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO porte_sessions (token_hash, user_id, label, created_at, last_used_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO porte_sessions (token_hash, user_id, label, created_at, last_used_at, expires_at, provider, subject)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8
+		 WHERE $7 = '' OR EXISTS (
+		       SELECT 1 FROM porte_identities
+		        WHERE provider = $7 AND subject = $8 AND user_id = $2
+		          FOR KEY SHARE)
 		RETURNING id`,
 		session.TokenHash, session.UserID, session.Label,
 		session.CreatedAt, session.LastUsedAt, nullTime(session.ExpiresAt),
+		session.Provider, session.Subject,
 	).Scan(&session.ID)
+	if stderrors.Is(err, sql.ErrNoRows) {
+		return porte.Session{}, porte.ErrNotFound
+	}
 	if err != nil {
 		return porte.Session{}, fmt.Errorf("porte/pg: create session: %w", err)
 	}
@@ -448,11 +506,19 @@ func (s *SessionStore) DeleteExpired(ctx context.Context, now time.Time) (int64,
 
 // Create stores a pending code.
 func (s *LoginCodeStore) Create(ctx context.Context, code porte.LoginCode) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO porte_login_codes (code_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
-		code.CodeHash, code.UserID, code.ExpiresAt)
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO porte_login_codes (code_hash, user_id, expires_at, provider, subject)
+		SELECT $1, $2, $3, $4, $5
+		 WHERE $4 = '' OR EXISTS (
+		       SELECT 1 FROM porte_identities
+		        WHERE provider = $4 AND subject = $5 AND user_id = $2
+		          FOR KEY SHARE)`,
+		code.CodeHash, code.UserID, code.ExpiresAt, code.Provider, code.Subject)
 	if err != nil {
 		return fmt.Errorf("porte/pg: create login code: %w", err)
+	}
+	if inserted, err := result.RowsAffected(); err != nil || inserted == 0 {
+		return porte.ErrNotFound
 	}
 	return nil
 }
@@ -471,8 +537,8 @@ func (s *LoginCodeStore) Consume(ctx context.Context, codeHash string) (porte.Lo
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE porte_login_codes SET consumed_at = $2
 		 WHERE code_hash = $1 AND consumed_at IS NULL
-		RETURNING code_hash, user_id, expires_at`, codeHash, time.Now(),
-	).Scan(&code.CodeHash, &code.UserID, &code.ExpiresAt)
+		RETURNING code_hash, user_id, expires_at, provider, subject`, codeHash, time.Now(),
+	).Scan(&code.CodeHash, &code.UserID, &code.ExpiresAt, &code.Provider, &code.Subject)
 	if stderrors.Is(err, sql.ErrNoRows) {
 		return porte.LoginCode{}, s.whyItFailed(ctx, codeHash)
 	}
