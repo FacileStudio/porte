@@ -26,6 +26,12 @@ them. The root module does not change.
   `ErrInvalidUsage`, and always allows `adding == 0`, so an over-limit space can still read and
   delete. Refusals are `*LimitError`, matching `ErrLimit`, with `UpgradeURL` built from
   `Store.Issuer`. Apps map them to 402; porte has no 402 in tronc's envelope to reuse.
+- **`Store.Export` and `Store.Import` persist the applied state**, so a restart never fails open
+  again. The app saves `Export` after each `Apply` and calls `Import` at boot, before the first
+  pull. The document is versioned and records whether a carrying snapshot was ever applied.
+  `Import` is a trust boundary: it reads at most 4 MiB, rejects unknown fields, trailing data and
+  any other version, and filters values with `Apply`'s rules. It refuses to run after an `Apply`,
+  so a stale file cannot replace what Registre served, and leaves the Store untouched on error.
 - **`forfait` is a nested module**, like `directory`, so an app adopts it without moving its pin
   on porte. It requires `directory/v0.2.0`; its `replace ../directory` serves this repo's builds
   and tests and is ignored by consumers, so `directory/v0.2.0` must be tagged first.
