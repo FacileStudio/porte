@@ -41,6 +41,11 @@ import (
 // It also makes the constraint free. subject is half the primary key, so once
 // it holds the account id, "one password per account" is enforced by the table
 // rather than by a check somebody has to remember to write.
+//
+// Columns added after a table first shipped are guarded by information_schema
+// checks rather than ALTER TABLE ... IF NOT EXISTS, which takes an ACCESS
+// EXCLUSIVE lock even when there is nothing to add: a boot behind a long read
+// would otherwise queue, and every request behind the boot with it.
 const Schema = `
 CREATE TABLE IF NOT EXISTS porte_users (
 	id             bigserial PRIMARY KEY,
@@ -68,10 +73,7 @@ CREATE TABLE IF NOT EXISTS porte_identities (
 	created_at      timestamptz DEFAULT now(),
 	PRIMARY KEY (provider, subject)
 );
-ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
 CREATE INDEX IF NOT EXISTS porte_identities_user_idx ON porte_identities (user_id);
-ALTER TABLE porte_identities ADD COLUMN IF NOT EXISTS created_at timestamptz;
-ALTER TABLE porte_identities ALTER COLUMN created_at SET DEFAULT now();
 
 UPDATE porte_identities SET subject = user_id::text
  WHERE provider = 'local' AND subject <> user_id::text;
@@ -95,7 +97,6 @@ CREATE TABLE IF NOT EXISTS porte_login_codes (
 	expires_at  timestamptz NOT NULL,
 	consumed_at timestamptz
 );
-ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS consumed_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS porte_magic_links (
 	token_hash  text PRIMARY KEY,
@@ -109,6 +110,28 @@ CREATE INDEX IF NOT EXISTS porte_magic_links_user_idx ON porte_magic_links (user
 CREATE INDEX IF NOT EXISTS porte_magic_links_ip_idx ON porte_magic_links (ip, created_at)
 	WHERE ip <> '';
 CREATE INDEX IF NOT EXISTS porte_magic_links_expiry_idx ON porte_magic_links (expires_at);
+
+DO $$
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+	                WHERE table_schema = current_schema() AND table_name = 'porte_users' AND column_name = 'locale') THEN
+		ALTER TABLE porte_users ADD COLUMN locale text NOT NULL DEFAULT 'en';
+	END IF;
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+	                WHERE table_schema = current_schema() AND table_name = 'porte_identities' AND column_name = 'created_at') THEN
+		ALTER TABLE porte_identities ADD COLUMN created_at timestamptz;
+		ALTER TABLE porte_identities ALTER COLUMN created_at SET DEFAULT now();
+	ELSIF EXISTS (SELECT 1 FROM information_schema.columns
+	               WHERE table_schema = current_schema() AND table_name = 'porte_identities'
+	                 AND column_name = 'created_at' AND column_default IS NULL) THEN
+		ALTER TABLE porte_identities ALTER COLUMN created_at SET DEFAULT now();
+	END IF;
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+	                WHERE table_schema = current_schema() AND table_name = 'porte_login_codes' AND column_name = 'consumed_at') THEN
+		ALTER TABLE porte_login_codes ADD COLUMN consumed_at timestamptz;
+	END IF;
+END
+$$;
 
 ` + KeySchema
 
@@ -201,136 +224,6 @@ func (s *UserStore) FindByEmail(ctx context.Context, email string) (int64, error
 		return 0, fmt.Errorf("porte/pg: find user by email: %w", err)
 	}
 	return userID, nil
-}
-
-// UpsertFromOIDC resolves the callback's claims to a user id, creating the
-// user and the identity link when they are new.
-//
-// Matching is on (provider, subject) first. The email fallback runs only when
-// the provider verified the address: matching a mutable, unproven email is how
-// an IdP that lets a user set any address becomes an account takeover
-// primitive. It exists at all so accounts created before the subject was
-// recorded still link on their next login instead of forking in two.
-//
-// The whole thing is one transaction. A login that created a user but failed
-// to link the identity would create a second user on the next attempt.
-//
-// Concurrent first logins are settled by the INSERT's ON CONFLICT on the
-// email: the loser waits for the winner's commit, inserts nothing, and then
-// resolves again by (provider, subject), where it finds the winner's identity.
-// Only a racer that matches neither the subject nor a verified email is
-// refused, which is the same refusal a sequential login gets.
-func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (int64, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("porte/pg: begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	userID, err := resolveOrCreate(ctx, tx, claims)
-	if err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO porte_identities (user_id, provider, subject)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (provider, subject) DO UPDATE SET user_id = EXCLUDED.user_id`,
-		userID, claims.Provider, claims.Subject,
-	); err != nil {
-		return 0, fmt.Errorf("porte/pg: link identity: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("porte/pg: commit: %w", err)
-	}
-	return userID, nil
-}
-
-// resolveOrCreate finds the user the claims belong to and refreshes its
-// profile, or creates it. A creation that loses a race resolves again.
-func resolveOrCreate(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, error) {
-	userID, found, err := existingUser(ctx, tx, claims)
-	if err != nil {
-		return 0, err
-	}
-	if !found {
-		inserted, err := insertUser(ctx, tx, claims)
-		if err != nil || inserted != 0 {
-			return inserted, err
-		}
-		if userID, found, err = existingUser(ctx, tx, claims); err != nil {
-			return 0, err
-		}
-	}
-	if !found {
-		return 0, fmt.Errorf(
-			"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
-			claims.Email)
-	}
-	return userID, updateUser(ctx, tx, userID, claims)
-}
-
-// existingUser looks the claims up by (provider, subject), then by email when
-// the provider verified it.
-func existingUser(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, bool, error) {
-	var userID int64
-	err := tx.QueryRowContext(ctx,
-		`SELECT user_id FROM porte_identities WHERE provider = $1 AND subject = $2`,
-		claims.Provider, claims.Subject).Scan(&userID)
-	if stderrors.Is(err, sql.ErrNoRows) && claims.EmailVerified && claims.Email != "" {
-		err = tx.QueryRowContext(ctx,
-			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
-	}
-	switch {
-	case err == nil:
-		return userID, true, nil
-	case stderrors.Is(err, sql.ErrNoRows):
-		return 0, false, nil
-	}
-	return 0, false, fmt.Errorf("porte/pg: resolve user: %w", err)
-}
-
-// insertUser creates the user row and returns its id, or 0 when the email is
-// already taken, after waiting for any concurrent transaction that holds it.
-func insertUser(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, error) {
-	avatarSource := ""
-	if claims.AvatarURL != "" {
-		avatarSource = "oidc"
-	}
-	var userID int64
-	err := tx.QueryRowContext(ctx, `
-		INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source, locale)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (email) DO NOTHING
-		RETURNING id`,
-		claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
-		porte.NormalizeLocale(claims.Locale),
-	).Scan(&userID)
-	switch {
-	case err == nil:
-		return userID, nil
-	case stderrors.Is(err, sql.ErrNoRows):
-		return 0, nil
-	}
-	return 0, fmt.Errorf("porte/pg: insert user: %w", err)
-}
-
-// updateUser writes the claims' profile onto an existing user.
-func updateUser(ctx context.Context, tx *sql.Tx, userID int64, claims porte.Claims) error {
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE porte_users
-		   SET email = $2,
-		       email_verified = $3,
-		       name = COALESCE(NULLIF($4, ''), name),
-		       avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
-		       avatar_source = CASE WHEN $5 <> '' THEN 'oidc' ELSE avatar_source END,
-		       locale = COALESCE(NULLIF($6, ''), locale),
-		       updated_at = now()
-		 WHERE id = $1`,
-		userID, claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, keptLocale(claims.Locale),
-	); err != nil {
-		return fmt.Errorf("porte/pg: update user: %w", err)
-	}
-	return nil
 }
 
 // Find returns the identity for a provider and subject.
