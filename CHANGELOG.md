@@ -27,27 +27,40 @@ Root module: **v0.10.0**. Read the breaking notes and run the checklist before b
    or a link to the new address), or the change endpoint answers 404 for everyone.
 4. **Boutique needs the migration below and `CustomerAccounts`.** Set
    `local.Config{CustomerAccounts: true}` if the shop keeps OIDC on for staff.
-5. **Fourteen apps keep porte's tables in their own DDL and must migrate before bumping:**
-   Agenda, Antenne, Boutique, Casier, Courrier, Echo, Field, Journal, Nuage, Opus, Plume,
-   Sablier, Sonde and Vision. porte cannot add columns there, because they never apply
-   `pg.Schema`. Add one migration with exactly:
+5. **Fourteen apps keep porte's tables in their own DDL and must migrate before bumping.** porte
+   cannot add columns there, because they never apply `pg.Schema`. What each needs:
 
-   ```sql
-   -- +goose Up
-   ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
-   ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
-                                 ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
+   - **Agenda, Antenne, Casier, Courrier, Echo, Field, Journal, Nuage, Opus, Plume, Sablier, Sonde
+     and Vision** keep their accounts in their own `users` table, have no `porte_users`, and use
+     their own `UserStore`. They need only the two binding columns on `porte_login_codes`:
 
-   -- +goose Down
-   ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
-   ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
-   ```
+     ```sql
+     -- +goose Up
+     ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
+                                   ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
 
-   Without `locale`, every OIDC login through `porte/pg`'s `UserStore` fails. Without the two
-   `porte_login_codes` columns, the CLI and mobile logins fail, because their codes are bound.
-   Password, magic-link and API-token sessions, and browser OIDC sessions, keep working on the
-   old DDL: `porte_sessions` gains no column, since a session's binding is checked at insert
-   time rather than stored.
+     -- +goose Down
+     ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
+     ```
+
+     Without them the CLI and mobile logins fail, because their codes are bound. The browser OIDC
+     login, password and magic-link sessions and API tokens keep working on the old columns: the
+     identity, session and code stores those apps use never name an accounts table, and the
+     serialisation lock is a PostgreSQL advisory lock keyed on the account id, not a row lock.
+   - **Boutique** uses `porte/pg`'s `UserStore` over its own `porte_users`, so it needs the same
+     two columns and `porte_users.locale`, without which every OIDC login fails:
+
+     ```sql
+     -- +goose Up
+     ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
+     ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
+                                   ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
+
+     -- +goose Down
+     ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
+     ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
+     ```
+
 6. **Review legacy federated rows that say their address is unverified.** A verified login now
    takes over a row whose `email_verified` is false, purging its identities. Rows written before
    porte tracked verification can hold their real owner's federated identity with the flag still
@@ -62,7 +75,8 @@ Root module: **v0.10.0**. Read the breaking notes and run the checklist before b
     ORDER BY u.id;
    ```
 
-   For each row whose federated identity is its genuine owner (the issuer verifies addresses, as
+   The 13 apps with their own `users` table run it against that table and its verified flag,
+   wherever their own `UserStore` matches on it. For each row whose federated identity is its genuine owner (the issuer verifies addresses, as
    Registre does), run `UPDATE porte_users SET email_verified = true WHERE id = <id>`. Leave a row
    false only when nobody ever proved its address.
 
@@ -106,19 +120,24 @@ an attacker take an address and wait for its owner. Now:
 - **A session is bound to the identity that vouched for it.** `porte.Session` and
   `porte.LoginCode` gain `Provider` and `Subject`; the OIDC callback, the CLI and mobile codes,
   the code exchange and the device exchange all set them. `porte/pg` inserts a bound session or
-  code only while that identity row exists, checked under a `FOR KEY SHARE` lock on the user row
-  that the purge's `FOR UPDATE` conflicts with, so a holder whose login committed just before the
-  owner's purge gets no session, no code and a generic 401, however the two interleave. Every
-  writer takes the user row first, in the purge's order, so they cannot deadlock. A session's binding is checked, not stored; a code stores it, so the exchange
+  code only while that identity row exists, checked under a shared PostgreSQL advisory lock keyed
+  on the account id, which the purge's exclusive one excludes. A holder whose login committed
+  just before the owner's purge gets no session, no code and a generic 401, however the two
+  interleave. Every writer takes that lock before touching a row, so they cannot deadlock, and it
+  names no table, so it works for adopters that keep accounts in their own `users`.
+- **Password logins and API tokens are bound too.** `porte/local` binds every session it issues
+  to the account's password identity, and `session.Manager` binds a named token issued from a
+  signed-in request to the caller's session (`Session.IssuedBy`). A password squatter's login or
+  token loop racing the owner's first verified login leaves nothing behind. A session's binding is checked, not stored; a code stores it, so the exchange
   can bind the session it mints. An unbound session or code is inserted with the v0.9.0 column
   list. `session.Manager` gains `IssueFor` and `IssueCookieFor` for bound sessions; `Issue` and
   `IssueCookie` keep issuing unbound ones.
 - **`IdentityStore.Save` never re-points or resurrects a federated identity.** It still inserts
   one that is absent, which thirteen adopters' own `UpsertFromOIDC` relies on at first login. It
   refuses, with `porte.ErrNotFound`, to move an identity onto another account, or to create one
-  on an account that already holds another subject of the same provider. It takes the user row's
-  lock first, as the purge does, so a late token write after a purge cannot write the purged
-  identity back.
+  on an account that already holds another subject of the same provider. It takes the account's exclusive
+  advisory lock first, as the purge does, so a late token write after a purge cannot write the
+  purged identity back.
 - **An unverified claim never rewrites the stored address and never clears `email_verified`.**
   An account can no longer switch its IdP address to a victim's and sit on the row, nor re-open a
   verified row to the takeover above.
@@ -130,8 +149,9 @@ cannot enforce them there. An app with its own stores also owes porte three cont
 silent if ignored, so check them before bumping:
 
 - `SessionStore.Create` and `LoginCodeStore.Create` must store a row whose `Provider` is set only
-  while `(Provider, Subject)` still belongs to `UserID`, atomically with the insert, and answer
-  `porte.ErrNotFound` otherwise. `LoginCodeStore.Consume` must return both fields.
+  while `(Provider, Subject)` still belongs to `UserID`, and a session whose `IssuedBy` is set only
+  while that session still does, atomically with the insert, and answer `porte.ErrNotFound`
+  otherwise. `LoginCodeStore.Consume` must return both fields.
 - `IdentityStore.Save` must never move a non-`local` identity onto another account, nor create
   one on an account holding another subject of the same provider, and answers
   `porte.ErrNotFound` when it refuses.
