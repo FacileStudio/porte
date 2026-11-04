@@ -60,6 +60,8 @@ reasoning behind both.
 | `porte/spaces` | Space membership authorization: the role ladder, `Resolve`, `Require`, `CanLeave`, `AssignableBy`/`AssignableOver`. No CRUD, no routes, no ORM | the standard library |
 | `porte/spaces/spacestest` | `Conformance(t, newStore)` and `ConformanceWithLadder`: the invariants, run against an app's own `Store` and its own role vocabulary | `porte/spaces`, `testing` |
 | `porte/magiclink/magiclinktest` | `Conformance(t, newStore, newUser)`: single use, supersession and the rate counts, run against an app's own `MagicLinkStore` | `porte`, `testing` |
+| `porte/directory` | Nested module: Registre's spaces, members and plan entitlements, pulled as one snapshot and nudged on change | the standard library |
+| `porte/forfait` | Nested module: plan enforcement over the directory snapshot. `Enabled`, `Limit`, `Check`, fail-open until the first snapshot | `porte/directory` |
 
 The contract package depends on nothing outside the standard library, and that is a constraint
 rather than a coincidence: an app's stores and domain code never compile against `go-oidc`,
@@ -127,6 +129,34 @@ cfg.ScopePrefix = "courrier"
 A GET then needs `courrier.read` or `courrier.write`, any other method needs `courrier.write`, and
 a token with no `scope` claim gets a 403. `porte.ActorFrom(ctx)` returns the client acting for the
 user, for audit lines. Cookie sessions are never gated.
+
+## Plan limits
+
+Ardoise computes each space's plan and Registre serves it in the directory snapshot, so an app
+only declares the features it enforces and asks before it creates something:
+
+```go
+plans := forfait.NewStore(
+	forfait.Feature{Key: "nuage.storage_gb", Kind: forfait.Limit, Default: json.RawMessage(`5`)},
+	forfait.Feature{Key: "glouton.access", Kind: forfait.Bool, Default: json.RawMessage(`false`)},
+)
+plans.Issuer = cfg.Issuer
+
+syncer := &directory.Syncer{Client: client, Apply: func(ctx context.Context, s directory.Snapshot) error {
+	plans.Apply(s)
+	return applySpaces(ctx, s)
+}}
+
+err := plans.Check(forfait.Scope{SpaceID: space.RegistreID}, "nuage.storage_gb", usedGB, addingGB)
+var refusal *forfait.LimitError
+if errors.As(err, &refusal) {
+	// 402 with the suite error envelope and upgrade_url = refusal.UpgradeURL
+}
+```
+
+An empty `SpaceID` reads the personal scope of `Subject`. Only new creation is gated; reading,
+downloading and deleting never are. Until a snapshot with entitlements arrives the store allows
+everything and logs one warning; after that it keeps the last values it applied.
 
 ## Why
 

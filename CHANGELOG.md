@@ -3,6 +3,33 @@
 Decisions are recorded with their reasoning. The reasoning is the part that stops a future
 session from undoing a deliberate choice.
 
+## [Unreleased]
+
+**Paid plans, enforced the same way in every app.** Ardoise computes each space's entitlements and
+pushes them to Registre, which serves them inside the directory snapshot apps already sync. Two
+nested modules move: `directory/v0.2.0` carries the values, and the new `forfait/v0.1.0` enforces
+them. The root module does not change.
+
+- **`directory`: `Space.Entitlements` and `Snapshot.People`.** Each value is raw JSON, a bool or
+  an integer limit where -1 is unlimited. `People` holds the personal scope, the resources a
+  person keeps outside any space. Both are additive: an older snapshot decodes unchanged.
+- **`forfait.Store` fails open until the first snapshot that carries entitlements.** An app can
+  ship before Registre serves them without locking anyone out. A snapshot from an older Registre
+  therefore never ends the fail-open period. From the first one on, every snapshot is the whole
+  truth, and the last one stays in force while Registre is unreachable.
+- **Anything malformed reads as the free default, and nothing panics.** A value that is not a
+  JSON bool or an integer of at least -1, a scope with more than 200 keys, an undeclared key in
+  the snapshot: each falls back to the feature's `Default`. A malformed `Default` denies.
+- **An undeclared key is a programmer error and answers the zero value**: false, 0, and a
+  refusal from `Check`. A typo must not grant a paid feature.
+- **`Check` cannot overflow.** It compares `used <= limit-adding`, refuses negative counts with
+  `ErrInvalidUsage`, and always allows `adding == 0`, so an over-limit space can still read and
+  delete. Refusals are `*LimitError`, matching `ErrLimit`, with `UpgradeURL` built from
+  `Store.Issuer`. Apps map them to 402; porte has no 402 in tronc's envelope to reuse.
+- **`forfait` is a nested module**, like `directory`, so an app adopts it without moving its pin
+  on porte. It requires `directory/v0.2.0`; its `replace ../directory` serves this repo's builds
+  and tests and is ignored by consumers, so `directory/v0.2.0` must be tagged first.
+
 ## v0.9.0 — 2026-11-03
 
 **`porte/devicelogin`: the CLI login that works over SSH.** Every suite CLI signed in through
