@@ -76,8 +76,9 @@ func TestABoundSessionStillIssuesWhileItsIdentityExists(t *testing.T) {
 	}
 }
 
-// TestASessionInsertWaitsForAnInFlightPurge holds a purge open, starts the
-// bound insert, proves it is blocked on the identity row, then commits the
+// TestASessionInsertWaitsForAnInFlightPurge holds a purge open, as
+// UpsertFromOIDC runs it (user row FOR UPDATE, then the deletes), starts the
+// bound insert, proves it is blocked on the user row, then commits the
 // purge: the insert must store nothing.
 func TestASessionInsertWaitsForAnInFlightPurge(t *testing.T) {
 	store, db := open(t)
@@ -91,17 +92,18 @@ func TestASessionInsertWaitsForAnInFlightPurge(t *testing.T) {
 		t.Fatalf("begin: %v", err)
 	}
 	defer func() { _ = purge.Rollback() }()
-	if _, err := purge.ExecContext(ctx, `DELETE FROM porte_identities WHERE user_id = $1`, owner); err != nil {
-		t.Fatalf("purge: %v", err)
+	for _, statement := range []string{
+		`SELECT 1 FROM porte_users WHERE id = $1 FOR UPDATE`,
+		`DELETE FROM porte_identities WHERE user_id = $1`,
+	} {
+		if _, err := purge.ExecContext(ctx, statement, owner); err != nil {
+			t.Fatalf("purge: %v", err)
+		}
 	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := store.Sessions().Create(ctx, porte.Session{
-			UserID: owner, TokenHash: "racing", Provider: "https://sso.test", Subject: "sub-att",
-			CreatedAt: time.Now(), LastUsedAt: time.Now(),
-		})
-		done <- err
-	}()
+	done := createAsync(store.Sessions(), porte.Session{
+		UserID: owner, TokenHash: "racing", Provider: "https://sso.test", Subject: "sub-att",
+		CreatedAt: time.Now(), LastUsedAt: time.Now(),
+	})
 	waitForLockWait(t, db)
 	if err := purge.Commit(); err != nil {
 		t.Fatalf("commit purge: %v", err)
@@ -109,6 +111,16 @@ func TestASessionInsertWaitsForAnInFlightPurge(t *testing.T) {
 	if err := <-done; !stderrors.Is(err, porte.ErrNotFound) {
 		t.Fatalf("the racing session insert = %v, want ErrNotFound", err)
 	}
+}
+
+// createAsync starts one session insert and reports its error when done.
+func createAsync(sessions porte.SessionStore, session porte.Session) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := sessions.Create(context.Background(), session)
+		done <- err
+	}()
+	return done
 }
 
 // waitForLockWait returns once some backend is waiting on a row lock.

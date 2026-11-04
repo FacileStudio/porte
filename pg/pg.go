@@ -131,11 +131,6 @@ BEGIN
 		ALTER TABLE porte_login_codes ADD COLUMN consumed_at timestamptz;
 	END IF;
 	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
-	                WHERE table_schema = current_schema() AND table_name = 'porte_sessions' AND column_name = 'provider') THEN
-		ALTER TABLE porte_sessions ADD COLUMN provider text NOT NULL DEFAULT '',
-		                           ADD COLUMN subject text NOT NULL DEFAULT '';
-	END IF;
-	IF NOT EXISTS (SELECT 1 FROM information_schema.columns
 	                WHERE table_schema = current_schema() AND table_name = 'porte_login_codes' AND column_name = 'provider') THEN
 		ALTER TABLE porte_login_codes ADD COLUMN provider text NOT NULL DEFAULT '',
 		                              ADD COLUMN subject text NOT NULL DEFAULT '';
@@ -253,20 +248,23 @@ func (s *IdentityStore) Find(ctx context.Context, provider, subject string) (por
 	return identity, nil
 }
 
-// Save inserts or updates a password identity by (provider, subject), and
-// only updates a federated one, on the account it already belongs to.
+// Save inserts or updates a password identity by (provider, subject). A
+// federated identity it inserts when absent and updates when present, but
+// never re-points onto another account, and never creates one on an account
+// that already holds a different subject of the same provider.
 //
-// A federated identity is created by UpsertFromOIDC and nowhere else. A Save
-// that arrives after a purge deleted it, or after it moved to another
-// account, answers porte.ErrNotFound instead of writing it back: resurrecting
-// it would hand the purged holder the owner's account again.
+// That second rule is what keeps a late Save after a purge from resurrecting
+// the purged identity: the purge leaves the owner's identity of the same
+// provider on the row. Save takes the user row's lock first, as the purge
+// does, so it either runs before the purge and is purged with the rest, or
+// after it and sees the owner's identity. Either refusal is porte.ErrNotFound.
 func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity) error {
 	roles, err := marshalRoles(identity.Roles)
 	if err != nil {
 		return err
 	}
 	if identity.Provider != porte.ProviderLocal {
-		return s.update(ctx, identity, roles)
+		return s.saveFederated(ctx, identity, roles)
 	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO porte_identities
@@ -292,30 +290,35 @@ func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity)
 	return nil
 }
 
-// update writes a federated identity's tokens and claims in place, and only
-// on the account it already belongs to.
-func (s *IdentityStore) update(ctx context.Context, identity porte.StoredIdentity, roles []byte) error {
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE porte_identities
-		   SET password_hash   = $4,
-		       access_token    = $5,
-		       refresh_token   = $6,
-		       token_expiry    = $7,
-		       roles           = $8,
-		       roles_synced_at = $9,
-		       synced_at       = $10
-		 WHERE provider = $2 AND subject = $3 AND user_id = $1`,
-		identity.UserID, identity.Provider, identity.Subject, identity.PasswordHash,
-		identity.Tokens.AccessToken, identity.Tokens.RefreshToken,
-		nullTime(identity.Tokens.Expiry), roles,
-		nullTime(identity.RolesSyncedAt), nullTime(identity.SyncedAt))
-	if err != nil {
-		return fmt.Errorf("porte/pg: save identity: %w", err)
-	}
-	if updated, err := result.RowsAffected(); err != nil || updated == 0 {
-		return porte.ErrNotFound
-	}
-	return nil
+// saveFederated is Save for a non-local identity, under the user row's
+// FOR UPDATE lock, the one the purge takes.
+func (s *IdentityStore) saveFederated(ctx context.Context, identity porte.StoredIdentity, roles []byte) error {
+	return withUserLock(ctx, s.db, identity.UserID, "FOR UPDATE", func(q querier) error {
+		result, err := q.ExecContext(ctx, `
+			INSERT INTO porte_identities
+			       (user_id, provider, subject, password_hash, access_token, refresh_token,
+			        token_expiry, roles, roles_synced_at, synced_at)
+			SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+			 WHERE EXISTS (SELECT 1 FROM porte_identities WHERE provider = $2 AND subject = $3 AND user_id = $1)
+			    OR NOT EXISTS (SELECT 1 FROM porte_identities WHERE provider = $2 AND user_id = $1)
+			ON CONFLICT (provider, subject) DO UPDATE SET
+			       password_hash = EXCLUDED.password_hash, access_token = EXCLUDED.access_token,
+			       refresh_token = EXCLUDED.refresh_token, token_expiry = EXCLUDED.token_expiry,
+			       roles = EXCLUDED.roles, roles_synced_at = EXCLUDED.roles_synced_at,
+			       synced_at = EXCLUDED.synced_at
+			 WHERE porte_identities.user_id = EXCLUDED.user_id`,
+			identity.UserID, identity.Provider, identity.Subject, identity.PasswordHash,
+			identity.Tokens.AccessToken, identity.Tokens.RefreshToken,
+			nullTime(identity.Tokens.Expiry), roles,
+			nullTime(identity.RolesSyncedAt), nullTime(identity.SyncedAt))
+		if err != nil {
+			return fmt.Errorf("porte/pg: save identity: %w", err)
+		}
+		if written, err := result.RowsAffected(); err != nil || written == 0 {
+			return porte.ErrNotFound
+		}
+		return nil
+	})
 }
 
 // MarkRolesSynced moves the roles_synced_at stamp and nothing else.
@@ -364,25 +367,27 @@ func (s *IdentityStore) ListByUser(ctx context.Context, userID int64) ([]porte.S
 
 // Create stores a session and returns it with its id filled in.
 //
-// A bound session (Provider set) is inserted from a SELECT over its identity
-// row, taken FOR KEY SHARE: a purge that deletes the identity first leaves
-// nothing to select, and one that comes second waits for this insert to
-// commit and then deletes the session with the user's others.
+// A bound session (Provider set) is inserted only while its identity
+// exists, under a KEY SHARE lock on the user row that the purge's FOR UPDATE
+// conflicts with: a purge that locked first commits before the identity is
+// checked, and one that comes second waits for this insert and then deletes
+// the session with the user's others. Locking the user row before anything
+// else keeps the purge's lock order, so the two cannot deadlock. The binding
+// is checked, not stored, so the insert uses the column list every adopter's
+// own DDL already has.
 func (s *SessionStore) Create(ctx context.Context, session porte.Session) (porte.Session, error) {
-	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO porte_sessions (token_hash, user_id, label, created_at, last_used_at, expires_at, provider, subject)
-		SELECT $1, $2, $3, $4, $5, $6, $7, $8
-		 WHERE $7 = '' OR EXISTS (
-		       SELECT 1 FROM porte_identities
-		        WHERE provider = $7 AND subject = $8 AND user_id = $2
-		          FOR KEY SHARE)
-		RETURNING id`,
-		session.TokenHash, session.UserID, session.Label,
-		session.CreatedAt, session.LastUsedAt, nullTime(session.ExpiresAt),
-		session.Provider, session.Subject,
-	).Scan(&session.ID)
-	if stderrors.Is(err, sql.ErrNoRows) {
-		return porte.Session{}, porte.ErrNotFound
+	insert := func(q querier) error {
+		return q.QueryRowContext(ctx, `
+			INSERT INTO porte_sessions (token_hash, user_id, label, created_at, last_used_at, expires_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id`,
+			session.TokenHash, session.UserID, session.Label,
+			session.CreatedAt, session.LastUsedAt, nullTime(session.ExpiresAt),
+		).Scan(&session.ID)
+	}
+	err := whileBound(ctx, s.db, session, insert)
+	if stderrors.Is(err, porte.ErrNotFound) {
+		return porte.Session{}, err
 	}
 	if err != nil {
 		return porte.Session{}, fmt.Errorf("porte/pg: create session: %w", err)
@@ -504,23 +509,29 @@ func (s *SessionStore) DeleteExpired(ctx context.Context, now time.Time) (int64,
 	return result.RowsAffected()
 }
 
-// Create stores a pending code.
+// Create stores a pending code. An unbound code uses the column list every
+// adopter's own DDL already has; a bound one also stores provider and
+// subject, which a table without those columns refuses, and is inserted only
+// while its identity exists, like a bound session.
 func (s *LoginCodeStore) Create(ctx context.Context, code porte.LoginCode) error {
-	result, err := s.db.ExecContext(ctx, `
-		INSERT INTO porte_login_codes (code_hash, user_id, expires_at, provider, subject)
-		SELECT $1, $2, $3, $4, $5
-		 WHERE $4 = '' OR EXISTS (
-		       SELECT 1 FROM porte_identities
-		        WHERE provider = $4 AND subject = $5 AND user_id = $2
-		          FOR KEY SHARE)`,
-		code.CodeHash, code.UserID, code.ExpiresAt, code.Provider, code.Subject)
-	if err != nil {
+	insert := func(q querier) error {
+		if code.Provider == "" {
+			_, err := q.ExecContext(ctx,
+				`INSERT INTO porte_login_codes (code_hash, user_id, expires_at) VALUES ($1, $2, $3)`,
+				code.CodeHash, code.UserID, code.ExpiresAt)
+			return err
+		}
+		_, err := q.ExecContext(ctx, `
+			INSERT INTO porte_login_codes (code_hash, user_id, expires_at, provider, subject)
+			VALUES ($1, $2, $3, $4, $5)`,
+			code.CodeHash, code.UserID, code.ExpiresAt, code.Provider, code.Subject)
+		return err
+	}
+	err := whileBound(ctx, s.db, porte.Session{UserID: code.UserID, Provider: code.Provider, Subject: code.Subject}, insert)
+	if err != nil && !stderrors.Is(err, porte.ErrNotFound) {
 		return fmt.Errorf("porte/pg: create login code: %w", err)
 	}
-	if inserted, err := result.RowsAffected(); err != nil || inserted == 0 {
-		return porte.ErrNotFound
-	}
-	return nil
+	return err
 }
 
 // Consume claims the code in one statement, so two exchanges racing each other
@@ -537,7 +548,9 @@ func (s *LoginCodeStore) Consume(ctx context.Context, codeHash string) (porte.Lo
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE porte_login_codes SET consumed_at = $2
 		 WHERE code_hash = $1 AND consumed_at IS NULL
-		RETURNING code_hash, user_id, expires_at, provider, subject`, codeHash, time.Now(),
+		RETURNING code_hash, user_id, expires_at,
+		          COALESCE(to_jsonb(porte_login_codes) ->> 'provider', ''),
+		          COALESCE(to_jsonb(porte_login_codes) ->> 'subject', '')`, codeHash, time.Now(),
 	).Scan(&code.CodeHash, &code.UserID, &code.ExpiresAt, &code.Provider, &code.Subject)
 	if stderrors.Is(err, sql.ErrNoRows) {
 		return porte.LoginCode{}, s.whyItFailed(ctx, codeHash)
