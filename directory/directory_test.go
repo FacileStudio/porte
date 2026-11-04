@@ -69,7 +69,7 @@ func TestTheSnapshotCarriesEntitlements(t *testing.T) {
 	if old.People != nil || old.Spaces[0].Entitlements != nil {
 		t.Errorf("an old snapshot decoded entitlements: %+v", old)
 	}
-	body := `{"version":4,"spaces":[{"id":"a","name":"A","members":[],"entitlements":{"glouton.access":true}}],` +
+	body := `{"version":4,"entitlements_revision":9,"spaces":[{"id":"a","name":"A","members":[],"entitlements":{"glouton.access":true}}],` +
 		`"people":[{"sub":"u1","entitlements":{"nuage.storage_gb":500}}]}`
 	var snapshot Snapshot
 	if err := json.Unmarshal([]byte(body), &snapshot); err != nil {
@@ -77,6 +77,9 @@ func TestTheSnapshotCarriesEntitlements(t *testing.T) {
 	}
 	if got := string(snapshot.Spaces[0].Entitlements["glouton.access"]); got != "true" {
 		t.Errorf("space entitlement = %q, want true", got)
+	}
+	if snapshot.EntitlementsRevision != 9 {
+		t.Errorf("entitlements revision = %d, want 9", snapshot.EntitlementsRevision)
 	}
 	if len(snapshot.People) != 1 || snapshot.People[0].Subject != "u1" ||
 		string(snapshot.People[0].Entitlements["nuage.storage_gb"]) != "500" {
@@ -88,5 +91,27 @@ func TestTheSnapshotCarriesEntitlements(t *testing.T) {
 	}
 	if want := `{"version":1,"spaces":[{"id":"a","name":"","members":null}]}`; string(encoded) != want {
 		t.Errorf("encoded %s, want %s", encoded, want)
+	}
+}
+
+// TestConcurrentSyncsAreRaceFree is for the race detector: a boot Sync and
+// Run's own pulls may overlap.
+func TestConcurrentSyncsAreRaceFree(t *testing.T) {
+	registre := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(Snapshot{Version: 1})
+	}))
+	defer registre.Close()
+	syncer := &Syncer{
+		Client: Client{Issuer: registre.URL},
+		Apply:  func(context.Context, Snapshot) error { return nil },
+	}
+	done := make(chan error, 4)
+	for range 4 {
+		go func() { done <- syncer.Sync(context.Background()) }()
+	}
+	for range 4 {
+		if err := <-done; err != nil {
+			t.Errorf("Sync: %v", err)
+		}
 	}
 }
