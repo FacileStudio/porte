@@ -142,6 +142,10 @@ type Claims struct {
 	GivenName         string
 	FamilyName        string
 	Picture           string
+	// Locale is the `locale` claim normalised by NormalizeLocale: always
+	// one of fr, en, es or de, DefaultLocale when the provider sent none.
+	// A UserStore stores it so the app speaks the user's language.
+	Locale string
 
 	// AvatarURL is filled by porte, not by the provider: when an
 	// [AvatarStore] is wired, the picture is fetched through the SSRF

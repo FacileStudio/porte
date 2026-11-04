@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS porte_identities (
 	created_at      timestamptz DEFAULT now(),
 	PRIMARY KEY (provider, subject)
 );
+ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
 CREATE INDEX IF NOT EXISTS porte_identities_user_idx ON porte_identities (user_id);
 ALTER TABLE porte_identities ADD COLUMN IF NOT EXISTS created_at timestamptz;
 ALTER TABLE porte_identities ALTER COLUMN created_at SET DEFAULT now();
@@ -238,9 +239,10 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 			       name = COALESCE(NULLIF($4, ''), name),
 			       avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
 			       avatar_source = CASE WHEN $5 <> '' THEN 'oidc' ELSE avatar_source END,
+			       locale = COALESCE(NULLIF($6, ''), locale),
 			       updated_at = now()
 			 WHERE id = $1`,
-			userID, claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL,
+			userID, claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, keptLocale(claims.Locale),
 		); err != nil {
 			return 0, fmt.Errorf("porte/pg: update user: %w", err)
 		}
@@ -263,11 +265,12 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 		}
 
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source)
-			VALUES ($1, $2, $3, $4, $5)
+			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source, locale)
+			VALUES ($1, $2, $3, $4, $5, $6)
 			ON CONFLICT (email) DO NOTHING
 			RETURNING id`,
 			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
+			porte.NormalizeLocale(claims.Locale),
 		).Scan(&userID)
 		if stderrors.Is(err, sql.ErrNoRows) {
 
@@ -652,4 +655,13 @@ func requireOne(result sql.Result, operation string) error {
 		return porte.ErrNotFound
 	}
 	return nil
+}
+
+// keptLocale is the locale an update writes: the claim normalised, or empty
+// to keep the stored one when the caller built Claims without a locale.
+func keptLocale(claimed string) string {
+	if claimed == "" {
+		return ""
+	}
+	return porte.NormalizeLocale(claimed)
 }
