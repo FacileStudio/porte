@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,7 +30,7 @@ type Syncer struct {
 
 	nudges  chan struct{}
 	once    sync.Once
-	applied int64
+	applied atomic.Int64
 }
 
 // Handler answers Registre's nudge on SyncPath. It accepts any POST with 202
@@ -86,13 +87,13 @@ func (s *Syncer) Sync(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if snapshot.Version != 0 && snapshot.Version == s.applied {
+	if snapshot.Version != 0 && snapshot.Version == s.applied.Load() {
 		return nil
 	}
 	if err := s.Apply(ctx, snapshot); err != nil {
 		return err
 	}
-	s.applied = snapshot.Version
+	s.applied.Store(snapshot.Version)
 	return nil
 }
 
