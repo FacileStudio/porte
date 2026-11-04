@@ -142,9 +142,10 @@ type Claims struct {
 	GivenName         string
 	FamilyName        string
 	Picture           string
-	// Locale is the `locale` claim normalised by NormalizeLocale: always
-	// one of fr, en, es or de, DefaultLocale when the provider sent none.
-	// A UserStore stores it so the app speaks the user's language.
+	// Locale is the `locale` claim normalised by NormalizeLocale: one of
+	// fr, en, es or de, DefaultLocale for a tag the suite does not speak.
+	// It is empty when the provider sent no locale, and a UserStore then
+	// keeps the one it holds.
 	Locale string
 
 	// AvatarURL is filled by porte, not by the provider: when an
