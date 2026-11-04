@@ -88,14 +88,21 @@ type Deps struct {
 
 // Kit serves the local routes and hashes the passwords behind them.
 type Kit struct {
-	cfg      Config
-	deps     Deps
-	sessions *session.Manager
-	logger   *slog.Logger
+	cfg       Config
+	deps      Deps
+	sessions  *session.Manager
+	logger    *slog.Logger
+	federated bool
 }
 
 // New returns a kit. It fails rather than degrading: a half-wired local login
 // that answers 500 on the first sign-up is worse than one that refuses to boot.
+//
+// When the session manager's porte.Config has an Issuer, the kit is
+// federated: Mount registers nothing, Register and Login answer
+// porte.ErrPasswordLoginDisabled as a 404, AllowRegistration is ignored, and
+// New logs one line saying so. Signing in then goes through the issuer only.
+// Verify, SetPassword and ChangePassword are unaffected.
 func New(cfg Config, deps Deps) (*Kit, error) {
 	for name, missing := range map[string]bool{
 		"Users":      deps.Users == nil,
@@ -114,7 +121,12 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Kit{cfg: cfg, deps: deps, sessions: deps.Sessions, logger: logger}, nil
+	federated := deps.Sessions.Config().Enabled()
+	if federated {
+		logger.Info("porte/local: OIDC_ISSUER is set, so the password routes are not mounted and AllowRegistration is ignored",
+			slog.Bool("allow_registration", cfg.AllowRegistration))
+	}
+	return &Kit{cfg: cfg, deps: deps, sessions: deps.Sessions, logger: logger, federated: federated}, nil
 }
 
 // Mount registers POST /auth/register and POST /auth/login with porte's own
@@ -125,6 +137,9 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 // skip this and call [Kit.Register] and [Kit.Login] from its own handlers
 // instead. That is the supported path, not a workaround.
 func (k *Kit) Mount(router chi.Router) {
+	if k.federated {
+		return
+	}
 	if k.cfg.AllowRegistration {
 		router.Post(porte.RouteRegister, k.handleRegister)
 	}
@@ -139,6 +154,9 @@ func (k *Kit) Mount(router chi.Router) {
 // app's PasswordUserStore is where that lock goes, and every Facile app
 // already takes an advisory lock there.
 func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Request, email, name, password string) (int64, string, error) {
+	if k.federated {
+		return 0, "", carrying(errors.NotFound(""), porte.ErrPasswordLoginDisabled)
+	}
 	email, err := normalizeEmail(email)
 	if err != nil {
 		return 0, "", err
@@ -199,6 +217,9 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 // account enumeration oracle, and the timing half is the one that gets dropped
 // when this is reimplemented.
 func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request, email, password string) (int64, string, error) {
+	if k.federated {
+		return 0, "", carrying(errors.NotFound(""), porte.ErrPasswordLoginDisabled)
+	}
 	userID, err := k.Verify(ctx, email, password)
 	if err != nil {
 		return 0, "", err

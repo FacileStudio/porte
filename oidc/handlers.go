@@ -65,7 +65,7 @@ func (k *Kit) Mount(router chi.Router) {
 func (k *Kit) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	if k.deps.ConfigExtra == nil {
 		httpjson.WriteJSON(w, http.StatusOK, porte.ConfigResponse{
-			SSOOnly:     k.cfg.SSOOnly,
+			SSOOnly:     k.cfg.SSOOnly || k.Enabled(),
 			OIDCEnabled: k.Enabled(),
 		})
 		return
@@ -74,7 +74,7 @@ func (k *Kit) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	for key, value := range k.deps.ConfigExtra() {
 		body[key] = value
 	}
-	body["sso_only"] = k.cfg.SSOOnly
+	body["sso_only"] = k.cfg.SSOOnly || k.Enabled()
 	body["oidc_enabled"] = k.Enabled()
 	httpjson.WriteJSON(w, http.StatusOK, body)
 }

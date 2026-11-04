@@ -40,16 +40,21 @@ misconfigured deployment takes one fix rather than four boots.
 any string, so parsing it proves nothing: `sso.facile.studio` parses happily as a relative path
 and then fails discovery at boot with an error that names neither the variable nor the problem.
 
+### An issuer turns the password routes off
+
+Since v0.10.0, `porte/local` reads the issuer from the session manager's `porte.Config`. When
+`OIDC_ISSUER` is set, `Mount` registers neither `/auth/register` nor `/auth/login`, whatever
+`AllowRegistration` says, and `New` logs one line saying so. `Register` and `Login` called from an
+app's own handler answer `porte.ErrPasswordLoginDisabled` with a 404, the same answer an
+unmounted route gives. `GET /auth/config` reports `sso_only: true`, so the frontend draws no
+password form. `Verify`, `SetPassword` and `ChangePassword` are unchanged.
+
 ### `SSO_ONLY` does not reject, it does not register
 
-When `SSO_ONLY` is true the local password routes are never mounted. They do not return 403 —
-they are not there. There is no endpoint to probe and no handler to reach by mistake.
-
-**That is the app's line to write, not `porte/local`'s.** The kit has no `SSOOnly` field: it is
-constructed and then not mounted, or not constructed at all. Putting the flag inside it would mean
-a kit that answers 403 from a route it registered, which is precisely the thing this convention
-avoids. `sso_only` still rides out on `GET /auth/config`, which is how the frontend knows not to
-draw the password form in the first place.
+`SSO_ONLY` now only matters without an issuer, as an override for a setup with no OIDC. When it
+is true the app does not mount the local routes. They do not return 403: they are not there.
+That is the app's line to write: the kit has no `SSOOnly` field, because a kit that answers 403
+from a route it registered is the thing this convention avoids.
 
 ## Config
 
@@ -60,7 +65,7 @@ draw the password form in the first place.
 | `ClientSecret` | — | Required once `Issuer` is set |
 | `RedirectURL` | — | Required once `Issuer` is set |
 | `SuccessURL` | — | Required once `Issuer` is set |
-| `SSOOnly` | `false` | Local password routes are not registered |
+| `SSOOnly` | `false` | Without an `Issuer`, the app does not mount the local password routes. With one, porte/local never serves them anyway |
 | `AppName` | derived | The name on the pages `porte` renders itself. Empty derives it from `SuccessURL`, then falls back to `DefaultAppName` |
 | `LogoURL` | derived | The logo on those pages. Empty derives `SuccessURL`'s origin plus `/logo.svg`. A file that is absent costs nothing |
 | `TrustEmailWithoutVerifiedClaim` | `false` | Lets a token carrying **no** `email_verified` claim match an existing account by address. Never applies to an explicit `false` |

@@ -5,6 +5,27 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Upgrade note (breaking for some apps)
+
+**An app with `OIDC_ISSUER` set loses its password login.** `porte/local` no longer mounts
+`/auth/register` or `/auth/login` when the session manager's config has an issuer, ignores
+`AllowRegistration`, and makes `Kit.Register` and `Kit.Login` answer
+`porte.ErrPasswordLoginDisabled` as a 404. Sign-in goes through Registre only. An app that
+still needs passwords must leave `OIDC_ISSUER` empty; `SSO_ONLY` remains only for that no-OIDC
+case. Existing password rows are kept, and `Verify` (CalDAV, IMAP Basic auth), `SetPassword` and
+`ChangePassword` behave as before. `GET /auth/config` now answers `sso_only: true` whenever OIDC
+is enabled. Root module: **v0.10.0**.
+
+**The `locale` claim.** porte reads the standard OIDC `locale` claim at the callback and at
+`/auth/sync-profile`, normalises it with `porte.NormalizeLocale` to `fr`, `en`, `es` or `de` (by
+primary subtag, so `fr-FR` is `fr`; anything else is `en`) and hands it to the `UserStore` as
+`Claims.Locale`. A non-string claim reads as `en` rather than failing the login. `porte/pg` adds
+`porte_users.locale text NOT NULL DEFAULT 'en'` through its usual idempotent
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `pg.Schema`, writes it on insert and on every
+login, and keeps the stored value when a caller builds `Claims` without one. porte serves no
+`/auth/me`; an app reads the column, or stores `Claims.Locale` in its own table.
+
+
 **Paid plans, enforced the same way in every app.** Ardoise computes each space's entitlements and
 pushes them to Registre, which serves them inside the directory snapshot apps already sync. Two
 nested modules move: `directory/v0.2.0` carries the values, and the new `forfait/v0.1.0` enforces
