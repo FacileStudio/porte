@@ -45,9 +45,15 @@ and then fails discovery at boot with an error that names neither the variable n
 Since v0.10.0, `porte/local` reads the issuer from the session manager's `porte.Config`. When
 `OIDC_ISSUER` is set, `Mount` registers neither `/auth/register` nor `/auth/login`, whatever
 `AllowRegistration` says, and `New` logs one line saying so. `Register` and `Login` called from an
-app's own handler answer `porte.ErrPasswordLoginDisabled` with a 404, the same answer an
+app's own handler answer `porte.ErrLocalLoginDisabled` with a 404, the same answer an
 unmounted route gives. `GET /auth/config` reports `sso_only: true`, so the frontend draws no
-password form. `Verify`, `SetPassword` and `ChangePassword` are unchanged.
+password form. `Verify` refuses the same way unless `local.Config.AllowProtocolPasswords` is set,
+for a protocol client that cannot do OIDC and has no API-token alternative. `porte/magiclink`
+follows the same rule. `SetPassword` and `ChangePassword` are unchanged.
+
+`local.Config.CustomerAccounts` keeps the password routes mounted despite an issuer. It is for a
+customer-facing app built on a client template, such as a Boutique shop, never for a suite app,
+and `New` logs a warning when it is set.
 
 ### `SSO_ONLY` does not reject, it does not register
 
