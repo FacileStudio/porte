@@ -25,7 +25,8 @@ Root module: **v0.10.0**. Read the breaking notes and run the checklist before b
 3. **Nuage needs another confirmation for an email change.** It confirms the change with
    `Kit.Verify`, which now refuses under OIDC. Confirm through the issuer instead (a fresh login,
    or a link to the new address), or the change endpoint answers 404 for everyone.
-4. **Boutique needs the `locale` migration and `CustomerAccounts`.** See the locale section below
+4. **Boutique needs the migration (locale, and the session and code binding columns) and
+   `CustomerAccounts`.** See the locale section below
    for the exact migration, and set `local.Config{CustomerAccounts: true}` if the shop keeps OIDC
    on for staff.
 
@@ -65,17 +66,34 @@ an attacker take an address and wait for its owner. Now:
   identities it holds, and purged first in the same transaction: every identity on it (a password
   included), its sessions and named API tokens, its login codes and its magic links. Whoever
   created it, through a local self-registration or an unverified first login, never proved the
-  address, so a squat is neither a takeover nor a lockout. One window remains: an unverified holder whose own
-  login commits just before the owner's purge, and whose session is issued just after it, keeps
-  that session. It takes a race with the owner's very first login.
+  address, so a squat is neither a takeover nor a lockout.
+- **A session is bound to the identity that vouched for it.** `porte.Session` and
+  `porte.LoginCode` gain `Provider` and `Subject`; the OIDC callback, the CLI and mobile codes,
+  the code exchange and the device exchange all set them. `porte/pg` inserts a bound session or
+  code from a `SELECT` over that identity row taken `FOR KEY SHARE`, so a holder whose login
+  committed just before the owner's purge gets no session, no code and a generic 401, however the
+  two interleave. `session.Manager` gains `IssueFor` and `IssueCookieFor` for bound sessions;
+  `Issue` and `IssueCookie` keep issuing unbound ones.
+- **`IdentityStore.Save` no longer creates or moves a federated identity.** For any provider but
+  `local` it only updates the row on the account it already belongs to, and answers
+  `porte.ErrNotFound` otherwise, so a late token write after a purge cannot resurrect the
+  purged identity. `UpsertFromOIDC` remains the only way one is created.
 - **An unverified claim never rewrites the stored address and never clears `email_verified`.**
   An account can no longer switch its IdP address to a victim's and sit on the row, nor re-open a
   verified row to the takeover above.
 - **Addresses are trimmed and lowercased** in `porte/oidc` and again in `porte/pg`, as
   `porte/local` already did, and an empty one is refused.
 
-An app that implements `porte.UserStore` over its own tables should apply the same four rules;
-porte cannot enforce them there.
+An app that implements `porte.UserStore` over its own tables should apply the same rules; porte
+cannot enforce them there. An app with its own stores also owes porte three contract changes, all
+silent if ignored, so check them before bumping:
+
+- `SessionStore.Create` and `LoginCodeStore.Create` must store a row whose `Provider` is set only
+  while `(Provider, Subject)` still belongs to `UserID`, atomically with the insert, and answer
+  `porte.ErrNotFound` otherwise. `LoginCodeStore.Consume` must return both fields.
+- `IdentityStore.Save` must only update, never create or re-point, a non-`local` identity, and
+  answer `porte.ErrNotFound` when there is nothing to update.
+- A store that ignores the new fields keeps working, and keeps the race this release closes.
 
 ### The `locale` claim
 
@@ -91,14 +109,20 @@ boot with nothing to add takes no `ACCESS EXCLUSIVE` lock and never queues behin
 
 **Boutique must migrate before bumping.** It keeps porte's DDL in its own
 `apps/api/migrations/00004_identity.sql` and never applies `pg.Schema`, so porte cannot add the
-column there, and the new INSERT and UPDATE fail without it. Add the next migration, for example
+columns there, and the new INSERTs and UPDATEs fail without them. Add the next migration, for example
 `apps/api/migrations/00008_porte_locale.sql`:
 
 ```sql
 -- +goose Up
 ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
+ALTER TABLE porte_sessions ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
+                           ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
+ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
+                              ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
 
 -- +goose Down
+ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
+ALTER TABLE porte_sessions DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
 ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
 ```
 
