@@ -25,10 +25,46 @@ Root module: **v0.10.0**. Read the breaking notes and run the checklist before b
 3. **Nuage needs another confirmation for an email change.** It confirms the change with
    `Kit.Verify`, which now refuses under OIDC. Confirm through the issuer instead (a fresh login,
    or a link to the new address), or the change endpoint answers 404 for everyone.
-4. **Boutique needs the migration (locale, and the session and code binding columns) and
-   `CustomerAccounts`.** See the locale section below
-   for the exact migration, and set `local.Config{CustomerAccounts: true}` if the shop keeps OIDC
-   on for staff.
+4. **Boutique needs the migration below and `CustomerAccounts`.** Set
+   `local.Config{CustomerAccounts: true}` if the shop keeps OIDC on for staff.
+5. **Fourteen apps keep porte's tables in their own DDL and must migrate before bumping:**
+   Agenda, Antenne, Boutique, Casier, Courrier, Echo, Field, Journal, Nuage, Opus, Plume,
+   Sablier, Sonde and Vision. porte cannot add columns there, because they never apply
+   `pg.Schema`. Add one migration with exactly:
+
+   ```sql
+   -- +goose Up
+   ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
+   ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
+                                 ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
+
+   -- +goose Down
+   ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
+   ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
+   ```
+
+   Without `locale`, every OIDC login through `porte/pg`'s `UserStore` fails. Without the two
+   `porte_login_codes` columns, the CLI and mobile logins fail, because their codes are bound.
+   Password, magic-link and API-token sessions, and browser OIDC sessions, keep working on the
+   old DDL: `porte_sessions` gains no column, since a session's binding is checked at insert
+   time rather than stored.
+6. **Review legacy federated rows that say their address is unverified.** A verified login now
+   takes over a row whose `email_verified` is false, purging its identities. Rows written before
+   porte tracked verification can hold their real owner's federated identity with the flag still
+   false, and a newcomer asserting the same verified address would evict that owner. Before
+   upgrading, list them:
+
+   ```sql
+   SELECT u.id, u.email, i.provider, i.subject
+     FROM porte_users u
+     JOIN porte_identities i ON i.user_id = u.id AND i.provider <> 'local'
+    WHERE NOT u.email_verified
+    ORDER BY u.id;
+   ```
+
+   For each row whose federated identity is its genuine owner (the issuer verifies addresses, as
+   Registre does), run `UPDATE porte_users SET email_verified = true WHERE id = <id>`. Leave a row
+   false only when nobody ever proved its address.
 
 ### Breaking: an issuer closes every local sign-in
 
@@ -70,14 +106,19 @@ an attacker take an address and wait for its owner. Now:
 - **A session is bound to the identity that vouched for it.** `porte.Session` and
   `porte.LoginCode` gain `Provider` and `Subject`; the OIDC callback, the CLI and mobile codes,
   the code exchange and the device exchange all set them. `porte/pg` inserts a bound session or
-  code from a `SELECT` over that identity row taken `FOR KEY SHARE`, so a holder whose login
-  committed just before the owner's purge gets no session, no code and a generic 401, however the
-  two interleave. `session.Manager` gains `IssueFor` and `IssueCookieFor` for bound sessions;
-  `Issue` and `IssueCookie` keep issuing unbound ones.
-- **`IdentityStore.Save` no longer creates or moves a federated identity.** For any provider but
-  `local` it only updates the row on the account it already belongs to, and answers
-  `porte.ErrNotFound` otherwise, so a late token write after a purge cannot resurrect the
-  purged identity. `UpsertFromOIDC` remains the only way one is created.
+  code only while that identity row exists, checked under a `FOR KEY SHARE` lock on the user row
+  that the purge's `FOR UPDATE` conflicts with, so a holder whose login committed just before the
+  owner's purge gets no session, no code and a generic 401, however the two interleave. Every
+  writer takes the user row first, in the purge's order, so they cannot deadlock. A session's binding is checked, not stored; a code stores it, so the exchange
+  can bind the session it mints. An unbound session or code is inserted with the v0.9.0 column
+  list. `session.Manager` gains `IssueFor` and `IssueCookieFor` for bound sessions; `Issue` and
+  `IssueCookie` keep issuing unbound ones.
+- **`IdentityStore.Save` never re-points or resurrects a federated identity.** It still inserts
+  one that is absent, which thirteen adopters' own `UpsertFromOIDC` relies on at first login. It
+  refuses, with `porte.ErrNotFound`, to move an identity onto another account, or to create one
+  on an account that already holds another subject of the same provider. It takes the user row's
+  lock first, as the purge does, so a late token write after a purge cannot write the purged
+  identity back.
 - **An unverified claim never rewrites the stored address and never clears `email_verified`.**
   An account can no longer switch its IdP address to a victim's and sit on the row, nor re-open a
   verified row to the takeover above.
@@ -91,8 +132,9 @@ silent if ignored, so check them before bumping:
 - `SessionStore.Create` and `LoginCodeStore.Create` must store a row whose `Provider` is set only
   while `(Provider, Subject)` still belongs to `UserID`, atomically with the insert, and answer
   `porte.ErrNotFound` otherwise. `LoginCodeStore.Consume` must return both fields.
-- `IdentityStore.Save` must only update, never create or re-point, a non-`local` identity, and
-  answer `porte.ErrNotFound` when there is nothing to update.
+- `IdentityStore.Save` must never move a non-`local` identity onto another account, nor create
+  one on an account holding another subject of the same provider, and answers
+  `porte.ErrNotFound` when it refuses.
 - A store that ignores the new fields keeps working, and keeps the race this release closes.
 
 ### The `locale` claim
@@ -103,30 +145,14 @@ normalises it with `porte.NormalizeLocale` to `fr`, `en`, `es` or `de` by primar
 `Claims.Locale` empty, so the stored value is kept, and a new row takes the column default `en`.
 porte serves no `/auth/me`; an app reads the column, or stores `Claims.Locale` in its own table.
 
-`porte/pg` adds `porte_users.locale text NOT NULL DEFAULT 'en'`. Every column porte added after a
+`porte/pg` adds `porte_users.locale text NOT NULL DEFAULT 'en'` and `porte_login_codes.provider` and `.subject`. Every column porte added after a
 table first shipped is now guarded by an `information_schema` check inside one `DO` block, so a
 boot with nothing to add takes no `ACCESS EXCLUSIVE` lock and never queues behind a long read.
 
 **Boutique must migrate before bumping.** It keeps porte's DDL in its own
 `apps/api/migrations/00004_identity.sql` and never applies `pg.Schema`, so porte cannot add the
-columns there, and the new INSERTs and UPDATEs fail without them. Add the next migration, for example
-`apps/api/migrations/00008_porte_locale.sql`:
-
-```sql
--- +goose Up
-ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
-ALTER TABLE porte_sessions ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
-                           ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
-ALTER TABLE porte_login_codes ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT '',
-                              ADD COLUMN IF NOT EXISTS subject text NOT NULL DEFAULT '';
-
--- +goose Down
-ALTER TABLE porte_login_codes DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
-ALTER TABLE porte_sessions DROP COLUMN IF EXISTS subject, DROP COLUMN IF EXISTS provider;
-ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
-```
-
-Then regenerate `schema.sql` (the command is in its header), and set
+columns there. Add the migration from checklist item 5 as the next file, for example
+`apps/api/migrations/00008_porte_locale.sql`, then regenerate `schema.sql` (the command is in its header), and set
 `local.Config{CustomerAccounts: true}` if the shop keeps OIDC on for staff.
 
 ### Fixed
