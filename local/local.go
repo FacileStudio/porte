@@ -225,7 +225,7 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 		return 0, "", errors.Internal("failed to store the identity", err)
 	}
 
-	token, _, err := k.sessions.IssueCookie(ctx, w, r, userID)
+	token, _, err := k.sessions.IssueCookieFor(ctx, w, r, localSession(userID))
 	if err != nil {
 		return 0, "", err
 	}
@@ -247,7 +247,7 @@ func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request,
 		return 0, "", err
 	}
 
-	token, _, err := k.sessions.IssueCookie(ctx, w, r, userID)
+	token, _, err := k.sessions.IssueCookieFor(ctx, w, r, localSession(userID))
 	if err != nil {
 		return 0, "", err
 	}
@@ -385,7 +385,7 @@ func (k *Kit) ChangePassword(ctx context.Context, w http.ResponseWriter, r *http
 			return "", 0, errors.Internal("failed to rotate the session", err)
 		}
 	}
-	token, _, err := k.sessions.IssueCookie(ctx, w, r, userID)
+	token, _, err := k.sessions.IssueCookieFor(ctx, w, r, localSession(userID))
 	if err != nil {
 		return "", 0, err
 	}
@@ -445,4 +445,11 @@ func normalizeEmail(email string) (string, error) {
 		return "", carrying(errors.Invalid(""), porte.ErrInvalidEmail)
 	}
 	return normalized, nil
+}
+
+// localSession is a password login's session template, bound to the
+// account's password identity so a purge that removes it also stops any
+// session not yet stored.
+func localSession(userID int64) porte.Session {
+	return porte.Session{UserID: userID, Provider: porte.ProviderLocal, Subject: porte.LocalSubject(userID)}
 }

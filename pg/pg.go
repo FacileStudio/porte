@@ -255,9 +255,10 @@ func (s *IdentityStore) Find(ctx context.Context, provider, subject string) (por
 //
 // That second rule is what keeps a late Save after a purge from resurrecting
 // the purged identity: the purge leaves the owner's identity of the same
-// provider on the row. Save takes the user row's lock first, as the purge
-// does, so it either runs before the purge and is purged with the rest, or
-// after it and sees the owner's identity. Either refusal is porte.ErrNotFound.
+// provider on the row. Save takes the account's advisory lock first, as the
+// purge does, so it either runs before the purge and is purged with the rest,
+// or after it and sees the owner's identity. The lock names no table, so Save
+// works whatever table an adopter keeps its accounts in. Either refusal is porte.ErrNotFound.
 func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity) error {
 	roles, err := marshalRoles(identity.Roles)
 	if err != nil {
@@ -290,10 +291,10 @@ func (s *IdentityStore) Save(ctx context.Context, identity porte.StoredIdentity)
 	return nil
 }
 
-// saveFederated is Save for a non-local identity, under the user row's
-// FOR UPDATE lock, the one the purge takes.
+// saveFederated is Save for a non-local identity, under the account's
+// exclusive advisory lock, the one the purge takes.
 func (s *IdentityStore) saveFederated(ctx context.Context, identity porte.StoredIdentity, roles []byte) error {
-	return withUserLock(ctx, s.db, identity.UserID, "FOR UPDATE", func(q querier) error {
+	return withUserLock(ctx, s.db, identity.UserID, false, func(q querier) error {
 		result, err := q.ExecContext(ctx, `
 			INSERT INTO porte_identities
 			       (user_id, provider, subject, password_hash, access_token, refresh_token,
@@ -367,14 +368,11 @@ func (s *IdentityStore) ListByUser(ctx context.Context, userID int64) ([]porte.S
 
 // Create stores a session and returns it with its id filled in.
 //
-// A bound session (Provider set) is inserted only while its identity
-// exists, under a KEY SHARE lock on the user row that the purge's FOR UPDATE
-// conflicts with: a purge that locked first commits before the identity is
-// checked, and one that comes second waits for this insert and then deletes
-// the session with the user's others. Locking the user row before anything
-// else keeps the purge's lock order, so the two cannot deadlock. The binding
-// is checked, not stored, so the insert uses the column list every adopter's
-// own DDL already has.
+// A bound session is inserted only while what vouched for it still exists:
+// its identity (Provider set) or the session that issued it (IssuedBy set).
+// The check runs under the account's shared advisory lock, which a purge's
+// exclusive lock excludes. The binding is checked, not stored, so the insert
+// uses the column list every adopter's own DDL already has.
 func (s *SessionStore) Create(ctx context.Context, session porte.Session) (porte.Session, error) {
 	insert := func(q querier) error {
 		return q.QueryRowContext(ctx, `
