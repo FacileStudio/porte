@@ -5,7 +5,29 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
-Root module: **v0.10.0**. Read the four breaking notes before bumping.
+Root module: **v0.10.0**. Read the breaking notes and run the checklist before bumping.
+
+### Upgrade checklist
+
+1. **Merge case-duplicate accounts first.** Addresses are now lowercased before matching, so two
+   rows that differ only by case collide: the older one's next login fails on the unique index.
+   Before upgrading, run
+
+   ```sql
+   SELECT lower(email) FROM porte_users GROUP BY 1 HAVING count(*) > 1;
+   ```
+
+   and merge every address it returns into one row (move the app's own foreign keys and the
+   `porte_identities` rows, then delete the duplicate). An app that keeps porte's tables under
+   another name runs the same query there.
+2. **Agenda keeps `AllowProtocolPasswords` off.** Its CalDAV already accepts API tokens, so
+   `Verify` refusing under OIDC costs it nothing.
+3. **Nuage needs another confirmation for an email change.** It confirms the change with
+   `Kit.Verify`, which now refuses under OIDC. Confirm through the issuer instead (a fresh login,
+   or a link to the new address), or the change endpoint answers 404 for everyone.
+4. **Boutique needs the `locale` migration and `CustomerAccounts`.** See the locale section below
+   for the exact migration, and set `local.Config{CustomerAccounts: true}` if the shop keeps OIDC
+   on for staff.
 
 ### Breaking: an issuer closes every local sign-in
 
@@ -35,16 +57,20 @@ Renamed before release: the sentinel shipped on this branch as `ErrPasswordLogin
 `UserStore.UpsertFromOIDC` used to link any verified address into whatever row held it. That let
 an attacker take an address and wait for its owner. Now:
 
-- **The email fallback only matches a row with no identity from this provider.** A second subject
-  of the same issuer whose address matches an existing account is refused, whether the address
-  was recycled or squatted. It locks the row before checking, so two racing subjects cannot both
-  link into one row.
-- **An unverified claim never rewrites the stored address**, and only a verified one marks it
-  verified. An account can no longer switch its IdP address to a victim's and sit on the row.
-- **A verified login that links into a row whose address was never verified purges it first**,
-  in the same transaction: every identity on it (a password included), its sessions and named
-  API tokens, its login codes and its magic links. Whoever created that row, for example through
-  a local self-registration, never proved the address.
+- **Onto a verified row, the email fallback only links when the row has no identity from this
+  provider.** A second subject of the same issuer whose address matches is refused, so a recycled
+  address is not handed over. The row is locked before the check, so two racing subjects cannot
+  both link into it.
+- **A row whose address was never verified is taken over by the verified login**, whatever
+  identities it holds, and purged first in the same transaction: every identity on it (a password
+  included), its sessions and named API tokens, its login codes and its magic links. Whoever
+  created it, through a local self-registration or an unverified first login, never proved the
+  address, so a squat is neither a takeover nor a lockout. One window remains: an unverified holder whose own
+  login commits just before the owner's purge, and whose session is issued just after it, keeps
+  that session. It takes a race with the owner's very first login.
+- **An unverified claim never rewrites the stored address and never clears `email_verified`.**
+  An account can no longer switch its IdP address to a victim's and sit on the row, nor re-open a
+  verified row to the takeover above.
 - **Addresses are trimmed and lowercased** in `porte/oidc` and again in `porte/pg`, as
   `porte/local` already did, and an empty one is refused.
 
