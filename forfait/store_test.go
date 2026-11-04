@@ -30,9 +30,10 @@ func raw(values map[string]string) map[string]json.RawMessage {
 func applied(space, person map[string]string) *Store {
 	store := NewStore(features()...)
 	store.Apply(directory.Snapshot{
-		Version: 1,
-		Spaces:  []directory.Space{{ID: "pro", Entitlements: raw(space)}},
-		People:  []directory.Person{{Subject: "u1", Entitlements: raw(person)}},
+		Version:              1,
+		EntitlementsRevision: 1,
+		Spaces:               []directory.Space{{ID: "pro", Entitlements: raw(space)}},
+		People:               []directory.Person{{Subject: "u1", Entitlements: raw(person)}},
 	})
 	return store
 }
@@ -92,8 +93,48 @@ func TestResolution(t *testing.T) {
 // snapshot without them resets every scope to its defaults.
 func TestLaterSnapshotsAreTheWholeTruth(t *testing.T) {
 	store := applied(map[string]string{"glouton.access": "true"}, nil)
-	store.Apply(directory.Snapshot{Version: 2, Spaces: []directory.Space{{ID: "pro"}}})
+	store.Apply(directory.Snapshot{Version: 2, EntitlementsRevision: 2, Spaces: []directory.Space{{ID: "pro"}}})
 	if store.Enabled(Scope{SpaceID: "pro"}, "glouton.access") {
 		t.Error("a cleared space kept its paid value")
+	}
+}
+
+// TestOnlyTheRevisionEndsFailOpen pins the contract signal: entitlements in a
+// snapshot with revision 0 are not authoritative, however they look.
+func TestOnlyTheRevisionEndsFailOpen(t *testing.T) {
+	store := NewStore(features()...)
+	store.Apply(directory.Snapshot{Version: 3, Spaces: []directory.Space{
+		{ID: "pro", Entitlements: raw(map[string]string{"nuage.storage_gb": "1"})},
+	}, People: []directory.Person{{Subject: "u1"}}})
+	if store.Limit(Scope{SpaceID: "pro"}, "nuage.storage_gb") != -1 {
+		t.Fatal("a snapshot with revision 0 ended the fail-open period")
+	}
+	store.Apply(directory.Snapshot{Version: 4, EntitlementsRevision: 1, Spaces: []directory.Space{{ID: "pro"}}})
+	if store.Limit(Scope{SpaceID: "pro"}, "nuage.storage_gb") != 5 {
+		t.Error("revision 1 with no values did not read the defaults")
+	}
+}
+
+// TestAnOlderSnapshotIsIgnored pins the ordering guard on both counters.
+func TestAnOlderSnapshotIsIgnored(t *testing.T) {
+	store := NewStore(features()...)
+	at := func(version, revision int64, gb string) {
+		store.Apply(directory.Snapshot{Version: version, EntitlementsRevision: revision, Spaces: []directory.Space{
+			{ID: "pro", Entitlements: raw(map[string]string{"nuage.storage_gb": gb})},
+		}})
+	}
+	steps := []struct {
+		version, revision int64
+		gb                string
+		want              int64
+	}{
+		{10, 5, "100", 100}, {9, 6, "1", 100}, {11, 4, "2", 100}, {11, 0, "3", 100},
+		{0, 5, "4", 4}, {12, 5, "500", 500}, {12, 7, "-1", -1},
+	}
+	for _, step := range steps {
+		at(step.version, step.revision, step.gb)
+		if got := store.Limit(Scope{SpaceID: "pro"}, "nuage.storage_gb"); got != step.want {
+			t.Errorf("after version %d revision %d: Limit = %d, want %d", step.version, step.revision, got, step.want)
+		}
 	}
 }

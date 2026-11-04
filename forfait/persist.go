@@ -7,13 +7,18 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/FacileStudio/porte/directory"
 )
 
 // exportVersion is the only document version Import accepts.
 const exportVersion = 1
 
-// maxExport is the largest document Import reads.
-const maxExport = 4 << 20
+// maxExport is the largest document Import reads. Export holds a subset of a
+// snapshot's bytes, but re-encoding can grow a string up to three times (an
+// invalid UTF-8 byte becomes U+FFFD), so four snapshot caps keep every
+// document Export can produce from a snapshot Client accepted importable.
+const maxExport = 4 * directory.MaxSnapshotBytes
 
 // errAlreadyApplied refuses an Import over state this process already holds,
 // which is newer than anything saved before it.
@@ -21,58 +26,83 @@ var errAlreadyApplied = errors.New("forfait: import after a snapshot was applied
 
 // exported is the persisted shape of a Store's applied state.
 type exported struct {
-	Version int                                   `json:"version"`
-	Applied bool                                  `json:"applied"`
-	Spaces  map[string]map[string]json.RawMessage `json:"spaces"`
-	People  map[string]map[string]json.RawMessage `json:"people"`
+	Version              int                                   `json:"version"`
+	SnapshotVersion      int64                                 `json:"snapshot_version"`
+	EntitlementsRevision int64                                 `json:"entitlements_revision"`
+	Spaces               map[string]map[string]json.RawMessage `json:"spaces"`
+	People               map[string]map[string]json.RawMessage `json:"people"`
 }
 
 // Export is the applied state as a versioned JSON document, so an app does
 // not fail open again after a restart. Save it, as one row or one file, after
 // every Apply, and hand it to Import at boot before the first pull. It
-// records whether a snapshot carrying entitlements was ever applied, so a
-// Store that was still failing open exports as such.
+// carries the snapshot Version and EntitlementsRevision; a Store still
+// failing open exports revision 0 and imports as failing open.
 func (s *Store) Export() ([]byte, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	document := exported{Version: exportVersion, Applied: s.applied}
-	if s.applied {
+	document := exported{Version: exportVersion, SnapshotVersion: s.version, EntitlementsRevision: s.revision}
+	if s.revision > 0 {
 		document.Spaces = s.encodeScopes(s.spaces)
 		document.People = s.encodeScopes(s.people)
 	}
-	return json.Marshal(document)
+	s.mu.RUnlock()
+	var out bytes.Buffer
+	encoder := json.NewEncoder(&out)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(document); err != nil {
+		return nil, fmt.Errorf("forfait: encode the export: %w", err)
+	}
+	return out.Bytes(), nil
 }
 
-// Import restores a document Export produced. It reads at most 4 MiB, rejects
-// unknown fields, trailing data and any version but the current one, and
-// filters every value through the same rules as Apply: undeclared keys,
-// malformed values and scopes over 200 keys read as defaults. It refuses to
-// run once this Store applied a snapshot, and on any error the Store is left
-// unchanged, still failing open.
+// Import restores a document Export produced. It reads at most four
+// directory.MaxSnapshotBytes, rejects unknown fields, trailing data, negative
+// versions and any document version but the current one, and filters every
+// value through the same rules as Apply: undeclared keys, malformed values
+// and scopes over 200 keys read as defaults. It refuses to run once this
+// Store applied a snapshot, and on any error the Store is left unchanged,
+// still failing open. The restored Version and EntitlementsRevision then
+// guard Apply against an older snapshot.
 func (s *Store) Import(b []byte) error {
-	if len(b) > maxExport {
-		return fmt.Errorf("forfait: import of %d bytes exceeds %d", len(b), maxExport)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(b))
-	decoder.DisallowUnknownFields()
-	var document exported
-	if err := decoder.Decode(&document); err != nil {
-		return fmt.Errorf("forfait: decode the import: %w", err)
-	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return errors.New("forfait: trailing data after the import")
-	}
-	if document.Version != exportVersion {
-		return fmt.Errorf("forfait: import version %d is not %d", document.Version, exportVersion)
+	document, err := decodeExport(b)
+	if err != nil {
+		return err
 	}
 	spaces, people := s.indexScopes(document.Spaces), s.indexScopes(document.People)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.applied {
+	if s.revision > 0 {
 		return errAlreadyApplied
 	}
-	s.spaces, s.people, s.applied = spaces, people, document.Applied
+	if document.EntitlementsRevision == 0 {
+		return nil
+	}
+	s.spaces, s.people = spaces, people
+	s.version, s.revision = document.SnapshotVersion, document.EntitlementsRevision
 	return nil
+}
+
+// decodeExport parses and bounds one document, without touching any Store.
+func decodeExport(b []byte) (exported, error) {
+	var document exported
+	if len(b) > maxExport {
+		return document, fmt.Errorf("forfait: import of %d bytes exceeds %d", len(b), maxExport)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&document); err != nil {
+		return document, fmt.Errorf("forfait: decode the import: %w", err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return document, errors.New("forfait: trailing data after the import")
+	}
+	if document.Version != exportVersion {
+		return document, fmt.Errorf("forfait: import version %d is not %d", document.Version, exportVersion)
+	}
+	if document.SnapshotVersion < 0 || document.EntitlementsRevision < 0 {
+		return document, errors.New("forfait: import carries a negative version")
+	}
+	return document, nil
 }
 
 // indexScopes filters every persisted scope through index.

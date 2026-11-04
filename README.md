@@ -154,14 +154,20 @@ if errors.As(err, &refusal) {
 }
 ```
 
-An empty `SpaceID` reads the personal scope of `Subject`. Only new creation is gated; reading,
-downloading and deleting never are. Until a snapshot with entitlements arrives the store allows
-everything and logs one warning; after that it keeps the last values it applied.
+An empty `SpaceID` reads the personal scope of `Subject`, never a space: pass the Registre id for
+a space's resources and refuse a space that is not linked to Registre yet. Only new creation is
+gated; reading, downloading and deleting never are. `adding == 0` always passes, so round counts up
+(a 1 KiB upload against a GB limit adds 1). `Check` and the create are not atomic: an app that
+needs strictness checks again inside the transaction that creates the resource.
+
+Until a snapshot with a non-zero `EntitlementsRevision` arrives the store allows everything and
+logs one warning; after that it keeps the last values it applied, and ignores any snapshot older
+than them.
 
 The store lives in memory, so persist it to avoid failing open again after a restart: save
 `plans.Export()` (one row or one file) after every `Apply`, and call `plans.Import(saved)` at boot
-before the first pull. `Import` refuses a document over 4 MiB, an unknown version or unknown
-fields, filters every value through the same rules as `Apply`, and never overwrites a snapshot the
+before the first pull. `Import` refuses a document over four `directory.MaxSnapshotBytes`, an
+unknown version or unknown fields, filters every value through the same rules as `Apply`, and never overwrites a snapshot the
 process already applied.
 
 ## Why

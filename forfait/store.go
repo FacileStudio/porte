@@ -7,8 +7,8 @@ import (
 	"github.com/FacileStudio/porte/directory"
 )
 
-// Store holds the entitlements of every scope from the last snapshot that
-// carried them. It is safe for concurrent use. Issuer and Logger are read on
+// Store holds the entitlements of every scope from the last authoritative
+// snapshot, one whose EntitlementsRevision is above 0. It is safe for concurrent use. Issuer and Logger are read on
 // every call and must be set before the Store is shared.
 //
 // The Store lives in memory. So that a restart never fails open again, an app
@@ -26,10 +26,11 @@ type Store struct {
 	defaults map[string]value
 	warned   sync.Once
 
-	mu      sync.RWMutex
-	applied bool
-	spaces  map[string]map[string]value
-	people  map[string]map[string]value
+	mu       sync.RWMutex
+	version  int64
+	revision int64
+	spaces   map[string]map[string]value
+	people   map[string]map[string]value
 }
 
 // NewStore declares the features an app enforces. It never panics: a key that
@@ -48,12 +49,19 @@ func NewStore(features ...Feature) *Store {
 }
 
 // Apply replaces every scope's entitlements with the snapshot's. Call it from
-// the app's directory.Syncer Apply. Until a snapshot carries entitlements (a
-// person, or a space with an entitlements map, even an empty one) Apply keeps
-// failing open, so an app can ship before Registre serves them. From then on
-// every snapshot is the whole truth. Malformed values, undeclared keys and scopes with
-// more than 200 keys are dropped, and the features they name read as their
-// defaults.
+// the app's directory.Syncer Apply.
+//
+// Only Snapshot.EntitlementsRevision ends the fail-open period: a snapshot
+// whose revision is 0 comes from a Registre that never received a push, and
+// Apply ignores it, so an app can ship before Registre serves entitlements.
+// From the first revision on, every accepted snapshot is the whole truth and
+// a scope it carries no value for reads the feature defaults.
+//
+// Apply also ignores a snapshot older than the state it holds: a lower
+// EntitlementsRevision, or a lower non-zero Version. State restored by Import
+// counts as applied for that comparison. Malformed values, undeclared keys and
+// scopes with more than 200 keys are dropped, and the features they name read
+// as their defaults.
 func (s *Store) Apply(snap directory.Snapshot) {
 	spaces := make(map[string]map[string]value, len(snap.Spaces))
 	for _, space := range snap.Spaces {
@@ -63,13 +71,18 @@ func (s *Store) Apply(snap directory.Snapshot) {
 	for _, person := range snap.People {
 		people[person.Subject] = index(s.features, person.Entitlements)
 	}
-	carries := carriesEntitlements(snap)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !carries && !s.applied {
+	if !s.accepts(snap.Version, snap.EntitlementsRevision) {
 		return
 	}
-	s.spaces, s.people, s.applied = spaces, people, true
+	s.spaces, s.people, s.version, s.revision = spaces, people, snap.Version, snap.EntitlementsRevision
+}
+
+// accepts reports whether state at version and revision may replace what the
+// Store holds. The caller holds the write lock.
+func (s *Store) accepts(version, revision int64) bool {
+	return revision > 0 && revision >= s.revision && (version == 0 || version >= s.version)
 }
 
 // Enabled reports whether a Bool feature is on for the scope. Before the
@@ -92,6 +105,12 @@ func (s *Store) Limit(sc Scope, key string) int64 {
 // delete. Over the ceiling it answers a *LimitError matching ErrLimit. A
 // negative used or adding answers ErrInvalidUsage. The comparison cannot
 // overflow. An undeclared key has a ceiling of 0 and refuses any addition.
+//
+// Because adding 0 always passes, an app measuring in a coarse unit rounds
+// both counts up: a 1 KiB upload against a limit in GB adds 1, not 0. Check
+// and the creation it guards are not atomic, so two concurrent requests can
+// both pass at the ceiling; an app that needs strictness checks again inside
+// the transaction that creates the resource, against the count it locked.
 func (s *Store) Check(sc Scope, key string, used, adding int64) error {
 	if used < 0 || adding < 0 {
 		return ErrInvalidUsage
@@ -116,7 +135,7 @@ func (s *Store) resolve(sc Scope, key string, kind Kind) value {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.applied {
+	if s.revision == 0 {
 		s.warned.Do(s.warnUnsynced)
 		return value{enabled: true, limit: -1}
 	}
