@@ -11,9 +11,9 @@ import (
 // carried them. It is safe for concurrent use. Issuer and Logger are read on
 // every call and must be set before the Store is shared.
 //
-// The Store lives in memory. Fail-open lasts until the first snapshot with
-// entitlements is applied in this process, so an app that must not fail open
-// after a restart saves the last snapshot and applies it at boot.
+// The Store lives in memory. So that a restart never fails open again, an app
+// saves Export's document (one row or one file) after every Apply, and calls
+// Import with it at boot, before the first pull.
 type Store struct {
 	// Issuer is the app's OIDC issuer. When set, every LimitError carries
 	// UpgradeURL(Issuer, scope.SpaceID).
