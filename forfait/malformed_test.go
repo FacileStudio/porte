@@ -41,7 +41,7 @@ func TestBadDeclarationsNeverPanic(t *testing.T) {
 		Feature{Key: "e.f", Kind: Bool, Default: json.RawMessage(`"yes"`)},
 		Feature{Key: "g.h", Kind: Kind(42), Default: json.RawMessage(`true`)},
 	)
-	store.Apply(directory.Snapshot{People: []directory.Person{{Subject: "u"}}})
+	store.Apply(directory.Snapshot{EntitlementsRevision: 1, People: []directory.Person{{Subject: "u"}}})
 	sc := Scope{Subject: "u"}
 	if store.Limit(sc, "Nuage.Storage") != 0 || store.Limit(sc, "a.b") != 3 || store.Limit(sc, "c.d") != 0 {
 		t.Error("a bad limit declaration did not resolve to a denial or the first declaration")

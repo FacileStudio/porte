@@ -10,13 +10,19 @@ pushes them to Registre, which serves them inside the directory snapshot apps al
 nested modules move: `directory/v0.2.0` carries the values, and the new `forfait/v0.1.0` enforces
 them. The root module does not change.
 
-- **`directory`: `Space.Entitlements` and `Snapshot.People`.** Each value is raw JSON, a bool or
-  an integer limit where -1 is unlimited. `People` holds the personal scope, the resources a
-  person keeps outside any space. Both are additive: an older snapshot decodes unchanged.
-- **`forfait.Store` fails open until the first snapshot that carries entitlements.** An app can
-  ship before Registre serves them without locking anyone out. A snapshot from an older Registre
-  therefore never ends the fail-open period. From the first one on, every snapshot is the whole
-  truth, and the last one stays in force while Registre is unreachable.
+- **`directory`: `Space.Entitlements`, `Snapshot.People` and `Snapshot.EntitlementsRevision`.**
+  Each value is raw JSON, a bool or an integer limit where -1 is unlimited. `People` holds the
+  personal scope, the resources a person keeps outside any space. The revision is that of the last
+  entitlements push Registre applied, 0 when none was. All additive: an older snapshot decodes
+  unchanged. `MaxSnapshotBytes` exports the 8 MiB read cap, and `Syncer`'s applied version is now
+  an atomic, so a boot `Sync` overlapping `Run` is race-free.
+- **Only `EntitlementsRevision` ends fail-open.** A first version guessed from the shape of the
+  snapshot (any person or entitlements map); an empty map is dropped by `omitempty`, so the shape
+  could not say "Registre pushed and this space is free". From the first revision on, every
+  accepted snapshot is the whole truth, and the last one stays in force while Registre is
+  unreachable.
+- **`Apply` ignores an older snapshot**: a lower revision, or a lower non-zero version. A reordered
+  or replayed pull cannot roll a downgrade or an upgrade back.
 - **Anything malformed reads as the free default, and nothing panics.** A value that is not a
   JSON bool or an integer of at least -1, a scope with more than 200 keys, an undeclared key in
   the snapshot: each falls back to the feature's `Default`. A malformed `Default` denies.
@@ -28,10 +34,17 @@ them. The root module does not change.
   `Store.Issuer`. Apps map them to 402; porte has no 402 in tronc's envelope to reuse.
 - **`Store.Export` and `Store.Import` persist the applied state**, so a restart never fails open
   again. The app saves `Export` after each `Apply` and calls `Import` at boot, before the first
-  pull. The document is versioned and records whether a carrying snapshot was ever applied.
-  `Import` is a trust boundary: it reads at most 4 MiB, rejects unknown fields, trailing data and
-  any other version, and filters values with `Apply`'s rules. It refuses to run after an `Apply`,
-  so a stale file cannot replace what Registre served, and leaves the Store untouched on error.
+  pull. The document is versioned and carries the snapshot version and entitlements revision,
+  which then guard `Apply` like an applied snapshot does. `Import` is a trust boundary: it rejects
+  unknown fields, trailing data, negative versions and any other document version, and filters
+  values with `Apply`'s rules. Its cap is four `MaxSnapshotBytes` (32 MiB), not a fixed 4 MiB: a
+  4 MiB cap refused what a valid 8 MiB snapshot exported, which failed open after a restart, and
+  re-encoding can triple an invalid UTF-8 id. It refuses to run after an `Apply`, so a stale file
+  cannot replace what Registre served, and leaves the Store untouched on error.
+- **What an integrator must do.** An empty `SpaceID` is the person's scope, so pass the Registre
+  id for a space resource and refuse a space not yet linked to Registre rather than falling back.
+  `adding == 0` always passes, so round counts up (1 KiB against a GB limit adds 1). `Check` and
+  the create are not atomic; an app that needs strictness checks again inside its transaction.
 - **`forfait` is a nested module**, like `directory`, so an app adopts it without moving its pin
   on porte. It requires `directory/v0.2.0`; its `replace ../directory` serves this repo's builds
   and tests and is ignored by consumers, so `directory/v0.2.0` must be tagged first.

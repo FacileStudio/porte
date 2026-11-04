@@ -46,6 +46,12 @@ type Feature struct {
 // Scope is what an entitlement is read for. SpaceID is the Registre space id
 // a resource belongs to. An empty SpaceID is the personal scope of Subject,
 // the Registre `sub` of the person who holds the resource outside any space.
+//
+// An empty SpaceID always means the person, never "some space". An app passes
+// the Registre id of the space a resource belongs to, and refuses, rather than
+// falling back to the personal scope, a resource in one of its own spaces
+// that is not linked to Registre yet: otherwise the owner's personal plan
+// would silently govern a shared space.
 type Scope struct {
 	SpaceID string
 	Subject string

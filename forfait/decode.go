@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"regexp"
-
-	"github.com/FacileStudio/porte/directory"
 )
 
 // maxKeys is the most entitlement keys one scope may carry. A scope with more
@@ -61,19 +59,4 @@ func index(features map[string]Feature, entitlements map[string]json.RawMessage)
 // from, such as null, before json.Unmarshal sees it.
 func startsAsInteger(raw []byte) bool {
 	return len(raw) > 0 && (raw[0] == '-' || (raw[0] >= '0' && raw[0] <= '9'))
-}
-
-// carriesEntitlements reports whether a snapshot came from a Registre that
-// serves entitlements at all, which is what ends the fail-open period. A
-// snapshot from an older Registre carries neither people nor any space map.
-func carriesEntitlements(snap directory.Snapshot) bool {
-	if len(snap.People) > 0 {
-		return true
-	}
-	for _, space := range snap.Spaces {
-		if space.Entitlements != nil {
-			return true
-		}
-	}
-	return false
 }

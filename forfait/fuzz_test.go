@@ -13,7 +13,8 @@ import (
 // feature. Nothing may panic, and every limit stays in the legal domain.
 func FuzzApply(f *testing.F) {
 	seeds := []string{
-		`{"version":1,"spaces":[{"id":"a","entitlements":{"nuage.storage_gb":100,"glouton.access":true}}]}`,
+		`{"version":1,"entitlements_revision":1,"spaces":[{"id":"a","entitlements":{"nuage.storage_gb":100,"glouton.access":true}}]}`,
+		`{"version":-5,"entitlements_revision":-1,"spaces":[{"id":"a","entitlements":{"nuage.storage_gb":1}}]}`,
 		`{"spaces":[{"id":"a","entitlements":{"nuage.storage_gb":null,"glouton.access":"x"}}],"people":[{"sub":""}]}`,
 		`{"people":[{"sub":"u","entitlements":{"nuage.storage_gb":-9223372036854775808}}]}`,
 		`{"people":[{"sub":"u","entitlements":{"nuage.storage_gb":1e400,"glouton.access":[true]}}]}`,
@@ -81,7 +82,7 @@ func applyMany(wg *sync.WaitGroup, store *Store) {
 	defer wg.Done()
 	space := directory.Space{ID: "pro", Entitlements: raw(map[string]string{"nuage.storage_gb": "100"})}
 	for v := range 200 {
-		store.Apply(directory.Snapshot{Version: int64(v), Spaces: []directory.Space{space}})
+		store.Apply(directory.Snapshot{Version: int64(v), EntitlementsRevision: 1, Spaces: []directory.Space{space}})
 	}
 }
 
