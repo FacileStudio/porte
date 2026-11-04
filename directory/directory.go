@@ -34,6 +34,10 @@ const (
 	RoleOwner  = "owner"
 )
 
+// MaxSnapshotBytes is the largest snapshot body Client reads. A consumer that
+// persists something derived from a snapshot sizes its own cap from this one.
+const MaxSnapshotBytes = 8 << 20
+
 // SyncPath is the route every app mounts Handler on. Registre's register
 // records the full URL per app; the path is fixed so the suite has one shape.
 const SyncPath = "/api/registre/sync"
@@ -74,11 +78,14 @@ type Person struct {
 // Snapshot is every shared space as Registre holds it now. Version rises on
 // every change, so an app can skip applying a snapshot it already applied.
 // People lists the personal-scope entitlements; a snapshot from a Registre
-// that predates them simply has none.
+// that predates them simply has none. EntitlementsRevision is the revision of
+// the last entitlements push Registre applied, and 0 when none ever was: it is
+// the only signal that the entitlements in the snapshot are authoritative.
 type Snapshot struct {
-	Version int64    `json:"version"`
-	Spaces  []Space  `json:"spaces"`
-	People  []Person `json:"people,omitempty"`
+	Version              int64    `json:"version"`
+	EntitlementsRevision int64    `json:"entitlements_revision,omitempty"`
+	Spaces               []Space  `json:"spaces"`
+	People               []Person `json:"people,omitempty"`
 }
 
 // ImportMember is one person an app already had in a space before Registre
@@ -150,7 +157,7 @@ func (c Client) call(ctx context.Context, method, path string, body []byte) (Sna
 		return Snapshot{}, fmt.Errorf("%w: %s answered %d", ErrUnavailable, path, response.StatusCode)
 	}
 	var snapshot Snapshot
-	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&snapshot); err != nil {
+	if err := json.NewDecoder(io.LimitReader(response.Body, MaxSnapshotBytes)).Decode(&snapshot); err != nil {
 		return Snapshot{}, fmt.Errorf("%w: decode the snapshot: %v", ErrUnavailable, err)
 	}
 	return snapshot, nil
