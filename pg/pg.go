@@ -214,6 +214,12 @@ func (s *UserStore) FindByEmail(ctx context.Context, email string) (int64, error
 //
 // The whole thing is one transaction. A login that created a user but failed
 // to link the identity would create a second user on the next attempt.
+//
+// Concurrent first logins are settled by the INSERT's ON CONFLICT on the
+// email: the loser waits for the winner's commit, inserts nothing, and then
+// resolves again by (provider, subject), where it finds the winner's identity.
+// Only a racer that matches neither the subject nor a verified email is
+// refused, which is the same refusal a sequential login gets.
 func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (int64, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -221,74 +227,10 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var userID int64
-	err = tx.QueryRowContext(ctx,
-		`SELECT user_id FROM porte_identities WHERE provider = $1 AND subject = $2`,
-		claims.Provider, claims.Subject).Scan(&userID)
-
-	if stderrors.Is(err, sql.ErrNoRows) && claims.EmailVerified && claims.Email != "" {
-		err = tx.QueryRowContext(ctx,
-			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
+	userID, err := resolveOrCreate(ctx, tx, claims)
+	if err != nil {
+		return 0, err
 	}
-	switch {
-	case err == nil:
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE porte_users
-			   SET email = $2,
-			       email_verified = $3,
-			       name = COALESCE(NULLIF($4, ''), name),
-			       avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
-			       avatar_source = CASE WHEN $5 <> '' THEN 'oidc' ELSE avatar_source END,
-			       locale = COALESCE(NULLIF($6, ''), locale),
-			       updated_at = now()
-			 WHERE id = $1`,
-			userID, claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, keptLocale(claims.Locale),
-		); err != nil {
-			return 0, fmt.Errorf("porte/pg: update user: %w", err)
-		}
-	case stderrors.Is(err, sql.ErrNoRows):
-
-		var taken int64
-		switch err := tx.QueryRowContext(ctx,
-			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&taken); {
-		case err == nil:
-			return 0, fmt.Errorf(
-				"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
-				claims.Email)
-		case !stderrors.Is(err, sql.ErrNoRows):
-			return 0, fmt.Errorf("porte/pg: check email: %w", err)
-		}
-
-		avatarSource := ""
-		if claims.AvatarURL != "" {
-			avatarSource = "oidc"
-		}
-
-		err := tx.QueryRowContext(ctx, `
-			INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source, locale)
-			VALUES ($1, $2, $3, $4, $5, $6)
-			ON CONFLICT (email) DO NOTHING
-			RETURNING id`,
-			claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
-			porte.NormalizeLocale(claims.Locale),
-		).Scan(&userID)
-		if stderrors.Is(err, sql.ErrNoRows) {
-
-			if !claims.EmailVerified {
-				return 0, fmt.Errorf(
-					"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
-					claims.Email)
-			}
-			err = tx.QueryRowContext(ctx,
-				`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
-		}
-		if err != nil {
-			return 0, fmt.Errorf("porte/pg: insert user: %w", err)
-		}
-	default:
-		return 0, fmt.Errorf("porte/pg: resolve user: %w", err)
-	}
-
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO porte_identities (user_id, provider, subject)
 		VALUES ($1, $2, $3)
@@ -297,11 +239,98 @@ func (s *UserStore) UpsertFromOIDC(ctx context.Context, claims porte.Claims) (in
 	); err != nil {
 		return 0, fmt.Errorf("porte/pg: link identity: %w", err)
 	}
-
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("porte/pg: commit: %w", err)
 	}
 	return userID, nil
+}
+
+// resolveOrCreate finds the user the claims belong to and refreshes its
+// profile, or creates it. A creation that loses a race resolves again.
+func resolveOrCreate(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, error) {
+	userID, found, err := existingUser(ctx, tx, claims)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		inserted, err := insertUser(ctx, tx, claims)
+		if err != nil || inserted != 0 {
+			return inserted, err
+		}
+		if userID, found, err = existingUser(ctx, tx, claims); err != nil {
+			return 0, err
+		}
+	}
+	if !found {
+		return 0, fmt.Errorf(
+			"porte/pg: %s is already registered under a different identity, and the provider did not verify the address, so porte will not link them",
+			claims.Email)
+	}
+	return userID, updateUser(ctx, tx, userID, claims)
+}
+
+// existingUser looks the claims up by (provider, subject), then by email when
+// the provider verified it.
+func existingUser(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, bool, error) {
+	var userID int64
+	err := tx.QueryRowContext(ctx,
+		`SELECT user_id FROM porte_identities WHERE provider = $1 AND subject = $2`,
+		claims.Provider, claims.Subject).Scan(&userID)
+	if stderrors.Is(err, sql.ErrNoRows) && claims.EmailVerified && claims.Email != "" {
+		err = tx.QueryRowContext(ctx,
+			`SELECT id FROM porte_users WHERE email = $1`, claims.Email).Scan(&userID)
+	}
+	switch {
+	case err == nil:
+		return userID, true, nil
+	case stderrors.Is(err, sql.ErrNoRows):
+		return 0, false, nil
+	}
+	return 0, false, fmt.Errorf("porte/pg: resolve user: %w", err)
+}
+
+// insertUser creates the user row and returns its id, or 0 when the email is
+// already taken, after waiting for any concurrent transaction that holds it.
+func insertUser(ctx context.Context, tx *sql.Tx, claims porte.Claims) (int64, error) {
+	avatarSource := ""
+	if claims.AvatarURL != "" {
+		avatarSource = "oidc"
+	}
+	var userID int64
+	err := tx.QueryRowContext(ctx, `
+		INSERT INTO porte_users (email, email_verified, name, avatar_url, avatar_source, locale)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (email) DO NOTHING
+		RETURNING id`,
+		claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, avatarSource,
+		porte.NormalizeLocale(claims.Locale),
+	).Scan(&userID)
+	switch {
+	case err == nil:
+		return userID, nil
+	case stderrors.Is(err, sql.ErrNoRows):
+		return 0, nil
+	}
+	return 0, fmt.Errorf("porte/pg: insert user: %w", err)
+}
+
+// updateUser writes the claims' profile onto an existing user.
+func updateUser(ctx context.Context, tx *sql.Tx, userID int64, claims porte.Claims) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE porte_users
+		   SET email = $2,
+		       email_verified = $3,
+		       name = COALESCE(NULLIF($4, ''), name),
+		       avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
+		       avatar_source = CASE WHEN $5 <> '' THEN 'oidc' ELSE avatar_source END,
+		       locale = COALESCE(NULLIF($6, ''), locale),
+		       updated_at = now()
+		 WHERE id = $1`,
+		userID, claims.Email, claims.EmailVerified, claims.DisplayName(), claims.AvatarURL, keptLocale(claims.Locale),
+	); err != nil {
+		return fmt.Errorf("porte/pg: update user: %w", err)
+	}
+	return nil
 }
 
 // Find returns the identity for a provider and subject.
