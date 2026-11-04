@@ -292,7 +292,7 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 	return porte.Claims{
 		Provider:          k.cfg.Issuer,
 		Subject:           idToken.Subject,
-		Email:             raw.Email,
+		Email:             normalizeEmail(raw.Email),
 		EmailVerified:     k.emailTrusted(raw.EmailVerified),
 		Name:              raw.Name,
 		PreferredUsername: raw.PreferredUsername,

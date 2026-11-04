@@ -715,7 +715,7 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 	claims := porte.Claims{
 		Provider:          stored.Provider,
 		Subject:           stored.Subject,
-		Email:             raw.Email,
+		Email:             normalizeEmail(raw.Email),
 		EmailVerified:     k.emailTrusted(raw.EmailVerified),
 		Name:              raw.Name,
 		PreferredUsername: raw.PreferredUsername,

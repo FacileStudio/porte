@@ -10,7 +10,7 @@ func TestTheLocaleClaimReachesTheStoreNormalised(t *testing.T) {
 		claim any
 		want  string
 	}{
-		{"fr-FR", "fr"}, {"de_CH", "de"}, {"es", "es"}, {"it-IT", "en"}, {nil, "en"}, {42, "en"},
+		{"fr-FR", "fr"}, {"de_CH", "de"}, {"es", "es"}, {"it-IT", "en"}, {nil, ""}, {42, ""},
 	}
 	for _, c := range cases {
 		h := newHarness(t, nil)
@@ -28,5 +28,21 @@ func TestTheLocaleClaimReachesTheStoreNormalised(t *testing.T) {
 		if locale != c.want {
 			t.Errorf("locale %v reached the store as %q, want %q", c.claim, locale, c.want)
 		}
+	}
+}
+
+// TestTheEmailClaimReachesTheStoreLowercased pins that the address an
+// account is matched on is spelled the way porte/local spells it.
+func TestTheEmailClaimReachesTheStoreLowercased(t *testing.T) {
+	h := newHarness(t, nil)
+	h.idp.mintClaims = func(claims map[string]any) { claims["email"] = " Case@Example.TEST " }
+	if got := h.login(t, h.client(t), "").Header.Get("Location"); got != h.app.URL+"/welcome" {
+		t.Fatalf("the login was refused (%q)", got)
+	}
+	h.stores.mu.Lock()
+	email := h.stores.lastClaims.Email
+	h.stores.mu.Unlock()
+	if email != "case@example.test" {
+		t.Errorf("the address reached the store as %q", email)
 	}
 }
