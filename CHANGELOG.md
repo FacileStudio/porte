@@ -5,33 +5,86 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
-### Upgrade note (breaking for some apps)
+Root module: **v0.10.0**. Read the four breaking notes before bumping.
 
-**An app with `OIDC_ISSUER` set loses its password login.** `porte/local` no longer mounts
-`/auth/register` or `/auth/login` when the session manager's config has an issuer, ignores
-`AllowRegistration`, and makes `Kit.Register` and `Kit.Login` answer
-`porte.ErrPasswordLoginDisabled` as a 404. Sign-in goes through Registre only. An app that
-still needs passwords must leave `OIDC_ISSUER` empty; `SSO_ONLY` remains only for that no-OIDC
-case. Existing password rows are kept, and `Verify` (CalDAV, IMAP Basic auth), `SetPassword` and
-`ChangePassword` behave as before. `GET /auth/config` now answers `sso_only: true` whenever OIDC
-is enabled. Root module: **v0.10.0**.
+### Breaking: an issuer closes every local sign-in
 
-**The `locale` claim.** porte reads the standard OIDC `locale` claim at the callback and at
-`/auth/sync-profile`, normalises it with `porte.NormalizeLocale` to `fr`, `en`, `es` or `de` (by
-primary subtag, so `fr-FR` is `fr`; anything else is `en`) and hands it to the `UserStore` as
-`Claims.Locale`. A non-string claim reads as `en` rather than failing the login. `porte/pg` adds
-`porte_users.locale text NOT NULL DEFAULT 'en'` through its usual idempotent
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in `pg.Schema`, writes it on insert and on every
-login, and keeps the stored value when a caller builds `Claims` without one. porte serves no
-`/auth/me`; an app reads the column, or stores `Claims.Locale` in its own table.
+- **Password login.** With `OIDC_ISSUER` set in the session manager's config, `porte/local` mounts
+  neither `/auth/register` nor `/auth/login`, ignores `AllowRegistration`, and `Kit.Register` and
+  `Kit.Login` answer `porte.ErrLocalLoginDisabled` as a 404. `New` logs one line saying so. Sign-in
+  goes through Registre only. `SSO_ONLY` remains only for setups without OIDC.
+  `GET /auth/config` answers `sso_only: true` whenever OIDC is enabled.
+- **`Kit.Verify` follows the same rule.** CalDAV, IMAP and every other Basic-auth path built on it
+  answer `ErrLocalLoginDisabled` under OIDC. `local.Config{AllowProtocolPasswords: true}` reopens
+  `Verify` alone, for a protocol client that cannot do OIDC and has no API-token alternative.
+  Agenda's CalDAV already accepts API tokens and should not opt in. `SetPassword` and
+  `ChangePassword` are unchanged.
+- **Magic links.** `porte/magiclink` mounts nothing under OIDC, and `Request` and `Consume` answer
+  `ErrLocalLoginDisabled`. No app mounts it today.
+- **`local.Config{CustomerAccounts: true}` is the only way back**, and it is not for suite apps.
+  It keeps register, login and `Verify` working with an issuer configured, for a customer-facing
+  app built on a client template, such as a shop made from Boutique, whose customers sign up with
+  a password while its staff use the issuer. `New` logs a WARN line when it is set. A Facile suite
+  app that sets it reopens the path the issuer exists to close.
 
+Renamed before release: the sentinel shipped on this branch as `ErrPasswordLoginDisabled` is
+`ErrLocalLoginDisabled`, since it now covers magic links too.
 
-**A racing first login no longer refuses itself.** Two first logins with the same subject and a
-verified email both found no user, and the loser then saw the winner's row at a separate "email
-taken" check and got the unverified-link refusal. `porte/pg` drops that check: the insert's
-`ON CONFLICT (email) DO NOTHING` makes the loser wait for the winner's commit, and it then
-resolves again by (provider, subject), then by verified email. Only a claim matching neither is
-refused, as before.
+### Breaking: account linking in `porte/pg`
+
+`UserStore.UpsertFromOIDC` used to link any verified address into whatever row held it. That let
+an attacker take an address and wait for its owner. Now:
+
+- **The email fallback only matches a row with no identity from this provider.** A second subject
+  of the same issuer whose address matches an existing account is refused, whether the address
+  was recycled or squatted. It locks the row before checking, so two racing subjects cannot both
+  link into one row.
+- **An unverified claim never rewrites the stored address**, and only a verified one marks it
+  verified. An account can no longer switch its IdP address to a victim's and sit on the row.
+- **A verified login that links into a row whose address was never verified purges it first**,
+  in the same transaction: every identity on it (a password included), its sessions and named
+  API tokens, its login codes and its magic links. Whoever created that row, for example through
+  a local self-registration, never proved the address.
+- **Addresses are trimmed and lowercased** in `porte/oidc` and again in `porte/pg`, as
+  `porte/local` already did, and an empty one is refused.
+
+An app that implements `porte.UserStore` over its own tables should apply the same four rules;
+porte cannot enforce them there.
+
+### The `locale` claim
+
+porte reads the standard OIDC `locale` claim at the callback and at `/auth/sync-profile` and
+normalises it with `porte.NormalizeLocale` to `fr`, `en`, `es` or `de` by primary subtag
+(`fr-FR` is `fr`). An unsupported tag is `en`. A missing or non-string claim leaves
+`Claims.Locale` empty, so the stored value is kept, and a new row takes the column default `en`.
+porte serves no `/auth/me`; an app reads the column, or stores `Claims.Locale` in its own table.
+
+`porte/pg` adds `porte_users.locale text NOT NULL DEFAULT 'en'`. Every column porte added after a
+table first shipped is now guarded by an `information_schema` check inside one `DO` block, so a
+boot with nothing to add takes no `ACCESS EXCLUSIVE` lock and never queues behind a long read.
+
+**Boutique must migrate before bumping.** It keeps porte's DDL in its own
+`apps/api/migrations/00004_identity.sql` and never applies `pg.Schema`, so porte cannot add the
+column there, and the new INSERT and UPDATE fail without it. Add the next migration, for example
+`apps/api/migrations/00008_porte_locale.sql`:
+
+```sql
+-- +goose Up
+ALTER TABLE porte_users ADD COLUMN IF NOT EXISTS locale text NOT NULL DEFAULT 'en';
+
+-- +goose Down
+ALTER TABLE porte_users DROP COLUMN IF EXISTS locale;
+```
+
+Then regenerate `schema.sql` (the command is in its header), and set
+`local.Config{CustomerAccounts: true}` if the shop keeps OIDC on for staff.
+
+### Fixed
+
+**A racing first login no longer refuses itself.** Two first logins with the same subject both
+found no user, and the loser then saw the winner's row at a separate "email taken" check and got
+the unverified-link refusal. The insert's `ON CONFLICT (email) DO NOTHING` now settles the race:
+the loser waits for the winner's commit and resolves again by subject.
 
 ## directory/v0.2.0 and forfait/v0.1.0 — 2026-11-04
 
