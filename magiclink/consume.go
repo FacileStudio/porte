@@ -16,6 +16,9 @@ import (
 // expired, spent, superseded, and a user [Deps.Allow] has since refused. The
 // token is spent by the time Allow runs, so a refused user cannot retry it.
 func (k *Kit) Consume(ctx context.Context, w http.ResponseWriter, r *http.Request, token string) (int64, string, error) {
+	if k.federated {
+		return 0, "", disabled()
+	}
 	userID, err := k.deps.Links.Consume(ctx, porte.HashToken(token), k.now())
 	if stderrors.Is(err, porte.ErrNotFound) {
 		return 0, "", invalidLink()

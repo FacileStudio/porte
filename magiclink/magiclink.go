@@ -111,14 +111,20 @@ type Deps struct {
 
 // Kit issues links and consumes them.
 type Kit struct {
-	cfg    Config
-	deps   Deps
-	logger *slog.Logger
-	sends  sync.WaitGroup
+	cfg       Config
+	deps      Deps
+	logger    *slog.Logger
+	sends     sync.WaitGroup
+	federated bool
 }
 
 // New returns a kit. It fails rather than degrading: a link flow missing its
 // mailer answers 202 forever and delivers nothing.
+//
+// When the session manager's porte.Config has an Issuer, the kit is
+// federated, as porte/local is: Mount registers nothing, Request and Consume
+// answer porte.ErrLocalLoginDisabled as a 404, and New logs one line saying
+// so. Signing in then goes through the issuer only.
 func New(cfg Config, deps Deps) (*Kit, error) {
 	for name, missing := range map[string]bool{
 		"Links":     deps.Links == nil,
@@ -145,7 +151,11 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Kit{cfg: cfg, deps: deps, logger: logger}, nil
+	federated := deps.Sessions.Config().Enabled()
+	if federated {
+		logger.Info("porte/magiclink: OIDC_ISSUER is set, so the magic link routes are not mounted")
+	}
+	return &Kit{cfg: cfg, deps: deps, logger: logger, federated: federated}, nil
 }
 
 // Wait blocks until every email handed to [Deps.Send] has finished, each bounded
@@ -159,6 +169,10 @@ func (k *Kit) now() time.Time {
 		return k.deps.Now()
 	}
 	return time.Now()
+}
+
+func disabled() error {
+	return errors.New(errors.NotFound("").Code, porte.ErrLocalLoginDisabled.Error(), porte.ErrLocalLoginDisabled)
 }
 
 func invalidLink() error {

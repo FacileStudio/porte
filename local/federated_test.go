@@ -18,12 +18,18 @@ import (
 // registration open, which is exactly the setting the issuer overrides.
 func federatedKit(t *testing.T, issuer string) *Kit {
 	t.Helper()
+	return kitWith(t, issuer, Config{AllowRegistration: true})
+}
+
+// kitWith is a kit over fresh stores with the given issuer and policy.
+func kitWith(t *testing.T, issuer string, cfg Config) *Kit {
+	t.Helper()
 	store := newStores()
 	manager, err := session.New(porte.Config{Issuer: issuer}, session.Deps{Sessions: sessionStore{store}})
 	if err != nil {
 		t.Fatalf("session.New: %v", err)
 	}
-	kit, err := New(Config{AllowRegistration: true}, Deps{
+	kit, err := New(cfg, Deps{
 		Users: store, Identities: store, Sessions: manager, Count: store.count,
 	})
 	if err != nil {
@@ -68,13 +74,40 @@ func TestAnOIDCConfiguredKitServesNoPasswordRoute(t *testing.T) {
 func TestAnOIDCConfiguredKitRefusesProgrammaticCalls(t *testing.T) {
 	kit := federatedKit(t, "https://registre.facile.studio")
 	w, r := request()
-	if _, _, err := kit.Register(context.Background(), w, r, "a@facile.studio", "A", "a-long-enough-password"); !stderrors.Is(err, porte.ErrPasswordLoginDisabled) {
-		t.Errorf("Register = %v, want ErrPasswordLoginDisabled", err)
+	if _, _, err := kit.Register(context.Background(), w, r, "a@facile.studio", "A", "a-long-enough-password"); !stderrors.Is(err, porte.ErrLocalLoginDisabled) {
+		t.Errorf("Register = %v, want ErrLocalLoginDisabled", err)
 	}
-	if _, _, err := kit.Login(context.Background(), w, r, "a@facile.studio", "a-long-enough-password"); !stderrors.Is(err, porte.ErrPasswordLoginDisabled) {
-		t.Errorf("Login = %v, want ErrPasswordLoginDisabled", err)
+	if _, _, err := kit.Login(context.Background(), w, r, "a@facile.studio", "a-long-enough-password"); !stderrors.Is(err, porte.ErrLocalLoginDisabled) {
+		t.Errorf("Login = %v, want ErrLocalLoginDisabled", err)
 	}
 	if len(w.Result().Cookies()) != 0 {
 		t.Error("a refused call set a session cookie")
+	}
+}
+
+// TestVerifyFollowsTheIssuerUnlessProtocolPasswordsAreAllowed pins the
+// CalDAV and IMAP path: refused under OIDC by default, reopened by the opt-in.
+func TestVerifyFollowsTheIssuerUnlessProtocolPasswordsAreAllowed(t *testing.T) {
+	ctx := context.Background()
+	if _, err := federatedKit(t, "https://registre.facile.studio").Verify(ctx, "a@facile.studio", "a-long-enough-password"); !stderrors.Is(err, porte.ErrLocalLoginDisabled) {
+		t.Errorf("Verify under OIDC = %v, want ErrLocalLoginDisabled", err)
+	}
+	opted := kitWith(t, "https://registre.facile.studio", Config{AllowProtocolPasswords: true})
+	if _, err := opted.Verify(ctx, "a@facile.studio", "a-long-enough-password"); !stderrors.Is(err, porte.ErrWrongPassword) {
+		t.Errorf("Verify with AllowProtocolPasswords = %v, want the ordinary ErrWrongPassword", err)
+	}
+	if code := post(opted, porte.RouteLoginLocal); code != http.StatusNotFound {
+		t.Errorf("AllowProtocolPasswords reopened POST %s: %d", porte.RouteLoginLocal, code)
+	}
+}
+
+// TestCustomerAccountsKeepThePasswordRoutes pins the non-suite opt-out.
+func TestCustomerAccountsKeepThePasswordRoutes(t *testing.T) {
+	shop := kitWith(t, "https://registre.facile.studio", Config{AllowRegistration: true, CustomerAccounts: true})
+	if code := post(shop, porte.RouteRegister); code != http.StatusCreated {
+		t.Errorf("POST %s with CustomerAccounts answered %d, want 201", porte.RouteRegister, code)
+	}
+	if code := post(shop, porte.RouteLoginLocal); code != http.StatusOK {
+		t.Errorf("POST %s with CustomerAccounts answered %d, want 200", porte.RouteLoginLocal, code)
 	}
 }
