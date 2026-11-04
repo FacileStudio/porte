@@ -266,6 +266,7 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 		GivenName         string `json:"given_name"`
 		FamilyName        string `json:"family_name"`
 		Picture           string `json:"picture"`
+		Locale            any    `json:"locale"`
 	}
 	if err := idToken.Claims(&raw); err != nil {
 		return porte.Claims{}, fmt.Errorf("porte/oidc: cannot parse ID token claims: %w", err)
@@ -298,6 +299,7 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 		GivenName:         raw.GivenName,
 		FamilyName:        raw.FamilyName,
 		Picture:           raw.Picture,
+		Locale:            localeClaim(raw.Locale),
 		Roles:             roles,
 	}, nil
 }

@@ -705,6 +705,7 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		GivenName         string `json:"given_name"`
 		FamilyName        string `json:"family_name"`
 		Picture           string `json:"picture"`
+		Locale            any    `json:"locale"`
 	}
 	if err := info.Claims(&raw); err != nil {
 		httpjson.WriteError(w, errors.Internal("failed to parse the userinfo claims", err))
@@ -721,6 +722,7 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		GivenName:         raw.GivenName,
 		FamilyName:        raw.FamilyName,
 		Picture:           raw.Picture,
+		Locale:            localeClaim(raw.Locale),
 		Roles:             stored.Roles,
 	}
 	if claims.Email == "" {
