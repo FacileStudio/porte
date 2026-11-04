@@ -26,6 +26,15 @@ login, and keeps the stored value when a caller builds `Claims` without one. por
 `/auth/me`; an app reads the column, or stores `Claims.Locale` in its own table.
 
 
+**A racing first login no longer refuses itself.** Two first logins with the same subject and a
+verified email both found no user, and the loser then saw the winner's row at a separate "email
+taken" check and got the unverified-link refusal. `porte/pg` drops that check: the insert's
+`ON CONFLICT (email) DO NOTHING` makes the loser wait for the winner's commit, and it then
+resolves again by (provider, subject), then by verified email. Only a claim matching neither is
+refused, as before.
+
+## directory/v0.2.0 and forfait/v0.1.0 — 2026-11-04
+
 **Paid plans, enforced the same way in every app.** Ardoise computes each space's entitlements and
 pushes them to Registre, which serves them inside the directory snapshot apps already sync. Two
 nested modules move: `directory/v0.2.0` carries the values, and the new `forfait/v0.1.0` enforces
