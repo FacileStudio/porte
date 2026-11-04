@@ -88,12 +88,18 @@ func TestUpsertLinksAnExistingEmailOnlyWhenTheProviderVerifiedIt(t *testing.T) {
 		t.Fatal("an unverified email was allowed to reach an existing account")
 	}
 
-	linked, err := users.UpsertFromOIDC(ctx, claims("sub-3", "camille@facile.studio", true))
+	if _, err := users.UpsertFromOIDC(ctx, claims("sub-3", "camille@facile.studio", true)); err == nil {
+		t.Fatal("a second subject of the same provider linked into an account through its address")
+	}
+
+	other := claims("sub-3", "camille@facile.studio", true)
+	other.Provider = "https://other-sso.test"
+	linked, err := users.UpsertFromOIDC(ctx, other)
 	if err != nil {
-		t.Fatalf("verified link: %v", err)
+		t.Fatalf("verified link from another provider: %v", err)
 	}
 	if linked != original {
-		t.Fatalf("a verified email did not link: %d vs %d", linked, original)
+		t.Fatalf("a verified email from another provider did not link: %d vs %d", linked, original)
 	}
 }
 
