@@ -72,6 +72,9 @@ func (k *Kit) issue(ctx context.Context, who target, link porte.MagicLink, token
 }
 
 func (k *Kit) lookup(ctx context.Context, email string) (target, error) {
+	if k.federated {
+		return target{}, disabled()
+	}
 	address, ok := normalizeEmail(email)
 	if !ok {
 		return target{}, nil

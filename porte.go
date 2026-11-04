@@ -57,11 +57,11 @@ var (
 	ErrInvalidEmail       = errors.New("porte: a valid email is required")
 )
 
-// ErrPasswordLoginDisabled is what porte/local's Register and Login return
-// when the app has an OIDC issuer configured. Sign-in then goes through the
-// issuer only, so a password route an app still wires by hand answers the
-// same 404 as one that was never mounted.
-var ErrPasswordLoginDisabled = errors.New("porte: password login is disabled because OIDC is configured")
+// ErrLocalLoginDisabled is what porte/local's Register, Login and Verify and
+// porte/magiclink's Request and Consume return when the app has an OIDC
+// issuer configured. Sign-in then goes through the issuer only, so a route an
+// app still wires by hand answers the same 404 as one that was never mounted.
+var ErrLocalLoginDisabled = errors.New("porte: local sign-in is disabled because OIDC is configured")
 
 // ErrNoPassword is returned when a change is asked of an account that has no
 // password to change. It is not an enumeration risk the way ErrWrongPassword

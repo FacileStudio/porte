@@ -70,6 +70,21 @@ type Config struct {
 
 	// MinPasswordLength defaults to DefaultMinPasswordLength.
 	MinPasswordLength int
+
+	// AllowProtocolPasswords keeps Verify working when an OIDC issuer is
+	// configured, for a protocol client that cannot do OIDC and has no API
+	// token alternative. Off by default: with an issuer, Verify refuses like
+	// Login. An app whose protocol endpoint already accepts API tokens, as
+	// Agenda's CalDAV does, leaves it off.
+	AllowProtocolPasswords bool
+
+	// CustomerAccounts keeps register, login and Verify mounted even with an
+	// OIDC issuer configured. It exists for a customer-facing app that is not
+	// a Facile suite app, such as a shop built from the Boutique template,
+	// whose customers legitimately sign up with a password while its staff
+	// sign in through the issuer. A suite app never sets it: it reopens the
+	// password path the issuer closes, and New logs a warning saying so.
+	CustomerAccounts bool
 }
 
 // Deps are the stores and the session manager the kit writes through.
@@ -99,10 +114,12 @@ type Kit struct {
 // that answers 500 on the first sign-up is worse than one that refuses to boot.
 //
 // When the session manager's porte.Config has an Issuer, the kit is
-// federated: Mount registers nothing, Register and Login answer
-// porte.ErrPasswordLoginDisabled as a 404, AllowRegistration is ignored, and
+// federated: Mount registers nothing, Register, Login and Verify answer
+// porte.ErrLocalLoginDisabled as a 404, AllowRegistration is ignored, and
 // New logs one line saying so. Signing in then goes through the issuer only.
-// Verify, SetPassword and ChangePassword are unaffected.
+// Config.AllowProtocolPasswords reopens Verify alone, and
+// Config.CustomerAccounts opts out entirely. SetPassword and ChangePassword
+// are unaffected.
 func New(cfg Config, deps Deps) (*Kit, error) {
 	for name, missing := range map[string]bool{
 		"Users":      deps.Users == nil,
@@ -122,9 +139,14 @@ func New(cfg Config, deps Deps) (*Kit, error) {
 		logger = slog.Default()
 	}
 	federated := deps.Sessions.Config().Enabled()
-	if federated {
+	switch {
+	case federated && cfg.CustomerAccounts:
+		federated = false
+		logger.Warn("porte/local: CustomerAccounts is set, so the password routes stay mounted although OIDC_ISSUER is set; only a non-suite customer-facing app may do this")
+	case federated:
 		logger.Info("porte/local: OIDC_ISSUER is set, so the password routes are not mounted and AllowRegistration is ignored",
-			slog.Bool("allow_registration", cfg.AllowRegistration))
+			slog.Bool("allow_registration", cfg.AllowRegistration),
+			slog.Bool("allow_protocol_passwords", cfg.AllowProtocolPasswords))
 	}
 	return &Kit{cfg: cfg, deps: deps, sessions: deps.Sessions, logger: logger, federated: federated}, nil
 }
@@ -155,7 +177,7 @@ func (k *Kit) Mount(router chi.Router) {
 // already takes an advisory lock there.
 func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Request, email, name, password string) (int64, string, error) {
 	if k.federated {
-		return 0, "", carrying(errors.NotFound(""), porte.ErrPasswordLoginDisabled)
+		return 0, "", carrying(errors.NotFound(""), porte.ErrLocalLoginDisabled)
 	}
 	email, err := normalizeEmail(email)
 	if err != nil {
@@ -218,7 +240,7 @@ func (k *Kit) Register(ctx context.Context, w http.ResponseWriter, r *http.Reque
 // when this is reimplemented.
 func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request, email, password string) (int64, string, error) {
 	if k.federated {
-		return 0, "", carrying(errors.NotFound(""), porte.ErrPasswordLoginDisabled)
+		return 0, "", carrying(errors.NotFound(""), porte.ErrLocalLoginDisabled)
 	}
 	userID, err := k.Verify(ctx, email, password)
 	if err != nil {
@@ -245,6 +267,9 @@ func (k *Kit) Login(ctx context.Context, w http.ResponseWriter, r *http.Request,
 // unknown address costs a real hash and returns the same error a wrong
 // password does.
 func (k *Kit) Verify(ctx context.Context, email, password string) (int64, error) {
+	if k.federated && !k.cfg.AllowProtocolPasswords {
+		return 0, carrying(errors.NotFound(""), porte.ErrLocalLoginDisabled)
+	}
 	normalized, err := normalizeEmail(email)
 	if err != nil {
 		EqualizeTiming(password)

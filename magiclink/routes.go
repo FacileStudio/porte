@@ -30,6 +30,9 @@ import (
 // and the per-source limit becomes a global one, so an app behind a proxy it
 // controls sets [Config.ClientIP].
 func (k *Kit) Mount(router chi.Router) {
+	if k.federated {
+		return
+	}
 	router.Post(porte.RouteMagicLink, k.handleRequest)
 	router.Post(porte.RouteMagicLinkConsume, k.handleConsume)
 }
