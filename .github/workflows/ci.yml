@@ -44,6 +44,8 @@ jobs:
       - run: gofmt -l . | tee /dev/stderr | (! read)
       - run: go vet ./...
       - run: go test -race -coverprofile=coverage.out ./...
+      - name: nested modules
+        run: for m in directory forfait; do (cd "$m" && go vet ./... && go test -race ./...) || exit 1; done
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
