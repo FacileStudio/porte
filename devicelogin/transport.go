@@ -46,7 +46,7 @@ func send(request *http.Request) (int, map[string]any, error) {
 		}
 		return 0, nil, fmt.Errorf("devicelogin: cannot reach %s: %w", request.URL.Host, err)
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxBody))
 	if err != nil {
