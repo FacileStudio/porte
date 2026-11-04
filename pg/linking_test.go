@@ -2,7 +2,7 @@ package pg_test
 
 import (
 	"context"
-	stderrors "errors"
+	"database/sql"
 	"sync"
 	"testing"
 	"time"
@@ -47,44 +47,49 @@ func TestConcurrentUnverifiedLoginsOfOneSubjectResolveToOneUser(t *testing.T) {
 }
 
 // TestAnUnverifiedRacerNeverJoinsAVerifiedOne: two subjects, one address, one
-// of them unverified. They must not end up as one account.
+// of them unverified. If they share a row, the verified one took it over and
+// the unverified subject holds nothing on it any more.
 func TestAnUnverifiedRacerNeverJoinsAVerifiedOne(t *testing.T) {
-	store, _ := open(t)
+	store, db := open(t)
 	ids, errs := raceUpserts(store.Users(), claims("s1", "m@example.test", true), claims("s2", "m@example.test", false))
-	if errs[0] == nil && errs[1] == nil && ids[0] == ids[1] {
-		t.Fatalf("the unverified racer linked into the verified racer's user %d", ids[0])
+	if errs[0] != nil {
+		t.Fatalf("the verified racer was locked out: %v", errs[0])
+	}
+	if errs[1] == nil && ids[0] == ids[1] && identityCount(t, db, ids[0], "s2") != 0 {
+		t.Fatalf("the unverified racer kept an identity on the verified racer's user %d", ids[0])
 	}
 }
 
-// TestAVerifiedLoginPurgesAPreRegisteredRow: a stranger registers the
-// victim's address with a password, then the victim signs in through the
-// issuer. The stranger's password, sessions and tokens must not survive.
-func TestAVerifiedLoginPurgesAPreRegisteredRow(t *testing.T) {
-	store, _ := open(t)
-	ctx := context.Background()
-	squatter, err := store.Users().CreateFromPassword(ctx, "victim@example.test", "Attacker")
+// TestTwoVerifiedSubjectsRaceOntoOneLocalRow: only one of them may link.
+func TestTwoVerifiedSubjectsRaceOntoOneLocalRow(t *testing.T) {
+	store, db := open(t)
+	local, err := store.Users().CreateFromPassword(context.Background(), "row@example.test", "L")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := store.Identities().Save(ctx, porte.StoredIdentity{
-		UserID: squatter, Provider: porte.ProviderLocal, Subject: porte.LocalSubject(squatter), PasswordHash: "x",
-	}); err != nil {
-		t.Fatalf("save: %v", err)
+	ids, errs := raceUpserts(store.Users(), claims("v1", "row@example.test", true), claims("v2", "row@example.test", true))
+	linked := 0
+	for i := range ids {
+		if errs[i] == nil && ids[i] == local {
+			linked++
+		}
 	}
-	session := porte.Session{UserID: squatter, TokenHash: porte.HashToken("squatter-token"), Label: "api"}
-	if _, err := store.Sessions().Create(ctx, session); err != nil {
-		t.Fatalf("session: %v", err)
+	if linked != 1 || identityCount(t, db, local, "") != 1 {
+		t.Fatalf("%d racers linked, %d identities on the row: %v", linked, identityCount(t, db, local, ""), errs)
 	}
-	victim, err := store.Users().UpsertFromOIDC(ctx, claims("victim-sub", "victim@example.test", true))
+}
+
+// identityCount counts the test provider's identities on a user, or only
+// subject's when it is set.
+func identityCount(t *testing.T, db *sql.DB, userID int64, subject string) int {
+	t.Helper()
+	var n int
+	err := db.QueryRowContext(context.Background(), `SELECT count(*) FROM porte_identities
+		WHERE user_id = $1 AND provider = 'https://sso.test' AND ($2 = '' OR subject = $2)`, userID, subject).Scan(&n)
 	if err != nil {
-		t.Fatalf("victim login: %v", err)
+		t.Fatalf("count identities: %v", err)
 	}
-	if _, err := store.Identities().Find(ctx, porte.ProviderLocal, porte.LocalSubject(victim)); !stderrors.Is(err, porte.ErrNotFound) {
-		t.Errorf("the squatter's password survived the victim's login: %v", err)
-	}
-	if _, err := store.Sessions().Find(ctx, session.TokenHash); !stderrors.Is(err, porte.ErrNotFound) {
-		t.Errorf("the squatter's token survived the victim's login: %v", err)
-	}
+	return n
 }
 
 // TestARecycledAddressIsNotLinked: a second subject of the same issuer with

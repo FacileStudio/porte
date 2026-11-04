@@ -14,21 +14,22 @@ import (
 // user and the identity link when they are new.
 //
 // Matching is on (provider, subject) first. The email fallback runs only when
-// the provider verified the address, and only onto a row that holds no
-// identity from this provider yet: an account already linked to another
-// subject of the same issuer is somebody else's, even when its address now
-// matches, so a recycled or squatted address is refused rather than linked.
-// The fallback exists at all so accounts created before the subject was
-// recorded, or by a local registration, still link on their next login.
+// the provider verified the address. Onto a verified row it links only when
+// the row holds no identity from this provider yet: an account already linked
+// to another subject of the same issuer is somebody else's, so a recycled
+// address is refused rather than linked. The fallback exists at all so
+// accounts created before the subject was recorded, or by a local
+// registration, still link on their next login.
 //
-// Linking into a row whose address was never verified purges it first, in
-// the same transaction: every identity on it (a password included), its
-// sessions and API tokens, its login codes and its magic links. Whoever
-// created that row never proved the address, so nothing they hold survives
-// the owner's verified login.
+// A row whose address was never verified is taken over by the verified login,
+// whatever identities it holds, and purged first in the same transaction:
+// every identity on it (a password included), its sessions and API tokens,
+// its login codes and its magic links. Whoever created that row never proved
+// the address, so a squat becomes neither a takeover nor a lockout.
 //
 // The email is trimmed and lowercased, as porte/local does, and an empty one
-// is refused. An unverified claim never overwrites the stored address.
+// is refused. An unverified claim never overwrites the stored address, and
+// never clears email_verified once a verified claim has set it.
 //
 // Concurrent first logins are settled by the INSERT's ON CONFLICT on the
 // email: the loser waits for the winner's commit, inserts nothing, and then
@@ -158,7 +159,7 @@ func updateUser(ctx context.Context, tx *sql.Tx, userID int64, claims porte.Clai
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE porte_users
 		   SET email = CASE WHEN $3 THEN $2 ELSE email END,
-		       email_verified = CASE WHEN $3 THEN true WHEN email = $2 THEN false ELSE email_verified END,
+		       email_verified = email_verified OR $3,
 		       name = COALESCE(NULLIF($4, ''), name),
 		       avatar_url = COALESCE(NULLIF($5, ''), avatar_url),
 		       avatar_source = CASE WHEN $5 <> '' THEN 'oidc' ELSE avatar_source END,

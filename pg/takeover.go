@@ -22,7 +22,9 @@ func refusal(claims porte.Claims) error {
 }
 
 // byVerifiedEmail locks the row holding the address, then checks in a fresh
-// statement that no identity of this provider was linked to it meanwhile.
+// statement that no identity of this provider was linked to it meanwhile. A
+// row whose address was never verified matches even when it holds one: its
+// holder never proved the address, and resolveOrCreate purges it.
 func byVerifiedEmail(ctx context.Context, tx *sql.Tx, claims porte.Claims) (match, bool, error) {
 	found := match{byEmail: true}
 	var verified, linked bool
@@ -41,7 +43,7 @@ func byVerifiedEmail(ctx context.Context, tx *sql.Tx, claims porte.Claims) (matc
 		return found, false, fmt.Errorf("porte/pg: resolve user by email: %w", err)
 	}
 	found.unverified = !verified
-	return found, !linked, nil
+	return found, found.unverified || !linked, nil
 }
 
 // purge removes everything a holder of an unverified row could still use.
