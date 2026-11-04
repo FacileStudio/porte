@@ -500,3 +500,18 @@ func TestCLIStateRejectsAnythingThatIsNotANonce(t *testing.T) {
 		}
 	}
 }
+
+// TestConfigReportsSSOOnlyWhenOIDCIsEnabled pins that a frontend draws no
+// password form once porte/local stops serving one.
+func TestConfigReportsSSOOnlyWhenOIDCIsEnabled(t *testing.T) {
+	h := newHarness(t, nil)
+	recorder := httptest.NewRecorder()
+	h.kit.handleConfig(recorder, httptest.NewRequest(http.MethodGet, porte.RouteConfig, nil))
+	var response porte.ConfigResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !response.SSOOnly || !response.OIDCEnabled {
+		t.Errorf("config with OIDC enabled = %+v, want sso_only and oidc_enabled", response)
+	}
+}

@@ -57,6 +57,12 @@ var (
 	ErrInvalidEmail       = errors.New("porte: a valid email is required")
 )
 
+// ErrPasswordLoginDisabled is what porte/local's Register and Login return
+// when the app has an OIDC issuer configured. Sign-in then goes through the
+// issuer only, so a password route an app still wires by hand answers the
+// same 404 as one that was never mounted.
+var ErrPasswordLoginDisabled = errors.New("porte: password login is disabled because OIDC is configured")
+
 // ErrNoPassword is returned when a change is asked of an account that has no
 // password to change. It is not an enumeration risk the way ErrWrongPassword
 // would be: reaching it takes an authenticated session for the account in
@@ -235,6 +241,10 @@ type Config struct {
 
 	// SSOOnly suppresses local password routes entirely. They are not
 	// registered rather than rejected, so there is no endpoint to probe.
+	//
+	// It only matters without an Issuer. With one, porte/local never mounts
+	// its routes and refuses Register and Login whatever this says, and
+	// GET /auth/config reports sso_only true.
 	SSOOnly bool
 
 	// MachineAudience enables offline verification of bearer tokens shaped
@@ -555,7 +565,8 @@ func (c Config) Resolved() Config {
 
 // ConfigResponse is the body of GET /auth/config, byte-identical to what all
 // six apps serve today. A frontend reads it to decide whether to show a
-// password form at all.
+// password form at all. SSOOnly is true whenever OIDC is enabled, since
+// porte/local then serves no password route.
 type ConfigResponse struct {
 	SSOOnly     bool `json:"sso_only"`
 	OIDCEnabled bool `json:"oidc_enabled"`
