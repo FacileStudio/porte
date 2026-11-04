@@ -625,7 +625,7 @@ func TestTheConflictPathStillRefusesAnUnverifiedEmail(t *testing.T) {
 // user with two identity rows, so creating the first must not stop the second
 // from finding it.
 func TestPasswordUserStore(t *testing.T) {
-	store, _ := open(t)
+	store, db := open(t)
 	ctx := context.Background()
 	users := store.Users()
 
@@ -647,14 +647,12 @@ func TestPasswordUserStore(t *testing.T) {
 	}
 
 	identities := store.Identities()
-	for _, identity := range []porte.StoredIdentity{
-		{UserID: userID, Provider: porte.ProviderLocal, Subject: "camille@facile.studio", PasswordHash: "$argon2id$fake"},
-		{UserID: userID, Provider: "https://sso.test/", Subject: "abc"},
-	} {
-		if err := identities.Save(ctx, identity); err != nil {
-			t.Fatalf("save %s: %v", identity.Provider, err)
-		}
+	if err := identities.Save(ctx, porte.StoredIdentity{
+		UserID: userID, Provider: porte.ProviderLocal, Subject: "camille@facile.studio", PasswordHash: "$argon2id$fake",
+	}); err != nil {
+		t.Fatalf("save the password: %v", err)
 	}
+	linkIdentity(t, db, userID, "https://sso.test/", "abc")
 	held, err := identities.ListByUser(ctx, userID)
 	if err != nil {
 		t.Fatalf("list: %v", err)

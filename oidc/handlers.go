@@ -235,7 +235,7 @@ func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := k.persist(r.Context(), claims, tokens)
+	bound, err := k.persist(r.Context(), claims, tokens)
 	if err != nil {
 		k.logger.Warn("porte: could not record the identity", slog.Any("error", err))
 		k.fail(w, r, failureReason(err))
@@ -243,15 +243,15 @@ func (k *Kit) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if pending.CLI {
-		k.issueLoginCode(w, r, userID, pending.Port, pending.CLIState)
+		k.issueLoginCode(w, r, bound, pending.Port, pending.CLIState)
 		return
 	}
 	if pending.Mobile {
-		k.issueMobileCode(w, r, userID, pending)
+		k.issueMobileCode(w, r, bound, pending)
 		return
 	}
 
-	if _, _, err := k.sessions.IssueCookie(r.Context(), w, r, userID); err != nil {
+	if _, _, err := k.sessions.IssueCookieFor(r.Context(), w, r, bound); err != nil {
 		k.logger.Error("porte: could not issue the session", slog.Any("error", err))
 		k.fail(w, r, "could not sign you in")
 		return
@@ -293,13 +293,13 @@ func (k *Kit) completeFlow(ctx context.Context, code string, pending flow) (port
 // persist runs the avatar fetch, the app's upsert and the identity row, in
 // that order. The avatar first, so its URL rides into the upsert and the whole
 // callback stays one write on the app's side.
-func (k *Kit) persist(ctx context.Context, claims porte.Claims, tokens porte.TokenSet) (int64, error) {
+func (k *Kit) persist(ctx context.Context, claims porte.Claims, tokens porte.TokenSet) (porte.Session, error) {
 	claims.AvatarURL = k.syncAvatar(ctx, claims)
 	claims.Tokens = tokens
 
 	userID, err := k.deps.Users.UpsertFromOIDC(ctx, claims)
 	if err != nil {
-		return 0, err
+		return porte.Session{}, err
 	}
 
 	stored := porte.StoredIdentity{
@@ -314,9 +314,9 @@ func (k *Kit) persist(ctx context.Context, claims porte.Claims, tokens porte.Tok
 		stored.RolesSyncedAt = k.now()
 	}
 	if err := k.deps.Identities.Save(ctx, stored); err != nil {
-		return 0, errors.Internal("failed to record the identity", err)
+		return porte.Session{}, errors.Internal("failed to record the identity", err)
 	}
-	return userID, nil
+	return porte.Session{UserID: userID, Provider: claims.Provider, Subject: claims.Subject}, nil
 }
 
 // syncAvatar is best effort by design: a provider that serves a broken picture
@@ -350,18 +350,25 @@ func (k *Kit) syncAvatar(ctx context.Context, claims porte.Claims) string {
 //
 // The response answers no-store because it carries the credential itself,
 // which is what OAuth 2.1 §7.1 asks of any response that does.
-func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int64, port, cliState string) {
+// loginCode is the pending code for a login, bound to its identity.
+func (k *Kit) loginCode(hash string, bound porte.Session) porte.LoginCode {
+	return porte.LoginCode{
+		CodeHash:  hash,
+		UserID:    bound.UserID,
+		ExpiresAt: k.now().Add(k.cfg.LoginCodeTTL),
+		Provider:  bound.Provider,
+		Subject:   bound.Subject,
+	}
+}
+
+func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, bound porte.Session, port, cliState string) {
 	code, err := porte.NewToken()
 	if err != nil {
 		k.logger.Error("porte: failed to issue a login code", slog.Any("error", err))
 		k.fail(w, r, "could not complete the login")
 		return
 	}
-	if err := k.deps.Codes.Create(r.Context(), porte.LoginCode{
-		CodeHash:  porte.HashToken(code),
-		UserID:    userID,
-		ExpiresAt: k.now().Add(k.cfg.LoginCodeTTL),
-	}); err != nil {
+	if err := k.deps.Codes.Create(r.Context(), k.loginCode(porte.HashToken(code), bound)); err != nil {
 		k.logger.Error("porte: failed to store the login code", slog.Any("error", err))
 		k.fail(w, r, "could not complete the login")
 		return
@@ -399,18 +406,14 @@ func (k *Kit) issueLoginCode(w http.ResponseWriter, r *http.Request, userID int6
 // hashing them together, so a code intercepted on the custom-scheme redirect
 // is useless without the verifier that never left the app. The redirect target
 // is Config.MobileRedirect and nothing from the request.
-func (k *Kit) issueMobileCode(w http.ResponseWriter, r *http.Request, userID int64, pending flow) {
+func (k *Kit) issueMobileCode(w http.ResponseWriter, r *http.Request, bound porte.Session, pending flow) {
 	code, err := porte.NewToken()
 	if err != nil {
 		k.logger.Error("porte: failed to issue a login code", slog.Any("error", err))
 		k.fail(w, r, "could not complete the login")
 		return
 	}
-	if err := k.deps.Codes.Create(r.Context(), porte.LoginCode{
-		CodeHash:  porte.HashToken(code + ":" + pending.Challenge),
-		UserID:    userID,
-		ExpiresAt: k.now().Add(k.cfg.LoginCodeTTL),
-	}); err != nil {
+	if err := k.deps.Codes.Create(r.Context(), k.loginCode(porte.HashToken(code+":"+pending.Challenge), bound)); err != nil {
 		k.logger.Error("porte: failed to store the login code", slog.Any("error", err))
 		k.fail(w, r, "could not complete the login")
 		return
@@ -475,7 +478,7 @@ func (k *Kit) handleExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := k.sessions.Issue(r.Context(), code.UserID, "")
+	token, _, err := k.sessions.IssueFor(r.Context(), porte.Session{UserID: code.UserID, Provider: code.Provider, Subject: code.Subject})
 	if err != nil {
 		httpjson.WriteError(w, err)
 		return
@@ -572,7 +575,7 @@ func (k *Kit) handleDeviceExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := k.sessions.Issue(r.Context(), identity.UserID, "")
+	token, _, err := k.sessions.IssueFor(r.Context(), porte.Session{UserID: identity.UserID, Provider: k.cfg.Issuer, Subject: identity.Subject})
 	if err != nil {
 		httpjson.WriteError(w, err)
 		return

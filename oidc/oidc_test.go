@@ -169,7 +169,7 @@ func TestALoginCodeWorksOnceAndOnlyOnce(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/cb", nil)
-	kit.issueLoginCode(recorder, request, 7, "", "")
+	kit.issueLoginCode(recorder, request, porte.Session{UserID: 7}, "", "")
 
 	code := extractCode(t, recorder.Body.String())
 
@@ -203,7 +203,7 @@ func TestAnExpiredLoginCodeIsRefused(t *testing.T) {
 	kit := testKit(t, store, now)
 
 	recorder := httptest.NewRecorder()
-	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "", "")
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), porte.Session{UserID: 7}, "", "")
 	code := extractCode(t, recorder.Body.String())
 
 	kit.now = func() time.Time { return now.Add(porte.DefaultLoginCodeTTL + time.Second) }
@@ -407,7 +407,7 @@ func TestTheCodePageNamesTheAppAndRefusesToBeCached(t *testing.T) {
 	kit := testKit(t, newMemory(), time.Now())
 
 	recorder := httptest.NewRecorder()
-	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "", "")
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), porte.Session{UserID: 7}, "", "")
 
 	if got := recorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
 		t.Errorf("Content-Type = %q, want text/html", got)
@@ -438,7 +438,7 @@ func TestLoopbackRedirectEchoesTheCLINonce(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/cb", nil)
-	kit.issueLoginCode(recorder, request, 7, "51234", "deadbeef")
+	kit.issueLoginCode(recorder, request, porte.Session{UserID: 7}, "51234", "deadbeef")
 
 	location := recorder.Header().Get("Location")
 	target, err := url.Parse(location)
@@ -462,7 +462,7 @@ func TestLoopbackRedirectOmitsStateWhenNoNonceWasSent(t *testing.T) {
 	kit := testKit(t, newMemory(), time.Now())
 
 	recorder := httptest.NewRecorder()
-	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), 7, "51234", "")
+	kit.issueLoginCode(recorder, httptest.NewRequest(http.MethodGet, "/cb", nil), porte.Session{UserID: 7}, "51234", "")
 
 	target, err := url.Parse(recorder.Header().Get("Location"))
 	if err != nil {
