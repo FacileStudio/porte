@@ -188,15 +188,23 @@ func (m *Manager) Issue(ctx context.Context, userID int64, label string) (string
 }
 
 // IssueFor is Issue for a session template: UserID and Label as for Issue,
-// and Provider and Subject to bind the session to the federated identity
-// that vouched for the login. A bound session is stored only while that
-// identity still belongs to UserID; when it no longer does, because a purge
-// removed it between the login and this call, nothing is stored and the
-// answer is a generic 401.
+// and Provider and Subject to bind the session to the identity that vouched
+// for the login. A bound session is stored only while that identity still
+// belongs to UserID; when it no longer does, because a purge removed it
+// between the login and this call, nothing is stored and the answer is a
+// generic 401.
+//
+// A named token (Label set) issued from a signed-in request with no other
+// binding is bound to the caller's session, so it is stored only while that
+// session exists: a token loop racing a purge cannot outlive it.
 func (m *Manager) IssueFor(ctx context.Context, template porte.Session) (string, porte.Session, error) {
 	token, err := porte.NewToken()
 	if err != nil {
 		return "", porte.Session{}, errors.Internal("failed to issue a session", err)
+	}
+	if caller, ok := porte.From(ctx); ok && template.Label != "" && template.Provider == "" &&
+		template.IssuedBy == 0 && caller.UserID == template.UserID {
+		template.IssuedBy = caller.SessionID
 	}
 	now := m.now()
 	template.TokenHash = porte.HashToken(token)

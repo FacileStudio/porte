@@ -77,9 +77,9 @@ func TestABoundSessionStillIssuesWhileItsIdentityExists(t *testing.T) {
 }
 
 // TestASessionInsertWaitsForAnInFlightPurge holds a purge open, as
-// UpsertFromOIDC runs it (user row FOR UPDATE, then the deletes), starts the
-// bound insert, proves it is blocked on the user row, then commits the
-// purge: the insert must store nothing.
+// UpsertFromOIDC runs it (the account's exclusive advisory lock, then the
+// deletes), starts the bound insert, proves it is blocked on that lock, then
+// commits the purge: the insert must store nothing.
 func TestASessionInsertWaitsForAnInFlightPurge(t *testing.T) {
 	store, db := open(t)
 	ctx := context.Background()
@@ -93,7 +93,7 @@ func TestASessionInsertWaitsForAnInFlightPurge(t *testing.T) {
 	}
 	defer func() { _ = purge.Rollback() }()
 	for _, statement := range []string{
-		`SELECT 1 FROM porte_users WHERE id = $1 FOR UPDATE`,
+		`SELECT pg_advisory_xact_lock(hashtextextended('porte/user:' || $1::bigint::text, 0))`,
 		`DELETE FROM porte_identities WHERE user_id = $1`,
 	} {
 		if _, err := purge.ExecContext(ctx, statement, owner); err != nil {

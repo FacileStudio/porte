@@ -38,13 +38,19 @@ type Session struct {
 	// wants. Browser sessions always carry one.
 	ExpiresAt time.Time
 
-	// Provider and Subject name the federated identity a login session was
-	// issued for. Set, they bind the session: SessionStore.Create stores it
-	// only while that identity still exists for UserID, and answers
-	// ErrNotFound otherwise. Empty for a session no identity vouched for: a
-	// password or magic-link login, or a named API token.
+	// Provider and Subject name the identity a login session was issued
+	// for: a federated one, or ProviderLocal and LocalSubject for a password
+	// login. Set, they bind the session: SessionStore.Create stores it only
+	// while that identity still exists for UserID, and answers ErrNotFound
+	// otherwise.
 	Provider string
 	Subject  string
+
+	// IssuedBy is the session that minted this one, for a named API token
+	// created from a signed-in request. Set, it binds the token the same
+	// way: stored only while that session still exists for UserID. Neither
+	// binding is persisted; both are checked at insert time.
+	IssuedBy int64
 }
 
 // Expired reports whether the session may no longer authenticate a request. A
@@ -66,7 +72,8 @@ func (s Session) IsAPIToken() bool { return s.Label != "" }
 type SessionStore interface {
 	// Create stores a session. When Provider is set it must store it only if
 	// the identity (Provider, Subject) still belongs to UserID at insert
-	// time, atomically with that check, and answer ErrNotFound otherwise:
+	// time, and when IssuedBy is set only if that session still does, each
+	// atomically with the check, and answer ErrNotFound otherwise:
 	// that is what stops a login whose identity was purged meanwhile from
 	// landing a session on somebody else's account.
 	Create(ctx context.Context, session Session) (Session, error)
