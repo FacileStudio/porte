@@ -30,6 +30,7 @@ type Syncer struct {
 
 	nudges  chan struct{}
 	once    sync.Once
+	syncing sync.Mutex
 	applied atomic.Int64
 }
 
@@ -75,6 +76,7 @@ func (s *Syncer) Run(ctx context.Context) {
 			if !sleep(ctx, debounce) {
 				return
 			}
+			s.drain()
 		}
 		s.pull(ctx)
 	}
@@ -82,7 +84,13 @@ func (s *Syncer) Run(ctx context.Context) {
 
 // Sync pulls and applies once, skipping a snapshot whose version was already
 // applied. It is what Run calls, exported for boot paths and tests.
+//
+// Calls are serialised, the pull included: a boot Sync overlapping Run's own
+// pull waits for it, so Apply never runs twice at once and never commits a
+// snapshot fetched before one it already committed.
 func (s *Syncer) Sync(ctx context.Context) error {
+	s.syncing.Lock()
+	defer s.syncing.Unlock()
 	snapshot, err := s.Client.Snapshot(ctx)
 	if err != nil {
 		return err
@@ -123,16 +131,4 @@ func (s *Syncer) logger() *slog.Logger {
 		return s.Logger
 	}
 	return slog.Default()
-}
-
-// sleep waits for d or until ctx ends, reporting whether it waited fully.
-func sleep(ctx context.Context, d time.Duration) bool {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
-	}
 }
