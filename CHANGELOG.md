@@ -5,6 +5,27 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+Root module: **v0.10.1**. Additive; no migration.
+
+- **The sign-in page's language reaches Registre.** `GET /auth/oidc` forwards
+  `?ui_locales=<fr|en|es|de>` (`porte.UILocalesParam`) to the provider's authorization request as
+  the OIDC `ui_locales` parameter, so Registre's pages open in the language the app showed. muse
+  v0.10.1's sign-in link sends it. Any other value, a list or a regional tag included, is dropped
+  rather than forwarded, and the provider uses its own default. It covers the browser, CLI and
+  mobile starts, which share the route.
+- **Named tokens minted by a bearer JWT are bound too.** `session.Manager.IssueFor` already bound
+  a named token issued from a cookie session to that session. A caller authenticated by a bearer
+  JWT has no session, so its token was unbound and could outlive a purge of the identity it came
+  through. It is now bound to `(Config.Issuer, Subject)`, the identity the JWT resolved through,
+  and stored only while that identity still belongs to the account.
+- **`pg.MagicLinkStore` no longer assumes `porte_users`.** `Create` locked the user row in
+  `porte_users`, so it failed (42P01) for the 13 adopters whose accounts live in their own
+  `users`. It now takes the account's shared advisory lock, ordering it against a purge as a
+  bound session is ordered, and an exclusive lock in its own `porte/magiclink:` namespace, which
+  serialises link creation per account without stalling a sign-in.
+- **CI's race tests carry an explicit `-timeout`**, so a hang fails in 20 minutes with a
+  goroutine dump instead of running to the job's limit.
+
 ## directory/v0.2.1 and forfait/v0.1.1 — 2026-11-06
 
 ### directory/v0.2.1 and forfait/v0.1.1
@@ -77,9 +98,12 @@ Root module: **v0.10.0**. Read the breaking notes and run the checklist before b
      ```
 
      Without them the CLI and mobile logins fail, because their codes are bound. The browser OIDC
-     login, password and magic-link sessions and API tokens keep working on the old columns: the
-     identity, session and code stores those apps use never name an accounts table, and the
-     serialisation lock is a PostgreSQL advisory lock keyed on the account id, not a row lock.
+     login, password sessions and API tokens keep working on the old columns: the identity,
+     session and code stores those apps use never name an accounts table, and the serialisation
+     lock is a PostgreSQL advisory lock keyed on the account id, not a row lock. *Corrected in
+     v0.10.1:* this also claimed magic-link sessions, but in v0.10.0 `pg.MagicLinkStore.Create`
+     still locked `porte_users` and fails without it. No magic link is mounted under OIDC, so only
+     a no-OIDC app using `porte/pg`'s link store over its own `users` is affected; v0.10.1 fixes it.
    - **Boutique** uses `porte/pg`'s `UserStore` over its own `porte_users`, so it needs the same
      two columns and `porte_users.locale`, without which every OIDC login fails:
 
