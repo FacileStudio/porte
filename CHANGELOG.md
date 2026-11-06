@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## directory/v0.2.1 and forfait/v0.1.1 — 2026-11-06
+
 ### directory/v0.2.1 and forfait/v0.1.1
 
 Patch releases from the full review. Both are compatible with v0.2.0 and v0.1.0;
