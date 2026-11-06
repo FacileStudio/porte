@@ -903,3 +903,47 @@ exchange body carries the provider's token.
 
 **Standard library only**, apart from `porte/loopback` for `OpenBrowser`, and tested the same way
 `porte/loopback` is.
+
+## porte/directory
+
+A nested module, `github.com/FacileStudio/porte/directory`, tagged `directory/vX.Y.Z`. Standard
+library only.
+
+| Symbol | What it is |
+|---|---|
+| `Snapshot` | `Version`, `EntitlementsRevision`, `Spaces`, `People`: the whole directory as Registre holds it |
+| `Space` | `ID`, `Name`, `Members`, `Entitlements` (raw JSON per feature key) |
+| `Person` | `Subject`, `Entitlements`: the personal scope |
+| `Member` | `Subject`, `Email`, `Name`, `Picture`, `Role` (`RoleMember`, `RoleAdmin`, `RoleOwner`) |
+| `Client` | `Issuer`, `ClientID`, `ClientSecret`, `HTTP`. `Snapshot(ctx)` and `Import(ctx, spaces)` authenticate with the app's own client credentials. Default timeout 10 s |
+| `Syncer` | `Client`, `Apply`, `Interval` (default `DefaultInterval`, 5 min), `Logger`. `Run(ctx)` pulls at boot, on every tick and 2 s after a burst of nudges; `Sync(ctx)` pulls once; `Handler()` answers Registre's nudge on `SyncPath` |
+| `MaxSnapshotBytes` | 8 MiB, the largest body `Client` reads |
+| `ErrUnavailable` | Registre unreachable, a non-200, or a body that does not decode. Retry later |
+| `ErrSnapshotTooLarge` | A body over `MaxSnapshotBytes`. Retrying cannot help |
+
+`Sync` calls are serialised, pull included: `Apply` never runs twice at once and never commits a
+snapshot fetched before one it already committed. A snapshot whose non-zero `Version` equals the
+last applied one is skipped. `Apply` must be idempotent.
+
+## porte/forfait
+
+A nested module, `github.com/FacileStudio/porte/forfait`, tagged `forfait/vX.Y.Z`. It requires
+`porte/directory`.
+
+| Symbol | What it is |
+|---|---|
+| `Feature` | `Key` (`^[a-z0-9_]+\.[a-z0-9_]+$`), `Kind` (`Bool` or `Limit`), `Default` (raw JSON; missing or malformed denies) |
+| `Scope` | `SpaceID` (the Registre space id from server state) or, when empty, the personal scope of `Subject` |
+| `NewStore(features...)` | Declares what the app enforces. Never panics; logs bad declarations to `slog.Default()` |
+| `Store.Issuer`, `Store.Logger` | Set before sharing the Store. `Issuer` fills `LimitError.UpgradeURL` |
+| `Store.Apply(snapshot)` | Applies an authoritative snapshot (revision above 0); refuses an older one with a warning |
+| `Store.Enabled`, `Store.Limit` | A Bool's state, a Limit's ceiling (-1 unlimited). An undeclared or mistyped key answers false or 0 |
+| `Store.Check(scope, key, used, adding)` | nil, a `*LimitError` matching `ErrLimit`, or `ErrInvalidUsage` for a negative count. Overflow-safe; `adding == 0` always passes |
+| `Store.Export`, `Store.Import` | Persist the applied state across restarts. Empty input is a no-op; after an `Apply`, `Import` answers `ErrAlreadyApplied` |
+| `Store.Reset` | Back to fail-open, accepting the next snapshot whatever its versions. The recovery step after a Registre restore |
+| `UpgradeURL(issuer, spaceID)` | `<issuer>/spaces/<id>`, or `<issuer>/spaces` for the personal scope |
+
+Until the first authoritative snapshot the Store fails open: every declared feature is enabled and
+unlimited. After it, the last applied state holds through any outage. Ordering: a higher
+`EntitlementsRevision` is always applied; at the same revision a lower non-zero `Version` is
+refused; a lower revision is refused. Apps map `ErrLimit` to HTTP 402 with `upgrade_url`.
