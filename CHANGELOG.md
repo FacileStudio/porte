@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.12.0 — 2026-11-06
+
 Root module: **v0.12.0**, `directory/v0.3.0`. Additive; no migration.
 
 **GDPR deletion receiver.** Registre now erases a person on request and tells each app. Until an app
