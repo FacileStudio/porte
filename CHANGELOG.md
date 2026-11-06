@@ -5,6 +5,34 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+Root module: **v0.12.0**, `directory/v0.3.0`. Additive; no migration.
+
+**GDPR deletion receiver.** Registre now erases a person on request and tells each app. Until an app
+acts on that, it keeps the data and breaks the erasure promise. `directory.Deletions` is the
+receiver: it polls `GET /api/directory/deletions`, accepts Registre's signed `user.deleted` push, and
+calls `OnPersonDeleted(ctx, provider, subject)` once per person. `pg.Store.EraseIdentity` erases
+porte's own rows (identity with its provider tokens, sessions, named tokens, login codes, magic
+links) and is wired as `Deletions.Erase`.
+
+- **Polling is the source of truth.** Registre keeps a notice for 60 days. The receiver persists a
+  cursor plus every handled subject through a `StateStore` the app implements over one row, as
+  `forfait.Store.Export` does for plans. A failing callback or erase leaves the person pending and the
+  cursor before them; the next poll or Registre's retry tries again. Delivery is at least once, so
+  `OnPersonDeleted` must be idempotent. The handled-subject record is why a push followed by a poll,
+  or a replayed push, reaches the callback once.
+- **The push is optional and verified.** `Handler()` accepts only `typ` `secevent+jwt`, RS256 from the
+  issuer's JWKS, the right `iss` and `aud`, a short time window and the `user-deleted` event, else 400.
+  Mount it on `DeletionsPath` and set that URL as the client's `deletion_uri` in Registre. Never on
+  `SyncPath`: the sync handler answers 202 to any POST.
+- **The callback runs before `Erase`**, so the app can still resolve its account from porte's
+  identity rows. `EraseIdentity` leaves `porte_users` to the app.
+- `directory.Client` gained `Deletions(ctx, since)`. `directory` stays standard-library only.
+
+Upgrade note for apps: bump `porte` to v0.12.0 and `porte/directory` to v0.3.0, implement
+`StateStore` (load and save one blob), write `OnPersonDeleted` to delete the account and its data,
+then run `(&directory.Deletions{Client, OnPersonDeleted, Erase: store.EraseIdentity, State}).Run(ctx)`
+next to the `Syncer`. Optionally mount `Handler()` and register the `deletion_uri`.
+
 ## v0.11.0 — 2026-11-06
 
 Root module: **v0.11.0**. Additive; no migration.
