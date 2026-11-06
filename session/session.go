@@ -195,17 +195,16 @@ func (m *Manager) Issue(ctx context.Context, userID int64, label string) (string
 // generic 401.
 //
 // A named token (Label set) issued from a signed-in request with no other
-// binding is bound to the caller's session, so it is stored only while that
-// session exists: a token loop racing a purge cannot outlive it.
+// binding is bound to the caller: to its session, so it is stored only while
+// that session exists, or, for a caller authenticated by a bearer JWT (no
+// session, a Subject), to the identity (Config.Issuer, Subject) the JWT
+// resolved through. A token loop racing a purge cannot outlive either.
 func (m *Manager) IssueFor(ctx context.Context, template porte.Session) (string, porte.Session, error) {
 	token, err := porte.NewToken()
 	if err != nil {
 		return "", porte.Session{}, errors.Internal("failed to issue a session", err)
 	}
-	if caller, ok := porte.From(ctx); ok && template.Label != "" && template.Provider == "" &&
-		template.IssuedBy == 0 && caller.UserID == template.UserID {
-		template.IssuedBy = caller.SessionID
-	}
+	template = m.bindToCaller(ctx, template)
 	now := m.now()
 	template.TokenHash = porte.HashToken(token)
 	template.CreatedAt, template.LastUsedAt = now, now

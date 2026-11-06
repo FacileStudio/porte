@@ -47,3 +47,48 @@ func TestABoundSessionWhoseIdentityIsGoneIsAGeneric401(t *testing.T) {
 		t.Errorf("an unbound session was refused: %v", err)
 	}
 }
+
+// recording is a store that keeps the last template it was asked to store.
+type recording struct {
+	*memory
+	last porte.Session
+}
+
+func (r *recording) Create(ctx context.Context, session porte.Session) (porte.Session, error) {
+	r.last = session
+	return r.memory.Create(ctx, session)
+}
+
+// TestANamedTokenIsBoundToItsCaller pins both caller shapes: a cookie session
+// binds by IssuedBy, a bearer JWT by its issuer identity, and a token for
+// someone else, or with no caller, stays as asked.
+func TestANamedTokenIsBoundToItsCaller(t *testing.T) {
+	store := &recording{memory: newMemory()}
+	manager, err := New(porte.Config{Issuer: "https://registre.test"}, Deps{Sessions: store, Now: time.Now})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	cases := []struct {
+		name   string
+		caller *porte.Identity
+		want   porte.Session
+	}{
+		{"cookie session", &porte.Identity{UserID: 1, SessionID: 9}, porte.Session{IssuedBy: 9}},
+		{"bearer JWT", &porte.Identity{UserID: 1, Subject: "sub-1"}, porte.Session{Provider: "https://registre.test", Subject: "sub-1"}},
+		{"another user", &porte.Identity{UserID: 2, SessionID: 9}, porte.Session{}},
+		{"no caller", nil, porte.Session{}},
+	}
+	for _, c := range cases {
+		ctx := context.Background()
+		if c.caller != nil {
+			ctx = porte.WithIdentity(ctx, *c.caller)
+		}
+		if _, _, err := manager.Issue(ctx, 1, "ci"); err != nil {
+			t.Fatalf("%s: Issue: %v", c.name, err)
+		}
+		got := store.last
+		if got.IssuedBy != c.want.IssuedBy || got.Provider != c.want.Provider || got.Subject != c.want.Subject {
+			t.Errorf("%s: bound to %+v, want %+v", c.name, got, c.want)
+		}
+	}
+}
