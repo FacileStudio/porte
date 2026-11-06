@@ -735,6 +735,11 @@ development. It carries an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 `porte_login_codes.consumed_at`, so a deployment that already applied an earlier `Schema`
 migrates by re-applying it.
 
+`Store.EraseIdentity(ctx, provider, subject)` deletes the identity row, and every session, named
+token, login code and magic link of its account, under the account's advisory lock. It leaves
+`porte_users` to the app and is a no-op for an identity already gone. Pass it as
+`directory.Deletions.Erase`.
+
 `UpsertFromOIDC` runs in one transaction. A login that created a user but failed to link the
 identity would create a second user on the next attempt. The insert is
 `ON CONFLICT (email) DO NOTHING RETURNING id` and re-selects when it returns nothing: the
@@ -920,10 +925,28 @@ library only.
 | `MaxSnapshotBytes` | 8 MiB, the largest body `Client` reads |
 | `ErrUnavailable` | Registre unreachable, a non-200, or a body that does not decode. Retry later |
 | `ErrSnapshotTooLarge` | A body over `MaxSnapshotBytes`. Retrying cannot help |
+| `Client.Deletions(ctx, since)` | `GET /api/directory/deletions?since=`: the `[]Deleted{Subject, DeletedAt}` Registre erased, oldest first, at most 1000 per call, kept 60 days (`DeletionRetention`) |
+| `Deletions` | GDPR receiver. `Client`, `OnPersonDeleted(ctx, provider, subject) error`, `Erase` (optional, `pg.Store.EraseIdentity`), `State` (`StateStore`: `Load`/`Save` bytes), `Interval`, `Logger`. `Poll(ctx)` and `Run(ctx)` list and handle; `Handler()` verifies Registre's signed push on `DeletionsPath` |
+| `UserDeletedEvent` | The `events` key of a deletion notice |
 
 `Sync` calls are serialised, pull included: `Apply` never runs twice at once and never commits a
 snapshot fetched before one it already committed. A snapshot whose non-zero `Version` equals the
 last applied one is skipped. `Apply` must be idempotent.
+
+### Deletions
+
+`Deletions` hands each person Registre erased to `OnPersonDeleted` once, then runs `Erase`. A
+person counts as handled only after both returned nil and `State.Save` stored it, so any failure
+leaves the person pending: the next poll, or Registre's retried push, tries again. Delivery is at
+least once, so the callback must be idempotent. `Poll` stops at the first failure and the cursor
+stays before it. The state holds the cursor and every handled subject for 60 days, which is also
+what makes a push followed by a poll, or a replayed push, reach the callback once.
+
+`Handler()` answers 400 to a notice that does not verify, 503 when the issuer's keys cannot be
+fetched, 500 when erasing failed, 202 otherwise. It verifies `typ` `secevent+jwt`, RS256 against the
+issuer's JWKS (found through discovery, refetched at most once a minute), `iss`, `aud` containing
+`Client.ClientID`, `iat`/`exp` within a minute of now and at most an hour apart, and the
+`UserDeletedEvent` key. Mount it on `DeletionsPath`, never on `SyncPath`.
 
 ## porte/forfait
 
