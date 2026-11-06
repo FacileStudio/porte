@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.10.1 — 2026-11-06
+
 Root module: **v0.10.1**. Additive; no migration.
 
 - **The sign-in page's language reaches Registre.** `GET /auth/oidc` forwards
