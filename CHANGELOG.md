@@ -10,7 +10,7 @@ session from undoing a deliberate choice.
 ### directory/v0.2.1 and forfait/v0.1.1
 
 Patch releases from the full review. Both are compatible with v0.2.0 and v0.1.0;
-`forfait/v0.1.1` still requires `directory v0.2.0`, since it uses no new directory API.
+`forfait/v0.1.1` requires `directory v0.2.1`, so an app that bumps only forfait also gets the serialised `Sync`.
 
 - **A Registre restore no longer freezes forfait.** `Apply` refused any snapshot with a lower
   `Version` or `EntitlementsRevision`, silently, so a restore from backup left every app on its
