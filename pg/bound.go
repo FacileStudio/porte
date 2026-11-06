@@ -20,13 +20,20 @@ type querier interface {
 // accounts in, and every writer takes it before touching a row, so the
 // writers cannot deadlock on each other.
 func lockUser(ctx context.Context, q querier, userID int64, shared bool) error {
+	return lockAdvisory(ctx, q, "porte/user:", userID, shared)
+}
+
+// lockAdvisory takes the transaction-scoped advisory lock for namespace and
+// id. Each namespace is its own lock space, so serialising one kind of write
+// never stalls another.
+func lockAdvisory(ctx context.Context, q querier, namespace string, id int64, shared bool) error {
 	function := "pg_advisory_xact_lock"
 	if shared {
 		function += "_shared"
 	}
 	if _, err := q.ExecContext(ctx,
-		`SELECT `+function+`(hashtextextended('porte/user:' || $1::bigint::text, 0))`, userID); err != nil {
-		return fmt.Errorf("porte/pg: lock user: %w", err)
+		`SELECT `+function+`(hashtextextended($1 || $2::bigint::text, 0))`, namespace, id); err != nil {
+		return fmt.Errorf("porte/pg: lock %s%d: %w", namespace, id, err)
 	}
 	return nil
 }

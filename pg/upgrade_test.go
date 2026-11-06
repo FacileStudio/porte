@@ -33,6 +33,11 @@ CREATE TABLE porte_old.porte_sessions (
 	user_id bigint NOT NULL REFERENCES porte_old.users(id) ON DELETE CASCADE,
 	label text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(),
 	last_used_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz);
+CREATE TABLE porte_old.porte_magic_links (
+	token_hash text PRIMARY KEY,
+	user_id bigint NOT NULL REFERENCES porte_old.users(id) ON DELETE CASCADE,
+	ip text NOT NULL DEFAULT '', created_at timestamptz NOT NULL,
+	expires_at timestamptz NOT NULL, consumed_at timestamptz);
 CREATE TABLE porte_old.porte_login_codes (
 	code_hash text PRIMARY KEY,
 	user_id bigint NOT NULL REFERENCES porte_old.users(id) ON DELETE CASCADE,
@@ -205,5 +210,27 @@ func TestPurgeAndBoundSessionRaceFreely(t *testing.T) {
 		if identityCount(t, db, squatter, "vic"+email) == 1 && len(leftovers(t, db, squatter)) != 0 {
 			t.Fatalf("iteration %d: the squatter's session survived on the owner's account", i)
 		}
+	}
+}
+
+// TestMagicLinksWorkWithoutPorteUsers: the link store names no accounts
+// table, so an app with its own users issues and spends links, and a second
+// link supersedes the first.
+func TestMagicLinksWorkWithoutPorteUsers(t *testing.T) {
+	store, db := openOldDDL(t)
+	ctx := context.Background()
+	userID := appFirstLogin(t, store, db, "link@example.test", "link-sub")
+	now := time.Now()
+	for _, hash := range []string{"first", "second"} {
+		link := porte.MagicLink{TokenHash: hash, UserID: userID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
+		if err := store.MagicLinks().Create(ctx, link); err != nil {
+			t.Fatalf("create %s without porte_users: %v", hash, err)
+		}
+	}
+	if _, err := store.MagicLinks().Consume(ctx, "first", now); !stderrors.Is(err, porte.ErrNotFound) {
+		t.Errorf("a superseded link was spent: %v", err)
+	}
+	if got, err := store.MagicLinks().Consume(ctx, "second", now); err != nil || got != userID {
+		t.Errorf("the live link = %d, %v", got, err)
 	}
 }
