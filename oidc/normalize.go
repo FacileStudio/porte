@@ -3,6 +3,8 @@ package oidc
 import (
 	"strings"
 
+	"golang.org/x/oauth2"
+
 	"github.com/FacileStudio/porte"
 )
 
@@ -22,4 +24,16 @@ func localeClaim(value any) string {
 // so one mailbox spelled two ways cannot become two accounts.
 func normalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
+}
+
+// uiLocales forwards the sign-in page's language to the provider as the OIDC
+// ui_locales parameter, when it is exactly one of the suite's four. Anything
+// else, a list included, is dropped rather than passed through: the value
+// lands in the provider's URL, and the provider falls back to its own default.
+func uiLocales(raw string) []oauth2.AuthCodeOption {
+	tag := strings.ToLower(strings.TrimSpace(raw))
+	if tag == "" || porte.NormalizeLocale(tag) != tag {
+		return nil
+	}
+	return []oauth2.AuthCodeOption{oauth2.SetAuthURLParam("ui_locales", tag)}
 }

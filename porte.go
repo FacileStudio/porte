@@ -135,6 +135,12 @@ const (
 	ChallengeParam = "challenge"
 )
 
+// UILocalesParam is the query parameter a sign-in link on RouteLogin carries
+// with the page's language. porte forwards it to the provider as the OIDC
+// ui_locales parameter when it is one of fr, en, es or de, and drops it
+// otherwise, so Registre's own pages open in the language the app showed.
+const UILocalesParam = "ui_locales"
+
 // SessionCookieName is the browser session cookie. Courrier and Agenda already
 // ship this exact name; adopting theirs keeps two apps from having to log
 // everyone out twice.
