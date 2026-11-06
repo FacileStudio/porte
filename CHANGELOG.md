@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.10.0 — 2026-11-06
+
 Root module: **v0.10.0**. Read the breaking notes and run the checklist before bumping.
 
 ### Upgrade checklist
