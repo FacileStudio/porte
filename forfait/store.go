@@ -8,12 +8,20 @@ import (
 )
 
 // Store holds the entitlements of every scope from the last authoritative
-// snapshot, one whose EntitlementsRevision is above 0. It is safe for concurrent use. Issuer and Logger are read on
-// every call and must be set before the Store is shared.
+// snapshot, one whose EntitlementsRevision is above 0. It is safe for
+// concurrent use. Issuer and Logger are read on every call and must be set
+// before the Store is shared.
+//
+// Until the first authoritative snapshot, the Store fails open: every
+// declared feature is enabled and unlimited, and one warning is logged. That
+// is meant for the window before Registre serves entitlements at all, not as
+// a fallback for an outage: after the first snapshot the Store keeps the last
+// one it applied while Registre is unreachable.
 //
 // The Store lives in memory. So that a restart never fails open again, an app
 // saves Export's document (one row or one file) after every Apply, and calls
-// Import with it at boot, before the first pull.
+// Import with it at boot, before the first pull. See Reset for what to do
+// after Registre's database is restored from a backup.
 type Store struct {
 	// Issuer is the app's OIDC issuer. When set, every LimitError carries
 	// UpgradeURL(Issuer, scope.SpaceID).
@@ -35,15 +43,22 @@ type Store struct {
 
 // NewStore declares the features an app enforces. It never panics: a key that
 // is malformed is skipped and reads as undeclared, the first of two
-// declarations of one key wins, and a malformed Default denies.
+// declarations of one key wins, and a missing or malformed Default denies.
+// Each of those is a programmer error, and NewStore logs it to
+// slog.Default(), since Store.Logger can only be set once NewStore returns.
 func NewStore(features ...Feature) *Store {
 	s := &Store{features: map[string]Feature{}, defaults: map[string]value{}}
 	for _, feature := range features {
 		if _, seen := s.features[feature.Key]; seen || !keyPattern.MatchString(feature.Key) {
+			slog.Warn("forfait: feature skipped: malformed or duplicate key", slog.String("key", feature.Key))
 			continue
 		}
 		s.features[feature.Key] = feature
-		s.defaults[feature.Key], _ = decode(feature.Kind, feature.Default)
+		fallback, ok := decode(feature.Kind, feature.Default)
+		if !ok {
+			slog.Warn("forfait: feature has a missing or malformed Default, it denies", slog.String("key", feature.Key))
+		}
+		s.defaults[feature.Key] = fallback
 	}
 	return s
 }
@@ -57,32 +72,53 @@ func NewStore(features ...Feature) *Store {
 // From the first revision on, every accepted snapshot is the whole truth and
 // a scope it carries no value for reads the feature defaults.
 //
-// Apply also ignores a snapshot older than the state it holds: a lower
-// EntitlementsRevision, or a lower non-zero Version. State restored by Import
-// counts as applied for that comparison. Malformed values, undeclared keys and
-// scopes with more than 200 keys are dropped, and the features they name read
-// as their defaults.
+// Apply refuses a snapshot older than the state it holds, and logs a warning
+// with both sets of versions each time: a lower EntitlementsRevision, or, at
+// the same revision, a lower non-zero Version. A higher revision is applied
+// whatever its Version, so a Registre whose directory version went back (a
+// restore) still delivers new entitlements. State restored by Import counts as
+// applied for that comparison. When the revision itself went back, call Reset.
+//
+// Malformed values, undeclared keys and scopes with more than 200 keys are
+// dropped, and the features they name read as their defaults. A space with no
+// id and a person with no subject are skipped.
 func (s *Store) Apply(snap directory.Snapshot) {
 	spaces := make(map[string]map[string]value, len(snap.Spaces))
 	for _, space := range snap.Spaces {
-		spaces[space.ID] = index(s.features, space.Entitlements)
+		if space.ID != "" {
+			spaces[space.ID] = index(s.features, space.Entitlements)
+		}
 	}
 	people := make(map[string]map[string]value, len(snap.People))
 	for _, person := range snap.People {
-		people[person.Subject] = index(s.features, person.Entitlements)
+		if person.Subject != "" {
+			people[person.Subject] = index(s.features, person.Entitlements)
+		}
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.accepts(snap.Version, snap.EntitlementsRevision) {
-		return
+	held := [2]int64{s.version, s.revision}
+	accepted := s.accepts(snap.Version, snap.EntitlementsRevision)
+	if accepted {
+		s.spaces, s.people, s.version, s.revision = spaces, people, snap.Version, snap.EntitlementsRevision
 	}
-	s.spaces, s.people, s.version, s.revision = spaces, people, snap.Version, snap.EntitlementsRevision
+	s.mu.Unlock()
+	if !accepted && snap.EntitlementsRevision > 0 {
+		s.logger().Warn("forfait: snapshot refused as older than the state held; after a Registre restore, call Reset",
+			slog.Int64("version", snap.Version), slog.Int64("revision", snap.EntitlementsRevision),
+			slog.Int64("held_version", held[0]), slog.Int64("held_revision", held[1]))
+	}
 }
 
 // accepts reports whether state at version and revision may replace what the
 // Store holds. The caller holds the write lock.
 func (s *Store) accepts(version, revision int64) bool {
-	return revision > 0 && revision >= s.revision && (version == 0 || version >= s.version)
+	switch {
+	case revision <= 0 || revision < s.revision:
+		return false
+	case revision > s.revision:
+		return true
+	}
+	return version == 0 || version >= s.version
 }
 
 // Enabled reports whether a Bool feature is on for the scope. Before the
@@ -151,9 +187,5 @@ func (s *Store) resolve(sc Scope, key string, kind Kind) value {
 
 // warnUnsynced logs that the Store is allowing everything for now.
 func (s *Store) warnUnsynced() {
-	logger := s.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	logger.Warn("forfait: no entitlements snapshot applied yet, allowing every feature")
+	s.logger().Warn("forfait: no entitlements snapshot applied yet, allowing every feature")
 }
