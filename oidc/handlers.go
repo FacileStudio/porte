@@ -142,10 +142,9 @@ func (k *Kit) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	k.sessions.SetCookie(w, r, flowCookie, encoded, int(flowTTL.Seconds()))
 
-	http.Redirect(w, r, k.oauth.AuthCodeURL(state,
-		oauth2.S256ChallengeOption(pending.Verifier),
-		gooidc.Nonce(nonce),
-	), http.StatusFound)
+	options := append([]oauth2.AuthCodeOption{oauth2.S256ChallengeOption(pending.Verifier), gooidc.Nonce(nonce)},
+		uiLocales(r.URL.Query().Get(porte.UILocalesParam))...)
+	http.Redirect(w, r, k.oauth.AuthCodeURL(state, options...), http.StatusFound)
 }
 
 // maxCLIState bounds the echoed nonce. It is opaque to the server, so the only

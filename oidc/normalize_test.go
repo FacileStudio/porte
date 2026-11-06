@@ -1,6 +1,11 @@
 package oidc
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+
+	"github.com/FacileStudio/porte"
+)
 
 // TestTheLocaleClaimReachesTheStoreNormalised walks a real callback per
 // shape: a regional tag, an unsupported language, no claim, and a non-string
@@ -44,5 +49,27 @@ func TestTheEmailClaimReachesTheStoreLowercased(t *testing.T) {
 	h.stores.mu.Unlock()
 	if email != "case@example.test" {
 		t.Errorf("the address reached the store as %q", email)
+	}
+}
+
+// TestTheSignInLanguageReachesTheProvider pins the forward and the filter:
+// one of the four languages passes, anything else never reaches the URL.
+func TestTheSignInLanguageReachesTheProvider(t *testing.T) {
+	h := newHarness(t, nil)
+	client := h.client(t)
+	cases := map[string]string{"fr": "fr", "DE": "de", " es ": "es", "it": "", "fr de": "", "fr-FR": "", "": "", "<x>": ""}
+	for sent, want := range cases {
+		response, err := client.Get(h.app.URL + porte.RouteLogin + "?" + url.Values{porte.UILocalesParam: {sent}}.Encode())
+		if err != nil {
+			t.Fatalf("GET login: %v", err)
+		}
+		_ = response.Body.Close()
+		location, err := url.Parse(response.Header.Get("Location"))
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if got := location.Query().Get("ui_locales"); got != want || (want == "" && location.Query().Has("ui_locales")) {
+			t.Errorf("ui_locales %q reached the provider as %q, want %q", sent, got, want)
+		}
 	}
 }
