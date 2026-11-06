@@ -3,6 +3,7 @@ package directory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -25,6 +26,10 @@ const DeletionsPath = "/api/registre/deletions"
 const DeletionRetention = 60 * 24 * time.Hour
 
 const overlap = time.Minute
+
+const listLimit = 1000
+
+var errNoCallback = errors.New("directory: Deletions.OnPersonDeleted is nil")
 
 // Deleted is one erased account as Registre lists it.
 type Deleted struct {
@@ -57,7 +62,9 @@ type StateStore interface {
 	Save(ctx context.Context, state []byte) error
 }
 
-// Deletions erases the people Registre erased. It lists them from Registre
+// Deletions erases the people Registre erased. Run exactly one replica's Run
+// (a leader, or a single worker): two replicas would race on State and could
+// each call the callback for the same person. It lists them from Registre
 // (Poll, Run) and, when the app declared a deletion_uri, also accepts
 // Registre's signed push (Handler). Both paths hand each person to
 // OnPersonDeleted once.
@@ -89,28 +96,6 @@ type Deletions struct {
 	keys  keySet
 }
 
-// Poll lists Registre's erasures since the saved cursor and handles each in
-// order. It stops at the first failure without moving past it, and returns
-// that error.
-func (d *Deletions) Poll(ctx context.Context) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	state, err := d.load(ctx)
-	if err != nil {
-		return err
-	}
-	list, err := d.Client.Deletions(ctx, state.since())
-	if err != nil {
-		return err
-	}
-	for _, person := range list {
-		if err := d.handle(ctx, person.Subject, person.DeletedAt); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // Run polls at once, then every Interval (DefaultInterval when zero), until
 // ctx ends. A failed poll is logged and retried at the next tick.
 func (d *Deletions) Run(ctx context.Context) {
@@ -132,20 +117,28 @@ func (d *Deletions) Run(ctx context.Context) {
 	}
 }
 
-// handle erases one person unless they were handled already, then records
-// it. The caller holds d.mu.
-func (d *Deletions) handle(ctx context.Context, subject string, at time.Time) error {
+// handle erases one person unless they were handled already, and records it
+// in memory. The caller saves, once per page for a poll and once per notice
+// for a push, and holds d.mu.
+func (d *Deletions) handle(ctx context.Context, subject string) error {
 	state, err := d.load(ctx)
 	if err != nil {
 		return err
 	}
-	if !state.done(subject) {
-		if err := d.erase(ctx, subject); err != nil {
-			return err
-		}
+	if state.done(subject) {
+		return nil
 	}
-	state.record(subject, at, time.Now())
-	if err := d.save(ctx, state); err != nil {
+	if err := d.erase(ctx, subject); err != nil {
+		return err
+	}
+	state.record(subject, time.Now())
+	return nil
+}
+
+// persist saves the state; on failure it forgets the in-memory copy, so the
+// next call reloads what was last stored and handles the people again.
+func (d *Deletions) persist(ctx context.Context) error {
+	if err := d.save(ctx, d.state); err != nil {
 		d.state = nil
 		return err
 	}

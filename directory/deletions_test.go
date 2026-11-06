@@ -70,8 +70,8 @@ func TestFailedCallbackKeepsTheCursorAndRetries(t *testing.T) {
 	if err := d.Poll(context.Background()); err == nil {
 		t.Fatal("poll succeeded though the callback failed")
 	}
-	if len(c.porte) != 1 {
-		t.Fatalf("porte erased %v, want only alice before the failure", c.porte)
+	if len(c.porte) != 2 {
+		t.Fatalf("porte erased %v, want alice and carol despite bob failing", c.porte)
 	}
 	c.fail["bob"] = false
 	if err := receiver(reg, c, state).Poll(context.Background()); err != nil {
@@ -123,7 +123,6 @@ func badNotices(reg, forged *registre, good string) map[string]string {
 		"foreign key":      forged.notice("alice"),
 		"wrong typ":        reg.notice("alice", func(h, _ map[string]any) { h["typ"] = "JWT" }),
 		"alg none":         reg.notice("alice", func(h, _ map[string]any) { h["alg"] = "none" }),
-		"unknown kid":      reg.notice("alice", func(h, _ map[string]any) { h["kid"] = "zz" }),
 		"wrong issuer":     reg.notice("alice", func(_, c map[string]any) { c["iss"] = "https://evil.test" }),
 		"wrong audience":   reg.notice("alice", func(_, c map[string]any) { c["aud"] = []string{"other"} }),
 		"expired": reg.notice("alice", func(_, c map[string]any) {
@@ -142,7 +141,7 @@ func TestPushRejectsOtherMethods(t *testing.T) {
 	d := receiver(reg, &calls{}, nil)
 	recorder := httptest.NewRecorder()
 	d.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, DeletionsPath, nil))
-	if recorder.Code != http.StatusMethodNotAllowed {
+	if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != http.MethodPost {
 		t.Fatalf("GET = %d", recorder.Code)
 	}
 }

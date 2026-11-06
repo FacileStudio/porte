@@ -736,8 +736,8 @@ development. It carries an idempotent `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
 migrates by re-applying it.
 
 `Store.EraseIdentity(ctx, provider, subject)` deletes the identity row, and every session, named
-token, login code and magic link of its account, under the account's advisory lock. It leaves
-`porte_users` to the app and is a no-op for an identity already gone. Pass it as
+token, login code and magic link of its account, under the account's advisory lock. It removes only that identity by design: the account's other identities and
+`porte_users` stay for the app, and it is a no-op for an identity already gone. Pass it as
 `directory.Deletions.Erase`.
 
 `UpsertFromOIDC` runs in one transaction. A login that created a user but failed to link the
@@ -936,17 +936,25 @@ last applied one is skipped. `Apply` must be idempotent.
 ### Deletions
 
 `Deletions` hands each person Registre erased to `OnPersonDeleted` once, then runs `Erase`. A
-person counts as handled only after both returned nil and `State.Save` stored it, so any failure
-leaves the person pending: the next poll, or Registre's retried push, tries again. Delivery is at
-least once, so the callback must be idempotent. `Poll` stops at the first failure and the cursor
-stays before it. The state holds the cursor and every handled subject for 60 days, which is also
-what makes a push followed by a poll, or a replayed push, reach the callback once.
+person counts as handled only after both returned nil, and the state is saved once per page of a
+poll or per pushed notice. Delivery is at least once, so the callback must be idempotent. Run
+exactly one replica's `Run`: two would race on `State` and could each call the callback.
+
+`Poll` pages through Registre's list (1000 per call) in one call. A person who fails does not block
+the others: the rest are handled, the cursor stays before the earliest failure, and the errors come
+back joined. The state holds the cursor and every handled subject for 60 days, which is why a
+failed person is retried alone and why a push followed by a poll, or a replayed push, reaches the
+callback once. If 1000 or more notices share one timestamp, Registre's API cannot list the rest,
+and `Poll` returns an error after handling what it got. A nil `OnPersonDeleted` is an error from
+`Poll` and a 500 from `Handler`.
 
 `Handler()` answers 400 to a notice that does not verify, 503 when the issuer's keys cannot be
-fetched, 500 when erasing failed, 202 otherwise. It verifies `typ` `secevent+jwt`, RS256 against the
-issuer's JWKS (found through discovery, refetched at most once a minute), `iss`, `aud` containing
-`Client.ClientID`, `iat`/`exp` within a minute of now and at most an hour apart, and the
-`UserDeletedEvent` key. Mount it on `DeletionsPath`, never on `SyncPath`.
+fetched or a `kid` is unknown inside the one-minute refetch gap, 500 when erasing failed, 405 with
+`Allow: POST` to other methods, 202 otherwise. It verifies `typ` `secevent+jwt`, RS256 against the
+issuer's JWKS, `iss`, `aud` containing `Client.ClientID`, `iat`/`exp` within a minute of now and at
+most an hour apart, and the `UserDeletedEvent` key. The JWKS comes from the discovery document,
+which must name the configured issuer; `jwks_uri` must be https unless the issuer is plain http,
+and redirects are not followed. Mount it on `DeletionsPath`, never on `SyncPath`.
 
 ## porte/forfait
 

@@ -15,8 +15,9 @@ type deletionState struct {
 	Done   map[string]time.Time `json:"done"`
 }
 
-// since is where the next poll starts. It backs up a little so notices that
-// share the cursor's instant are listed again and skipped as done.
+// since is where the next poll starts. It backs up a minute, so a notice
+// that committed after a later one is still listed; handled subjects are
+// skipped, and paging never depends on the backup.
 func (s *deletionState) since() time.Time {
 	if s.Cursor.IsZero() {
 		return time.Now().Add(-DeletionRetention)
@@ -29,13 +30,10 @@ func (s *deletionState) done(subject string) bool {
 	return ok
 }
 
-// record marks subject handled at now, moves the cursor to at when later, and
-// forgets subjects Registre no longer lists.
-func (s *deletionState) record(subject string, at, now time.Time) {
+// record marks subject handled at now and forgets subjects Registre no longer
+// lists.
+func (s *deletionState) record(subject string, now time.Time) {
 	s.Done[subject] = now
-	if at.After(s.Cursor) {
-		s.Cursor = at
-	}
 	for done, when := range s.Done {
 		if now.Sub(when) > DeletionRetention+overlap {
 			delete(s.Done, done)
