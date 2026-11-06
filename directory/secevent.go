@@ -57,33 +57,41 @@ func (a *audience) UnmarshalJSON(b []byte) error {
 func (d *Deletions) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
+			w.Header().Set("Allow", http.MethodPost)
 		}
-		raw, err := readAll(r.Body, maxNoticeSize)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		claims, err := d.verify(r.Context(), strings.TrimSpace(string(raw)), time.Now())
-		if errors.Is(err, ErrUnavailable) {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		d.mu.Lock()
-		err = d.handle(r.Context(), claims.Subject, time.Time{})
-		d.mu.Unlock()
-		if err != nil {
-			d.logger().Warn("directory: erase from a pushed notice failed", "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(d.receive(r))
 	})
+}
+
+// receive verifies and handles one pushed notice and returns the status.
+func (d *Deletions) receive(r *http.Request) int {
+	if r.Method != http.MethodPost {
+		return http.StatusMethodNotAllowed
+	}
+	if d.OnPersonDeleted == nil {
+		return http.StatusInternalServerError
+	}
+	raw, err := readAll(r.Body, maxNoticeSize)
+	if err != nil {
+		return http.StatusBadRequest
+	}
+	claims, err := d.verify(r.Context(), strings.TrimSpace(string(raw)), time.Now())
+	if errors.Is(err, ErrUnavailable) {
+		return http.StatusServiceUnavailable
+	}
+	if err != nil {
+		return http.StatusBadRequest
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if err = d.handle(r.Context(), claims.Subject); err == nil {
+		err = d.persist(r.Context())
+	}
+	if err != nil {
+		d.logger().Warn("directory: erase from a pushed notice failed", "error", err)
+		return http.StatusInternalServerError
+	}
+	return http.StatusAccepted
 }
 
 // verify checks a compact JWS against everything the Handler promises.

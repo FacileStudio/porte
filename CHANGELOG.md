@@ -14,18 +14,24 @@ calls `OnPersonDeleted(ctx, provider, subject)` once per person. `pg.Store.Erase
 porte's own rows (identity with its provider tokens, sessions, named tokens, login codes, magic
 links) and is wired as `Deletions.Erase`.
 
-- **Polling is the source of truth.** Registre keeps a notice for 60 days. The receiver persists a
-  cursor plus every handled subject through a `StateStore` the app implements over one row, as
-  `forfait.Store.Export` does for plans. A failing callback or erase leaves the person pending and the
-  cursor before them; the next poll or Registre's retry tries again. Delivery is at least once, so
+- **Polling is the source of truth.** Registre keeps a notice for 60 days and lists 1000 per call.
+  `Poll` pages through the list in one call. The receiver persists a cursor plus every handled subject
+  through a `StateStore` the app implements over one row, as `forfait.Store.Export` does for plans.
+  A failing callback or erase leaves that person pending and does not block the others: the rest are
+  handled, the cursor stays before the earliest failure, and the errors come back joined. The next
+  poll or Registre's retry tries again. Run exactly one replica's `Run`. Delivery is at least once, so
   `OnPersonDeleted` must be idempotent. The handled-subject record is why a push followed by a poll,
   or a replayed push, reaches the callback once.
 - **The push is optional and verified.** `Handler()` accepts only `typ` `secevent+jwt`, RS256 from the
   issuer's JWKS, the right `iss` and `aud`, a short time window and the `user-deleted` event, else 400.
-  Mount it on `DeletionsPath` and set that URL as the client's `deletion_uri` in Registre. Never on
+  The discovery document must name the configured issuer, `jwks_uri` must be https (unless the issuer
+  is plain http) and key fetches follow no redirects. A key-fetch failure or a `kid` unknown inside
+  the one-minute refetch gap answers 503 so Registre retries. Mount it on `DeletionsPath` and set that
+  URL as the client's `deletion_uri` in Registre. Never on
   `SyncPath`: the sync handler answers 202 to any POST.
 - **The callback runs before `Erase`**, so the app can still resolve its account from porte's
-  identity rows. `EraseIdentity` leaves `porte_users` to the app.
+  identity rows. `EraseIdentity` removes only that one identity and leaves `porte_users` and the
+  account's other identities to the app.
 - `directory.Client` gained `Deletions(ctx, since)`. `directory` stays standard-library only.
 
 Upgrade note for apps: bump `porte` to v0.12.0 and `porte/directory` to v0.3.0, implement

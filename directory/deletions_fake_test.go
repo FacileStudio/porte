@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -37,7 +38,7 @@ func newRegistre(t *testing.T) *registre {
 	r := &registre{t: t, key: key, clients: "app"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]string{"jwks_uri": r.server.URL + "/keys"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": r.server.URL, "jwks_uri": r.server.URL + "/keys"})
 	})
 	mux.HandleFunc("/keys", func(w http.ResponseWriter, _ *http.Request) {
 		n := base64.RawURLEncoding.EncodeToString(key.N.Bytes())
@@ -66,7 +67,7 @@ func (r *registre) deletions(w http.ResponseWriter, req *http.Request) {
 	r.sinces = append(r.sinces, since)
 	out := []Deleted{}
 	for _, d := range r.list {
-		if d.DeletedAt.After(since) {
+		if d.DeletedAt.After(since) && len(out) < 1000 {
 			out = append(out, d)
 		}
 	}
@@ -77,6 +78,7 @@ func (r *registre) delete(subject string, at time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.list = append(r.list, Deleted{Subject: subject, DeletedAt: at})
+	sort.SliceStable(r.list, func(i, j int) bool { return r.list[i].DeletedAt.Before(r.list[j].DeletedAt) })
 }
 
 type mutation func(header, claims map[string]any)
