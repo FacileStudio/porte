@@ -20,9 +20,10 @@ const exportVersion = 1
 // document Export can produce from a snapshot Client accepted importable.
 const maxExport = 4 * directory.MaxSnapshotBytes
 
-// errAlreadyApplied refuses an Import over state this process already holds,
-// which is newer than anything saved before it.
-var errAlreadyApplied = errors.New("forfait: import after a snapshot was applied")
+// ErrAlreadyApplied is what Import answers once this Store applied a
+// snapshot: the state in memory is newer than anything saved before it, so
+// the Store keeps it and the call changes nothing.
+var ErrAlreadyApplied = errors.New("forfait: import after a snapshot was applied")
 
 // exported is the persisted shape of a Store's applied state.
 type exported struct {
@@ -55,15 +56,20 @@ func (s *Store) Export() ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// Import restores a document Export produced. It reads at most four
+// Import restores a document Export produced. Empty input (nothing saved
+// yet, on a first boot) is a no-op that returns nil, so an app passes
+// whatever its storage holds without a special case. It reads at most four
 // directory.MaxSnapshotBytes, rejects unknown fields, trailing data, negative
 // versions and any document version but the current one, and filters every
 // value through the same rules as Apply: undeclared keys, malformed values
 // and scopes over 200 keys read as defaults. It refuses to run once this
-// Store applied a snapshot, and on any error the Store is left unchanged,
+// Store applied a snapshot, with ErrAlreadyApplied, and on any error the Store is left unchanged,
 // still failing open. The restored Version and EntitlementsRevision then
 // guard Apply against an older snapshot.
 func (s *Store) Import(b []byte) error {
+	if len(bytes.TrimSpace(b)) == 0 {
+		return nil
+	}
 	document, err := decodeExport(b)
 	if err != nil {
 		return err
@@ -72,7 +78,7 @@ func (s *Store) Import(b []byte) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.revision > 0 {
-		return errAlreadyApplied
+		return ErrAlreadyApplied
 	}
 	if document.EntitlementsRevision == 0 {
 		return nil

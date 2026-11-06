@@ -7,9 +7,12 @@
 // something new. Reading, downloading and deleting are never gated, so a
 // downgrade never locks anyone out of their own data.
 //
-// A Store fails open: until the first snapshot arrives every declared feature
-// is enabled and unlimited, and a warning is logged once. After that it keeps
-// the last snapshot it applied for as long as Registre stays unreachable.
+// A Store fails open only until its first authoritative snapshot (one with a
+// non-zero EntitlementsRevision) arrives: every declared feature is enabled
+// and unlimited meanwhile, and a warning is logged once. That covers an app
+// deployed before Registre serves entitlements. After it, an outage changes
+// nothing: the Store keeps the last snapshot it applied for as long as
+// Registre stays unreachable, and Export and Import carry it across restarts.
 package forfait
 
 import (
@@ -46,6 +49,11 @@ type Feature struct {
 // Scope is what an entitlement is read for. SpaceID is the Registre space id
 // a resource belongs to. An empty SpaceID is the personal scope of Subject,
 // the Registre `sub` of the person who holds the resource outside any space.
+//
+// Both fields come from the app's own server-side state: the Registre id
+// stored on the resource's space row and the subject of the authenticated
+// identity, never a value the client sent. A client that could choose the
+// SpaceID could pick the most generous plan it can name.
 //
 // An empty SpaceID always means the person, never "some space". An app passes
 // the Registre id of the space a resource belongs to, and refuses, rather than

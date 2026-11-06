@@ -82,7 +82,6 @@ func TestImportFiltersLikeApply(t *testing.T) {
 // Store failing open.
 func TestImportRejects(t *testing.T) {
 	documents := map[string]string{
-		"empty":             ``,
 		"garbage":           `{"version":`,
 		"not an object":     `[1]`,
 		"no version":        `{"entitlements_revision":1}`,
