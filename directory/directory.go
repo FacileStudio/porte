@@ -117,6 +117,11 @@ type Client struct {
 // a caller can keep serving its last applied state and retry later.
 var ErrUnavailable = errors.New("directory: registre unavailable")
 
+// ErrSnapshotTooLarge is a snapshot body over MaxSnapshotBytes. Retrying will
+// not help, unlike ErrUnavailable: Registre's directory has outgrown the cap,
+// and the app keeps its last applied state until the cap is raised.
+var ErrSnapshotTooLarge = errors.New("directory: snapshot exceeds MaxSnapshotBytes")
+
 // Snapshot fetches every shared space as Registre holds it now.
 func (c Client) Snapshot(ctx context.Context) (Snapshot, error) {
 	return c.call(ctx, http.MethodGet, "/api/directory/snapshot", nil)
@@ -149,24 +154,37 @@ func (c Client) call(ctx context.Context, method, path string, body []byte) (Sna
 	request.Header.Set("Content-Type", "application/json")
 	response, err := c.httpClient().Do(request)
 	if err != nil {
-		return Snapshot{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return Snapshot{}, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
 		return Snapshot{}, fmt.Errorf("%w: %s answered %d", ErrUnavailable, path, response.StatusCode)
 	}
+	return decodeSnapshot(response.Body)
+}
+
+// decodeSnapshot reads at most one byte past the cap, so a body over it is
+// told apart from a truncated or malformed one.
+func decodeSnapshot(body io.Reader) (Snapshot, error) {
+	data, err := io.ReadAll(io.LimitReader(body, MaxSnapshotBytes+1))
+	if err != nil {
+		return Snapshot{}, fmt.Errorf("%w: read the snapshot: %w", ErrUnavailable, err)
+	}
+	if len(data) > MaxSnapshotBytes {
+		return Snapshot{}, ErrSnapshotTooLarge
+	}
 	var snapshot Snapshot
-	if err := json.NewDecoder(io.LimitReader(response.Body, MaxSnapshotBytes)).Decode(&snapshot); err != nil {
-		return Snapshot{}, fmt.Errorf("%w: decode the snapshot: %v", ErrUnavailable, err)
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return Snapshot{}, fmt.Errorf("%w: decode the snapshot: %w", ErrUnavailable, err)
 	}
 	return snapshot, nil
 }
 
-// httpClient is the configured client, or one with a sane timeout.
+// httpClient is the configured client, or one with a 10 second timeout.
 func (c Client) httpClient() *http.Client {
 	if c.HTTP != nil {
 		return c.HTTP
 	}
-	return &http.Client{Timeout: 15 * time.Second}
+	return &http.Client{Timeout: 10 * time.Second}
 }
