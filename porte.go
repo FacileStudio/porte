@@ -327,6 +327,16 @@ type Config struct {
 	// unset regresses nothing.
 	ClaimsScope string
 
+	// ExtraScopes are requested on top of the standard four. A provider that
+	// carries an app-specific claim behind its own scope (Registre's
+	// connections, for one) is read by naming that scope here and the claim
+	// in ExtraClaims.
+	ExtraScopes []string
+
+	// ExtraClaims names the top-level claims copied, raw, into Claims.Extra.
+	// A name the token does not carry is simply absent from the map.
+	ExtraClaims []string
+
 	// SessionTTL, ClaimsTTL and LoginCodeTTL fall back to the Default
 	// constants above when zero.
 	SessionTTL   time.Duration
@@ -498,7 +508,7 @@ func (c Config) Scopes() []string {
 	if c.ClaimsEnabled() {
 		scopes = append(scopes, c.ClaimsScope)
 	}
-	return scopes
+	return append(scopes, c.ExtraScopes...)
 }
 
 // Validate rejects a half-configured provider at startup. A missing client

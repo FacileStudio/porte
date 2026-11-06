@@ -714,6 +714,12 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	extra, err := extraClaims(k.cfg.ExtraClaims, info.Claims)
+	if err != nil {
+		httpjson.WriteError(w, errors.Internal("failed to parse the extra userinfo claims", err))
+		return
+	}
+
 	claims := porte.Claims{
 		Provider:          stored.Provider,
 		Subject:           stored.Subject,
@@ -726,6 +732,7 @@ func (k *Kit) handleSyncProfile(w http.ResponseWriter, r *http.Request) {
 		Picture:           raw.Picture,
 		Locale:            localeClaim(raw.Locale),
 		Roles:             stored.Roles,
+		Extra:             extra,
 	}
 	if claims.Email == "" {
 		claims.Email = identity.Email

@@ -16,6 +16,7 @@ package oidc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -289,6 +290,11 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 		roles = rolesOnly.Roles
 	}
 
+	extra, err := extraClaims(k.cfg.ExtraClaims, idToken.Claims)
+	if err != nil {
+		return porte.Claims{}, err
+	}
+
 	return porte.Claims{
 		Provider:          k.cfg.Issuer,
 		Subject:           idToken.Subject,
@@ -301,6 +307,7 @@ func (k *Kit) claimsFromIDToken(idToken *gooidc.IDToken) (porte.Claims, error) {
 		Picture:           raw.Picture,
 		Locale:            localeClaim(raw.Locale),
 		Roles:             roles,
+		Extra:             extra,
 	}, nil
 }
 
@@ -345,4 +352,25 @@ func emailClaimAsserted(value any) (verified, asserted bool) {
 		}
 	}
 	return false, false
+}
+
+// extraClaims copies the claims an app asked for in Config.ExtraClaims out of
+// the verified token, raw. It decodes the whole claim set once and keeps only
+// the named keys, so a token carrying more than the app asked for leaks
+// nothing into Claims.
+func extraClaims(names []string, decode func(any) error) (map[string]json.RawMessage, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	var all map[string]json.RawMessage
+	if err := decode(&all); err != nil {
+		return nil, fmt.Errorf("porte/oidc: cannot read the extra claims: %w", err)
+	}
+	extra := make(map[string]json.RawMessage, len(names))
+	for _, name := range names {
+		if value, ok := all[name]; ok {
+			extra[name] = value
+		}
+	}
+	return extra, nil
 }

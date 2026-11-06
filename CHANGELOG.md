@@ -5,6 +5,13 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+**Provider-specific claims, without forking porte.** `Config.ExtraScopes` adds scopes to the
+standard four and `Config.ExtraClaims` names top-level claims that land, undecoded, in
+`Claims.Extra`. Registre's `connections` claim (the Discord id a person linked) is the first
+user: the app asks for the scope, names the claim, and decodes the JSON itself. Only the named
+keys are copied, so a token carrying more than the app asked for leaks nothing into `Claims`.
+Both the login callback and the userinfo refresh fill it. Additive: with neither field set
+nothing changes.
 ## v0.10.1 — 2026-11-06
 
 Root module: **v0.10.1**. Additive; no migration.

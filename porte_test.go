@@ -101,6 +101,14 @@ func TestScopesCarryClaimsOnlyWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestScopesAppendExtraScopes(t *testing.T) {
+	cfg := porte.Config{Issuer: "https://sso.facile.studio/", ExtraScopes: []string{"connections"}}
+	scopes := cfg.Scopes()
+	if len(scopes) != 5 || scopes[4] != "connections" {
+		t.Fatalf("extra scope must follow the standard four, got %v", scopes)
+	}
+}
+
 func TestResolvedFillsZeroDurations(t *testing.T) {
 	resolved := porte.Config{}.Resolved()
 	if resolved.SessionTTL != porte.DefaultSessionTTL ||

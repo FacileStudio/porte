@@ -2,6 +2,7 @@ package porte
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -157,6 +158,10 @@ type Claims struct {
 	// Roles is the flat roles claim, absent unless Config.ClaimsScope is
 	// set and the provider actually emitted it.
 	Roles []string
+
+	// Extra holds the claims named in Config.ExtraClaims, undecoded, so an
+	// app reads its own claim without porte knowing its shape.
+	Extra map[string]json.RawMessage
 
 	// Tokens is the OIDC token material, needed to refresh the profile and
 	// the claims later without a second login.
