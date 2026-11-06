@@ -161,14 +161,43 @@ gated; reading, downloading and deleting never are. `adding == 0` always passes,
 needs strictness checks again inside the transaction that creates the resource.
 
 Until a snapshot with a non-zero `EntitlementsRevision` arrives the store allows everything and
-logs one warning; after that it keeps the last values it applied, and ignores any snapshot older
-than them.
+logs one warning; after that it keeps the last values it applied, through any outage, and refuses
+an older snapshot with a warning: a lower revision, or a lower directory version at the same
+revision.
 
-The store lives in memory, so persist it to avoid failing open again after a restart: save
-`plans.Export()` (one row or one file) after every `Apply`, and call `plans.Import(saved)` at boot
-before the first pull. `Import` refuses a document over four `directory.MaxSnapshotBytes`, an
-unknown version or unknown fields, filters every value through the same rules as `Apply`, and never overwrites a snapshot the
-process already applied.
+The store lives in memory, so persist it to avoid failing open again after a restart:
+
+```go
+saved, err := loadPlans(ctx)
+if err != nil {
+	return err
+}
+if err := plans.Import(saved); err != nil {
+	return err
+}
+
+syncer := &directory.Syncer{Client: client, Apply: func(ctx context.Context, s directory.Snapshot) error {
+	plans.Apply(s)
+	state, err := plans.Export()
+	if err != nil {
+		return err
+	}
+	if err := savePlans(ctx, state); err != nil {
+		return err
+	}
+	return applySpaces(ctx, s)
+}}
+go syncer.Run(ctx)
+```
+
+`loadPlans` and `savePlans` are the app's: one row or one file. `Import` of empty input (nothing
+saved yet) is a no-op, and `Import` after an `Apply` answers `forfait.ErrAlreadyApplied` without
+changing anything. `Import` also refuses a document over four `directory.MaxSnapshotBytes`, an
+unknown version or unknown fields, and filters every value through the same rules as `Apply`.
+
+After Registre's database is restored from a backup, the entitlements revision can go back, and
+`Apply` then refuses every snapshot with a logged warning. Call `plans.Reset()` and delete the
+saved state; the next pull applies normally.
 
 ## Why
 

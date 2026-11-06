@@ -5,6 +5,35 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### directory/v0.2.1 and forfait/v0.1.1
+
+Patch releases from the full review. Both are compatible with v0.2.0 and v0.1.0;
+`forfait/v0.1.1` still requires `directory v0.2.0`, since it uses no new directory API.
+
+- **A Registre restore no longer freezes forfait.** `Apply` refused any snapshot with a lower
+  `Version` or `EntitlementsRevision`, silently, so a restore from backup left every app on its
+  old plans for good, and `Import` carried the freeze across restarts. Now a higher revision is
+  applied whatever its version (held v900/rev40, then v850/rev41 with an upgrade: applied). A lower
+  version is refused only at the same revision, and every refusal logs a warning with both sets
+  of versions. When the revision itself went back, call the new `Store.Reset` and delete the
+  saved `Export` state; the next pull then applies normally.
+- **`directory.Syncer.Sync` is serialised, the pull included.** A boot `Sync` overlapping `Run`
+  could run `Apply` twice at once and commit an older snapshot after a newer one.
+- **A burst of nudges costs one pull, not two.** The nudge that queued during the debounce is
+  now dropped, because the pull about to run covers it.
+- **`directory.ErrSnapshotTooLarge`** replaces `ErrUnavailable` for a body over
+  `MaxSnapshotBytes`: retrying cannot help, and the log should say so. The client reads one byte
+  past the cap to tell the two apart. The default HTTP timeout is 10 s, down from 15 s.
+- **`forfait.ErrAlreadyApplied` is exported**, and `Import` of empty input (nothing saved yet) is
+  a no-op that returns nil, so an app passes whatever its storage holds.
+- **`NewStore` logs each skipped or denying declaration** to `slog.Default()`: a malformed or
+  duplicate key, and a missing or malformed `Default`.
+- **`Apply` skips a space with no id and a person with no subject**, so an unlinked lookup cannot
+  land on them.
+- **Godoc**: `Scope` values must come from server-side state, never from the client; fail-open
+  covers the window before Registre serves entitlements, not an outage.
+- **CI** lints and vets the nested modules too.
+
 ## v0.10.0 — 2026-11-06
 
 Root module: **v0.10.0**. Read the breaking notes and run the checklist before bumping.
