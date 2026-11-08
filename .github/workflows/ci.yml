@@ -45,7 +45,7 @@ jobs:
       - run: go vet ./...
       - run: go test -race -timeout 20m -coverprofile=coverage.out ./...
       - name: nested modules
-        run: for m in directory forfait; do (cd "$m" && go vet ./... && go test -race -timeout 20m ./...) || exit 1; done
+        run: for m in directory forfait mcpauth; do (cd "$m" && go vet ./... && go test -race -timeout 20m ./...) || exit 1; done
       - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
@@ -57,3 +57,7 @@ jobs:
         with:
           version: v2.12.2
           working-directory: forfait
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+          working-directory: mcpauth
