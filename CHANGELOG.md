@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.14.0 — 2026-11-08
+
 Root module: **v0.14.0**; new nested module `mcpauth` at **v0.1.0**; `directory` stays at v0.3.0 and
 `forfait` at v0.1.1. Additive; no migration.
 
