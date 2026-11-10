@@ -5,6 +5,12 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+**`exchange` picks the identity that holds a refresh token.** A user can carry several identities
+under the Registre issuer: a subject left from a recreated account sits beside the live one, with
+no refresh token. v0.15.0 took the first match, so such a user got `ErrReconnect` without Registre
+being asked. Found on the first live exchange from Nuage. The identity with a refresh token now
+wins, the most recently synced first. Bulle's `internal/suite` has the same first-match rule.
+
 ## v0.15.0 — 2026-11-10
 
 Root module: **v0.15.0**; `directory` stays at v0.3.0, `forfait` at v0.1.1 and `mcpauth` at v0.1.0.

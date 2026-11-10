@@ -175,7 +175,8 @@ func (m *memoryIdentities) ListByUser(_ context.Context, userID int64) ([]porte.
 		row.Tokens.RefreshToken, m.stale = m.stale, ""
 	}
 	local := porte.StoredIdentity{UserID: userID, Provider: porte.ProviderLocal, Subject: "1", PasswordHash: "x"}
-	return []porte.StoredIdentity{local, row}, nil
+	leftover := porte.StoredIdentity{UserID: userID, Provider: row.Provider, Subject: "old-subject"}
+	return []porte.StoredIdentity{local, leftover, row}, nil
 }
 
 func (m *memoryIdentities) Save(_ context.Context, identity porte.StoredIdentity) error {
