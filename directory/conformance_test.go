@@ -101,7 +101,7 @@ func TestDirectorySnapshotVector(t *testing.T) {
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(map[string]any{
-		"source": "github.com/FacileStudio/porte/directory@v0.3.0", "subject": "directory_snapshot",
+		"source": "github.com/FacileStudio/porte/directory@deed682", "subject": "directory_snapshot",
 		"fixtures": map[string]any{"max_snapshot_bytes": MaxSnapshotBytes, "path": "/api/directory/snapshot"},
 		"cases":    cases,
 	}); err != nil {
