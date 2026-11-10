@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.3 — 2026-11-10
+
+Root module: **v0.18.3**; nested modules unchanged. Deprecation; no migration.
+
 ### Deprecated
 
 - **A `kit.Store` literal is deprecated: build the store with `kit.NewStore`.** Since v0.18.2
