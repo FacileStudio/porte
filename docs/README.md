@@ -5,6 +5,7 @@
 | [Configuration](configuration.md) | Every environment variable and `Config` field, and their traps |
 | [Development](development.md) | Local setup, the quality gate, versioning |
 | [API](api.md) | Every exported symbol — the frozen contract, package by package |
+| [Kit](kit.md) | `porte/kit`, the opt-in glue for an app with its own users table |
 
 `porte` is a library. It ships no service and has no deployment of its own — it is deployed by
 whatever app imports it, which is why there is no `deployment.md` here.

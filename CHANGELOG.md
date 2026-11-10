@@ -5,6 +5,28 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+**`porte/kit`: the sign-in glue apps with their own `users` table wrote by hand.** Opt-in and
+additive. 19 apps carry a `modules/auth` that wraps porte the same way: a request identity, a
+`porte.UserStore` over their table, a middleware that hydrates the identity, a GDPR erase
+callback, a picture backfill and the two mount calls. The kit is that code once.
+
+- `kit.Store` implements `porte.UserStore` through `database/sql`, configured by `kit.Columns`
+  (table and column names; the default is `users(id, email, name, avatar_url, locale)`). It
+  applies porte/pg's linking rules, makes the first account admin when `Columns.Admin` is set,
+  and takes one advisory lock for every write. `OnCreate` and `EraseData` are the app's hooks,
+  both inside the store's transaction.
+- `kit.RequireAuth`, `kit.Identity` and `kit.FromContext` replace `internal/authcontext` and
+  `internal/middleware/auth.go`.
+- `(*kit.Store).EraseAccount` has the `directory.Deletions.OnPersonDeleted` signature.
+- `kit.PictureURL` and `(*kit.Store).BackfillPictures` replace `internal/oidcavatar`.
+- `kit.Mount` delegates to `session.Manager.Mount` and `oidc.Kit.Mount` and adds no route.
+  The conformance vectors pass unchanged with the routes mounted through it.
+- Decided: the email is rewritten on sign-in only when the provider verified it, as Sonde and
+  Antenne did. Sablier, Nuage and Casier rewrote it on every sign-in.
+
+Proven on Sonde (branch `conv/kit-proof`, not merged): 467 lines removed, 85 added.
+See [docs/kit.md](docs/kit.md).
+
 ## v0.16.0 — 2026-11-10
 
 Root module: **v0.16.0**; `mcpauth` **v0.2.0**; `directory` stays at v0.3.0 and `forfait` at
