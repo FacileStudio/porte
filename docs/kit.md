@@ -78,7 +78,63 @@ field takes its default. `Admin` is the exception: empty means the table has no 
 - Every write and every erase runs under one advisory lock, so two first sign-ins cannot both
   become admin.
 
+## Pending invitations in the user menu
+
+`kit.MountInvitations` registers `GET /me/invitations`, so `GET /api/me/invitations` under the
+app's `/api` router. It is opt-in and not part of `Mount`. It answers the signed-in user's pending
+space invitations from Registre (`GET {issuer}/api/directory/invitations?sub=`, HTTP Basic with the
+directory credentials):
+
+```json
+{"count": 1, "href": "https://sso.facile.studio/invitations/0b9c1a2e-..."}
+```
+
+`href` is the one invitation's page when `count` is 1, else `{issuer}/spaces`. The route never
+fails a page: a user with no Registre identity, a store error, a Registre that is down, busy (503),
+slow (over 2 seconds) or answers anything malformed all get 200 `{"count":0}` without `href`, and
+the cause is logged at warn. A user with no identity under the issuer is never sent to Registre.
+Each answer, failures included, is cached per user for 60 seconds in a bounded cache (10,000
+users by default, oldest evicted first), and concurrent requests for one user share one call.
+
+Backend, behind the app's session middleware on its `/api` router:
+
+```go
+if err := kit.MountInvitations(api.With(requireAuth), kit.InvitationsConfig{
+	Directory:  directory.Client{Issuer: issuer, ClientID: clientID, ClientSecret: clientSecret},
+	Identities: porteStore.Identities(),
+}); err != nil {
+	return err
+}
+```
+
+`porteStore` is the app's `pg.Store`, built with its `TokenSealer` when it has one. Mount it only
+when an issuer is configured: `MountInvitations` refuses an empty issuer, client id or secret. Add
+`kit.InvitationsRoute()` to one of the app's documented modules, so the route-coverage test passes.
+On tronc v0.16.0 or later, `route.ResponseBody = kit.InvitationsResponse{}` gives it a real schema.
+
+Frontend, muse v0.18.0 or later. `UserMenuInvitations` is `{ count, href, label? }` with `href`
+required, and muse draws no row without one, so map an answer without `href` to `null`:
+
+```svelte
+<script lang="ts">
+	let invitations = $state<{ count: number; href: string } | null>(null);
+	$effect(() => {
+		fetch('/api/me/invitations').then((r) => (r.ok ? r.json() : null))
+			.then((b) => (invitations = b?.href ? { count: b.count, href: b.href } : null))
+			.catch(() => (invitations = null));
+	});
+</script>
+
+<SideBar userMenu={{ ...userMenu, invitations }} />
+<MobileNav userMenu={{ ...userMenu, invitations }} />
+```
+
+muse shows the Invitations row after Account, a count pill and a dot on the avatar while `count`
+is above 0. The absolute Registre `href` opens in a new tab. Nothing changes in the app's CSP or
+the seed: the browser never calls Registre.
+
 ## Tests
 
-`go test ./kit` runs the route and middleware tests anywhere. The store and erase tests need
+`go test ./kit` runs the route, middleware and invitations tests anywhere; the invitations tests
+fake Registre with `httptest`. The store and erase tests need
 `PORTE_TEST_DATABASE_URL` and use a schema of their own, `porte_kit_test`.

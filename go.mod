@@ -3,6 +3,7 @@ module github.com/FacileStudio/porte
 go 1.26
 
 require (
+	github.com/FacileStudio/porte/directory v0.4.0
 	github.com/FacileStudio/tronc v0.10.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.3.1
@@ -20,3 +21,5 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )
+
+replace github.com/FacileStudio/porte/directory => ./directory

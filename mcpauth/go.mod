@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/FacileStudio/porte v0.16.0
-	github.com/FacileStudio/porte/directory v0.2.1
+	github.com/FacileStudio/porte/directory v0.4.0
 	github.com/FacileStudio/porte/forfait v0.1.1
 	github.com/FacileStudio/tronc v0.17.1
 	github.com/modelcontextprotocol/go-sdk v1.8.0
@@ -26,5 +26,6 @@ require (
 
 replace (
 	github.com/FacileStudio/porte => ../
+	github.com/FacileStudio/porte/directory => ../directory
 	github.com/FacileStudio/porte/forfait => ../forfait
 )

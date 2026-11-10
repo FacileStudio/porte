@@ -1,5 +1,3 @@
-github.com/FacileStudio/porte/directory v0.2.1 h1:w/7AhH74OTj/RhMshO2TshQTSZpGek+/HiMi0CNGCnI=
-github.com/FacileStudio/porte/directory v0.2.1/go.mod h1:i7UxoAqCgqAq4ny9/bbuqT/Z69xD7GYG1w3fpH6EhTw=
 github.com/FacileStudio/tronc v0.17.1 h1:lrk2gzV5fXPeWcNI+5vADa1WTb23obyvvrh6DwQhnXM=
 github.com/FacileStudio/tronc v0.17.1/go.mod h1:tybAMjHeRg+NfnMtcNc0qR1UbREcWka4nZKyGcYEsWg=
 github.com/coreos/go-oidc/v3 v3.20.0 h1:EtE0WIBHk03N+DqGkY4+UONzzZHk7amKt6IyNd7OsZE=
