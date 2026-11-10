@@ -1,0 +1,473 @@
+{
+  "cases": [
+    {
+      "name": "full snapshot",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":42,\"entitlements_revision\":7,\"spaces\":[{\"id\":\"sp_1\",\"name\":\"Studio\",\"members\":[{\"sub\":\"u1\",\"email\":\"a@example.test\",\"name\":\"Ann\",\"picture\":\"https://sso.test/a.png\",\"role\":\"owner\"},{\"sub\":\"u2\",\"email\":\"b@example.test\",\"name\":\"Bob\",\"picture\":\"\",\"role\":\"member\"}],\"entitlements\":{\"ai.access\":true,\"storage.bytes\":1073741824}}],\"people\":[{\"sub\":\"u1\",\"entitlements\":{\"ai.access\":{\"until\":\"2027-01-01\"}}}]}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 7,
+          "people": [
+            {
+              "entitlements": {
+                "ai.access": "{\"until\":\"2027-01-01\"}"
+              },
+              "sub": "u1"
+            }
+          ],
+          "spaces": [
+            {
+              "entitlements": {
+                "ai.access": "true",
+                "storage.bytes": "1073741824"
+              },
+              "id": "sp_1",
+              "members": [
+                {
+                  "sub": "u1",
+                  "email": "a@example.test",
+                  "name": "Ann",
+                  "picture": "https://sso.test/a.png",
+                  "role": "owner"
+                },
+                {
+                  "sub": "u2",
+                  "email": "b@example.test",
+                  "name": "Bob",
+                  "picture": "",
+                  "role": "member"
+                }
+              ],
+              "name": "Studio"
+            }
+          ],
+          "version": 42
+        }
+      }
+    },
+    {
+      "name": "unknown fields are ignored",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":1,\"future\":true,\"spaces\":[{\"id\":\"s\",\"name\":\"n\",\"color\":\"red\",\"members\":[{\"sub\":\"u\",\"role\":\"admin\",\"mfa\":true}]}],\"people\":[{\"sub\":\"u\",\"tier\":\"pro\"}]}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [
+            {
+              "entitlements": {},
+              "sub": "u"
+            }
+          ],
+          "spaces": [
+            {
+              "entitlements": {},
+              "id": "s",
+              "members": [
+                {
+                  "sub": "u",
+                  "email": "",
+                  "name": "",
+                  "picture": "",
+                  "role": "admin"
+                }
+              ],
+              "name": "n"
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "only a version",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":3}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [],
+          "version": 3
+        }
+      }
+    },
+    {
+      "name": "null spaces and people",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":3,\"spaces\":null,\"people\":null}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [],
+          "version": 3
+        }
+      }
+    },
+    {
+      "name": "a member missing fields",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":1,\"spaces\":[{\"id\":\"s\",\"members\":[{\"sub\":\"u\"}]}]}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [
+            {
+              "entitlements": {},
+              "id": "s",
+              "members": [
+                {
+                  "sub": "u",
+                  "email": "",
+                  "name": "",
+                  "picture": "",
+                  "role": ""
+                }
+              ],
+              "name": ""
+            }
+          ],
+          "version": 1
+        }
+      }
+    },
+    {
+      "name": "field names match case-insensitively",
+      "input": {
+        "status": 200,
+        "body": "{\"Version\":5,\"SPACES\":[{\"ID\":\"s\",\"Name\":\"n\"}]}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [
+            {
+              "entitlements": {},
+              "id": "s",
+              "members": [],
+              "name": "n"
+            }
+          ],
+          "version": 5
+        }
+      }
+    },
+    {
+      "name": "a duplicate key keeps the last",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":1,\"version\":2}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [],
+          "version": 2
+        }
+      }
+    },
+    {
+      "name": "empty object",
+      "input": {
+        "status": 200,
+        "body": "{}"
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [],
+          "version": 0
+        }
+      }
+    },
+    {
+      "name": "exactly the cap decodes",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":9,\"spaces\":[]}",
+        "pad_to": 8388608
+      },
+      "want": {
+        "error": null,
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": {
+          "entitlements_revision": 0,
+          "people": [],
+          "spaces": [],
+          "version": 9
+        }
+      }
+    },
+    {
+      "name": "one byte over the cap",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":9,\"spaces\":[]}",
+        "pad_to": 8388609
+      },
+      "want": {
+        "error": "too_large",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "malformed JSON",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "empty body",
+      "input": {
+        "status": 200,
+        "body": ""
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "version as a string",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":\"42\",\"spaces\":[]}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "version as a float",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":4.5}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "members not an array",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":1,\"spaces\":[{\"id\":\"s\",\"members\":{}}]}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "trailing data",
+      "input": {
+        "status": 200,
+        "body": "{\"version\":1} {\"version\":2}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "top level array",
+      "input": {
+        "status": 200,
+        "body": "[]"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "registre unavailable",
+      "input": {
+        "status": 503,
+        "body": "{\"error\":{}}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    },
+    {
+      "name": "registre refuses the client",
+      "input": {
+        "status": 401,
+        "body": "{\"version\":42,\"entitlements_revision\":7,\"spaces\":[{\"id\":\"sp_1\",\"name\":\"Studio\",\"members\":[{\"sub\":\"u1\",\"email\":\"a@example.test\",\"name\":\"Ann\",\"picture\":\"https://sso.test/a.png\",\"role\":\"owner\"},{\"sub\":\"u2\",\"email\":\"b@example.test\",\"name\":\"Bob\",\"picture\":\"\",\"role\":\"member\"}],\"entitlements\":{\"ai.access\":true,\"storage.bytes\":1073741824}}],\"people\":[{\"sub\":\"u1\",\"entitlements\":{\"ai.access\":{\"until\":\"2027-01-01\"}}}]}"
+      },
+      "want": {
+        "error": "unavailable",
+        "request": {
+          "basic_password": "app-secret",
+          "basic_user": "app-client",
+          "content_type": "application/json",
+          "method": "GET",
+          "url": "https://sso.test/api/directory/snapshot"
+        },
+        "snapshot": null
+      }
+    }
+  ],
+  "fixtures": {
+    "max_snapshot_bytes": 8388608,
+    "path": "/api/directory/snapshot"
+  },
+  "source": "github.com/FacileStudio/porte/directory@v0.3.0",
+  "subject": "directory_snapshot"
+}
