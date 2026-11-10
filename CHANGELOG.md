@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Changed
+
+- Licence: porte is now licensed under `MIT` (see `LICENSE`); before this, the repository carried no licence. The nested `directory`, `forfait` and `mcpauth` modules carry the same file.
+
 ## v0.17.0 — 2026-11-10
 
 Root module: **v0.17.0**; `directory`, `forfait` and `mcpauth` unchanged. Additive; no migration.

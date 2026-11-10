@@ -301,3 +301,7 @@ wiring. It is next.
 
 Part of the [Facile Suite](https://facile.studio) — self-hosted tools for creative studios
 and freelancers. One login, zero cloud dependency.
+
+## License
+
+porte is licensed under the [MIT License](LICENSE).
