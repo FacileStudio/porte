@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.17.0 — 2026-11-10
+
+Root module: **v0.17.0**; `directory`, `forfait` and `mcpauth` unchanged. Additive; no migration.
+
 **`porte/kit`: the sign-in glue apps with their own `users` table wrote by hand.** Opt-in and
 additive. 19 apps carry a `modules/auth` that wraps porte the same way: a request identity, a
 `porte.UserStore` over their table, a middleware that hydrates the identity, a GDPR erase
@@ -21,8 +25,9 @@ callback, a picture backfill and the two mount calls. The kit is that code once.
 - `kit.PictureURL` and `(*kit.Store).BackfillPictures` replace `internal/oidcavatar`.
 - `kit.Mount` delegates to `session.Manager.Mount` and `oidc.Kit.Mount` and adds no route.
   The conformance vectors pass unchanged with the routes mounted through it.
-- Decided: the email is rewritten on sign-in only when the provider verified it, as Sonde and
-  Antenne did. Sablier, Nuage and Casier rewrote it on every sign-in.
+- Decided by the owner: the store rewrites the stored email at sign-in only when the provider
+  marks it verified, as Sonde and Antenne did. This holds for every app, with no option to
+  change it. Sablier, Nuage and Casier rewrote it on every sign-in and adopt the rule with the kit.
 
 Proven on Sonde (branch `conv/kit-proof`, not merged): 467 lines removed, 85 added.
 See [docs/kit.md](docs/kit.md).
