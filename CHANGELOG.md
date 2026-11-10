@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.15.1 — 2026-11-10
+
+Root module: **v0.15.1**; nested modules unchanged. Fix; no migration.
+
 **`exchange` picks the identity that holds a refresh token.** A user can carry several identities
 under the Registre issuer: a subject left from a recreated account sits beside the live one, with
 no refresh token. v0.15.0 took the first match, so such a user got `ErrReconnect` without Registre
