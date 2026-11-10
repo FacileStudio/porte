@@ -5,6 +5,18 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Added
+
+- **Conformance vectors.** `conformance/vectors/*.json` pins what the root module answers today:
+  JWT verification, tokens, PKCE, cookies, CSRF, routes, `/auth/config`, scope gates, back-channel
+  logout, the sealer and the spaces ladder, in a JSON envelope (`source`, `subject`, `cases`) a
+  port reads as its specification. `directory/` adds `directory_snapshot.json` for snapshot
+  decoding. `go test ./conformance` and `cd directory && go test -run DirectorySnapshotVector .`
+  build every case from the real packages and fail on any drift; `-update` rewrites the files
+  after a deliberate change. Tokens are signed by a committed test key in `conformance/testdata`,
+  so the files are byte-stable. porte-rs copies them. `conformance/CONTRACT-CHANGES.md` lists the
+  contract changes from v0.11.0 to v0.18.0 a port must match. Test-only: no package changes.
+
 ## v0.18.3 — 2026-11-10
 
 Root module: **v0.18.3**; nested modules unchanged. Deprecation; no migration.

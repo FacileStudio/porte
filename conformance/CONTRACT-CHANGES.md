@@ -1,6 +1,6 @@
-# Contract changes from v0.11.0 to v0.16.0
+# Contract changes from v0.11.0 to v0.18.0
 
-Source: `CHANGELOG.md` at v0.16.0. One line per change a port must match. Read the changelog entry for the reasoning.
+Source: `CHANGELOG.md` at v0.18.0. One line per change a port must match. Read the changelog entry for the reasoning.
 
 ## v0.12.0 (`directory` v0.3.0)
 
@@ -70,9 +70,25 @@ Source: `CHANGELOG.md` at v0.16.0. One line per change a port must match. Read t
 - `mcpauth.Config{Provision: true, Accounts: kit}` turns it on; `Verifier` refuses `Provision` without `Accounts`, or an `Accounts` kit with another issuer.
 - `jwt.Claims.Profile` carries `email_verified` (nil when absent), `preferred_username`, `picture` and `locale`; an odd type drops the claim, not the token. Pinned in `vectors/jwt.json`.
 
+## v0.17.0
+
+- New opt-in package `kit`: `kit.Store` (a `porte.UserStore` over an app's own `users` table, configured by `kit.Columns`), `kit.RequireAuth`, `kit.Identity`, `kit.FromContext`, `(*kit.Store).EraseAccount`, `kit.PictureURL`, `(*kit.Store).BackfillPictures` and `kit.Mount`.
+- `kit.Store` rewrites the stored email at sign-in only when the provider marks it verified; there is no option to change this.
+- `kit.Mount` adds no route: it delegates to `session.Manager.Mount` and `oidc.Kit.Mount`, so every existing vector holds through it. No vector pins `kit` itself.
+
+## v0.18.0 (`directory` v0.4.0)
+
+- `kit.MountInvitations` registers `GET /me/invitations`, answering `{"count": n, "href": url}`: the invitation's page when n is 1, else `{issuer}/spaces`. Every failure answers 200 `{"count":0}`. Answers are cached per user for 60 seconds and concurrent requests for one user share one Registre call. Not part of `kit.Mount`.
+- `directory.Client.Invitations(ctx, subject)` calls `GET /api/directory/invitations` with the client's Basic auth. A count that disagrees with the list, trailing data, an invitation without an id or with a link off the issuer's origin, or a body over `MaxInvitationsBytes` (64 KiB) is `ErrUnavailable`. One call is bounded by `InvitationsTimeout` (2 seconds). An empty subject is `ErrNoSubject` and sends nothing.
+- No vector pins `kit.MountInvitations` or `Client.Invitations`; `directory_snapshot.json` is unchanged by v0.4.0.
+
 ## Where the Go source differs from the porte-rs plan
 
 - `GET /auth/oidc?flow=mobile` with no mobile redirect configured answers 302 to the failure URL, not 400 (`vectors/routes.json`).
 - The `__Host-` prefix is not an option: porte writes it whenever the cookie is Secure, and Secure is `RedirectURL`/`SuccessURL` https, TLS, or `X-Forwarded-Proto: https` (case-insensitive) (`vectors/cookie.json`).
 - `directory` decodes with `encoding/json`: field names match case-insensitively, a duplicate key keeps the last value, and every field may be missing (`spaces`, `members` and all member strings included). Any decode error wraps `ErrUnavailable` (`vectors/directory_snapshot.json`).
 - Go `Identity` is `UserID, Subject, Email, EmailVerified, Name, Roles, Scopes, Actor, SessionID, RolesSyncedAt`: it has no `Provider`, and the plan's struct lacks `EmailVerified`, `SessionID` and `RolesSyncedAt`.
+
+## v0.18.1 to v0.18.3
+
+No contract change for a port. All three releases touch only `kit`, the Go helper over an app's own users table: provider lookups match `<issuer>` and `<issuer>/` (v0.18.1), `kit.NewStore` writes `created_at` and `updated_at` where the table has no default (v0.18.2), and a `kit.Store` literal warns once (v0.18.3). `oidc`, `session`, `pg` and every vector are unchanged.
