@@ -181,6 +181,6 @@ func (p payload) claims() Claims {
 		ClientID:  p.ClientID,
 		ID:        p.ID,
 		ExpiresAt: time.Unix(p.ExpiresAt, 0),
-		Profile:   p.profileClaims.profile(),
+		Profile:   p.profile(),
 	}
 }
