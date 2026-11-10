@@ -16,10 +16,17 @@ import (
 const testSchema = "porte_kit_test"
 
 const usersDDL = `
-DROP TABLE IF EXISTS porte_identities, monitors, users, accounts CASCADE;
+DROP TABLE IF EXISTS porte_identities, monitors, users, accounts, gorm_users, members CASCADE;
 CREATE TABLE users (
 	id bigserial PRIMARY KEY, email text NOT NULL UNIQUE, name text NOT NULL DEFAULT '',
-	avatar_url text NOT NULL DEFAULT '', locale text NOT NULL DEFAULT 'en', is_admin boolean NOT NULL DEFAULT false);
+	avatar_url text NOT NULL DEFAULT '', locale text NOT NULL DEFAULT 'en', is_admin boolean NOT NULL DEFAULT false,
+	created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE gorm_users (
+	id bigserial PRIMARY KEY, email text, name text, avatar_url text, locale text NOT NULL DEFAULT 'en',
+	is_admin boolean DEFAULT false, password_hash text, created_at timestamptz, updated_at timestamptz);
+CREATE TABLE members (
+	id bigserial PRIMARY KEY, email text, name text, avatar_url text, locale text,
+	joined_at timestamptz, touched_at timestamptz);
 CREATE TABLE accounts (
 	account_id bigserial PRIMARY KEY, mail text UNIQUE, display text, picture_url text,
 	locale text NOT NULL DEFAULT 'en', color text);

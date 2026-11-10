@@ -5,6 +5,27 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`porte/kit` fills the timestamps a GORM table leaves without a default, and names the rest.**
+  `kit.Store` created an account with an insert naming only the columns it knows. About half the
+  suite's apps create `users` with GORM `AutoMigrate`, which declares `created_at` and
+  `updated_at` with no DEFAULT because GORM filled them in Go. Agenda's first kit sign-up wrote
+  `created_at` NULL and was fixed in the app with an `OnCreate` hook; every other GORM app would
+  have hit the same thing silently. `kit.NewStore` now reads the table's columns once, at
+  construction. `Columns` gains `CreatedAt` and `UpdatedAt`: the kit writes `now()` into both on
+  insert and into `UpdatedAt` on every update it makes (sign-in refresh, `BackfillPictures`).
+  Left empty, a timestamp column named `created_at` or `updated_at` with no default, identity or
+  generated expression is adopted; one with a default stays the database's. `Store.Unwritten()`
+  lists the nullable columns with no default the insert leaves out, logged once at warn when no
+  `OnCreate` is set. It is a warning, not an error: some apps leave columns NULL on purpose.
+  `OnCreate` runs after the insert and wins, so Agenda's hook, which also sets `created_at =
+  now()`, writes the same transaction timestamp and nothing conflicts. `NewStore` also fails at
+  boot when the table or a named column is missing, which used to fail at the first sign-in.
+  A `kit.Store` literal behaves exactly as in v0.18.1, so Sonde, Antenne, Capsule, Agenda and
+  Casier see no change until they move to `NewStore`. No route, status code, cookie, CSRF rule,
+  `/auth/config` body or `pg.Schema` changes, and `oidc`, `session` and `pg` are untouched.
+
 ## v0.18.1 — 2026-11-10
 
 Root module: **v0.18.1**; nested modules unchanged. Fix; no migration.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	stderrors "errors"
+	"log/slog"
 	"strings"
 
 	"github.com/FacileStudio/porte"
@@ -14,15 +15,25 @@ import (
 // database/sql. It needs no schema change: it reads porte_identities, which
 // the app already has, and writes only the columns Columns names.
 //
+// Build it with NewStore, which reads the table once and adopts the
+// created_at and updated_at columns a GORM-created table leaves without a
+// default. A Store literal skips that and writes only the columns Columns
+// names.
+//
 // OnCreate, when set, runs inside the transaction that inserted a new
-// account, so an app can fill a column the kit does not know (a display
-// colour) or refuse the account by returning an error. EraseData is
-// EraseAccount's hook for the rows the erased person owns.
+// account, after the insert, so an app can fill a column the kit does not
+// know (a display colour) or refuse the account by returning an error. What
+// OnCreate writes wins over what the insert wrote, timestamps included.
+// EraseData is EraseAccount's hook for the rows the erased person owns.
+// Logger receives NewStore's warning; nil is slog.Default().
 type Store struct {
 	DB        *sql.DB
 	Columns   Columns
 	OnCreate  func(ctx context.Context, tx *sql.Tx, userID int64) error
 	EraseData func(ctx context.Context, tx *sql.Tx, userID int64) error
+	Logger    *slog.Logger
+
+	unwritten []string
 }
 
 var (

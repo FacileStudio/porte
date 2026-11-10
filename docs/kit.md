@@ -15,13 +15,47 @@ opt-in. It adds no route, no status code, no cookie and no CSRF rule, and it doe
 | `PictureURL`, `(*Store).BackfillPictures` | `internal/oidcavatar` and `BackfillAvatars` |
 | `Mount(router, Config)` | the `sessions.Mount(r)` and `kit.Mount(r)` pair |
 
+## Step zero: read `Unwritten()` against your schema
+
+Build the store with `kit.NewStore`, not a `kit.Store` literal. `NewStore` reads the table's
+columns once, at construction, and fails when the table or a column `Columns` names is missing.
+
+- **Timestamps.** `Columns.CreatedAt` and `Columns.UpdatedAt` name columns the kit fills itself:
+  `now()` into both when it creates an account, `now()` into `UpdatedAt` on every update it makes
+  (the sign-in refresh and `BackfillPictures`). Left empty, `NewStore` adopts a timestamp column
+  named `created_at` or `updated_at` that has no default, identity or generated expression. That
+  is what a GORM `AutoMigrate` table looks like: GORM filled those columns in Go, so the kit's
+  insert left them NULL. A column with a database default is left to the database.
+- **Everything else.** `store.Unwritten()` lists the nullable columns with no default that the
+  kit's insert does not write. They are NULL on every account the kit creates unless `OnCreate`
+  fills them. `NewStore` logs them once at warn when `OnCreate` is nil. It is not an error: some
+  columns are meant to stay NULL. A NOT NULL column with no default is not listed, because the
+  insert fails on it at the first sign-in.
+
+`OnCreate` runs after the insert, in its transaction, so what it writes wins, timestamps
+included. A hook that still sets `created_at = now()` writes the value the insert wrote: `now()`
+is the transaction's start time.
+
+Decide which unwritten columns the app accepts, fill the others in `OnCreate`, and pin the
+decision with one test against the test database:
+
+```go
+store, err := kit.NewStore(ctx, kit.Store{DB: sqlDB, Columns: columns, OnCreate: fillNewAccount})
+if err != nil || !slices.Equal(store.Unwritten(), []string{"oidc_subject"}) {
+	t.Fatalf("unwritten = %v, %v", store.Unwritten(), err)
+}
+```
+
+A schema change that adds a nullable column then fails this test instead of writing NULL in
+production.
+
 ## What stays in the app
 
 - The `users` table and its migrations. The kit needs `porte_identities` and the columns
   `Columns` names, nothing else.
 - The `/auth/me` response shape.
 - Columns the kit does not name. Fill them in `OnCreate`, which runs in the insert's
-  transaction.
+  transaction. `Unwritten()` lists the ones that would otherwise be NULL.
 - The rows an erased person owns. Delete them in `EraseData`.
 - The `directory` state store, the token scopes, and every rule beyond "signed in" and
   `is_admin`.
@@ -29,13 +63,16 @@ opt-in. It adds no route, no status code, no cookie and no CSRF rule, and it doe
 ## Wiring
 
 ```go
-users := &kit.Store{
+users, err := kit.NewStore(ctx, kit.Store{
 	DB:      sqlDB,
 	Columns: kit.Columns{Admin: "is_admin"},
 	EraseData: func(ctx context.Context, tx *sql.Tx, userID int64) error {
 		_, err := tx.ExecContext(ctx, `DELETE FROM monitors WHERE owner_id = $1`, userID)
 		return err
 	},
+})
+if err != nil {
+	return err
 }
 requireAuth := kit.RequireAuth(sessions, users)
 if err := kit.Mount(api, kit.Config{Sessions: sessions, OIDC: oidcKit}); err != nil {
@@ -52,6 +89,7 @@ deletions := &directory.Deletions{OnPersonDeleted: users.EraseAccount, Erase: st
 
 `DefaultColumns()` is `users(id, email, name, avatar_url, locale)` with no admin flag. A zero
 field takes its default. `Admin` is the exception: empty means the table has no admin flag.
+`CreatedAt` and `UpdatedAt` are detected by `NewStore` when empty (see step zero).
 
 | App | Columns to set |
 |---|---|
