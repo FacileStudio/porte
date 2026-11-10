@@ -78,6 +78,15 @@ field takes its default. `Admin` is the exception: empty means the table has no 
 - Every write and every erase runs under one advisory lock, so two first sign-ins cannot both
   become admin.
 
+A provider matches with or without one trailing slash, on either side, in every lookup the kit
+makes: the sign-in lookup by subject, the "another subject of the same provider" refusal,
+`EraseAccount`, `BackfillPictures` and the invitations subject. A row stored as
+`https://sso.facile.studio/` is the same provider as a sign-in presenting
+`https://sso.facile.studio`, and the reverse, so an app whose rows mix the two spellings adopts the
+store and the erase hook without a data migration. When both spellings are stored for one subject,
+the exact spelling wins. The kit never rewrites a stored provider; new rows carry the issuer
+exactly as porte/oidc is configured.
+
 ## Pending invitations in the user menu
 
 `kit.MountInvitations` registers `GET /me/invitations`, so `GET /api/me/invitations` under the
