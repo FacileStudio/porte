@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.2 — 2026-11-10
+
+Root module: **v0.18.2**; nested modules unchanged. Fix; no migration.
+
 ### Fixed
 
 - **`porte/kit` fills the timestamps a GORM table leaves without a default, and names the rest.**
