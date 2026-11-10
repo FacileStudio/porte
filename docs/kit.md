@@ -70,8 +70,11 @@ field takes its default. `Admin` is the exception: empty means the table has no 
   subject of the same provider. An unverified email never links. Both refusals are
   `already_exists`, which porte shows on the login page.
 - Otherwise the store creates the account. With `Admin` set, the first account is admin.
-- On a linked account the picture is always rewritten, the email only when verified, and the
-  name and locale only when the provider sent one.
+- At sign-in the store rewrites the stored email only when the provider marks it verified. This
+  is the rule for every app and there is no option to change it: an app that rewrote the email
+  on every sign-in (Sablier, Nuage, Casier) adopts this rule with the kit.
+- On a linked account the picture is always rewritten, and the name and locale only when the
+  provider sent one.
 - Every write and every erase runs under one advisory lock, so two first sign-ins cannot both
   become admin.
 
