@@ -1,0 +1,262 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "sealer",
+  "fixtures": {
+    "aad": "porte/pg identity token",
+    "cipher": "AES-256-GCM",
+    "encoding": "base64url without padding of nonce||ciphertext||tag",
+    "info": "porte/pg token sealing v1",
+    "kdf": "HKDF-SHA256",
+    "key_bytes": 32,
+    "nonce_bytes": 12,
+    "prefix": "pv1:",
+    "salt": ""
+  },
+  "cases": [
+    {
+      "name": "opens with the newest secret",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "pv1:Y29uZm9ybWFuY2UhdPkc4Ww0gGMXH-WpBBQEO4WTu7M_9r7EUbd8eoJQEw"
+      },
+      "want": {
+        "error": null,
+        "plain": "refresh-token-1"
+      }
+    },
+    {
+      "name": "opens with a base64 secret",
+      "input": {
+        "kind": "open",
+        "spec": "ERERERERERERERERERERERERERERERERERERERERERE=",
+        "stored": "pv1:Y29uZm9ybWFuY2UhdPkc4Ww0gGMXH-WpBBQEO4WTu7M_9r7EUbd8eoJQEw"
+      },
+      "want": {
+        "error": null,
+        "plain": "refresh-token-1"
+      }
+    },
+    {
+      "name": "opens with an older secret",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111,2222222222222222222222222222222222222222222222222222222222222222",
+        "stored": "pv1:Y29uZm9ybWFuY2UhDE0f7nd8N22fxjEoqCPLy0sidk9rbbssEZx3SXkCrg"
+      },
+      "want": {
+        "error": null,
+        "plain": "refresh-token-2"
+      }
+    },
+    {
+      "name": "plaintext passes through",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "legacy-plain-token"
+      },
+      "want": {
+        "error": null,
+        "plain": "legacy-plain-token"
+      }
+    },
+    {
+      "name": "plaintext passes through without a sealer",
+      "input": {
+        "kind": "open",
+        "spec": "",
+        "stored": "legacy-plain-token"
+      },
+      "want": {
+        "error": null,
+        "plain": "legacy-plain-token"
+      }
+    },
+    {
+      "name": "empty stays empty",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": ""
+      },
+      "want": {
+        "error": null,
+        "plain": ""
+      }
+    },
+    {
+      "name": "wrong secret is unreadable",
+      "input": {
+        "kind": "open",
+        "spec": "2222222222222222222222222222222222222222222222222222222222222222",
+        "stored": "pv1:Y29uZm9ybWFuY2UhdPkc4Ww0gGMXH-WpBBQEO4WTu7M_9r7EUbd8eoJQEw"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "no sealer cannot open a sealed value",
+      "input": {
+        "kind": "open",
+        "spec": "",
+        "stored": "pv1:Y29uZm9ybWFuY2UhdPkc4Ww0gGMXH-WpBBQEO4WTu7M_9r7EUbd8eoJQEw"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "tampered ciphertext is unreadable",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "pv1:Y29uZm9ybWFuY2UhdPkc4Ww0gGMXH-WpBBQEO4WTu7M_9r7EUbd8eoJQAA"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "wrong associated data is unreadable",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "pv1:Y29uZm9ybWFuY2UhfjIcx8jaYKRTxwSDUT6AOc4"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "bad base64 is unreadable",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "pv1:!!!"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "shorter than a nonce is unreadable",
+      "input": {
+        "kind": "open",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111",
+        "stored": "pv1:AAAA"
+      },
+      "want": {
+        "error": "unreadable",
+        "plain": ""
+      }
+    },
+    {
+      "name": "empty spec turns sealing off",
+      "input": {
+        "kind": "parse",
+        "spec": "  "
+      },
+      "want": {
+        "ok": true,
+        "sealing": false
+      }
+    },
+    {
+      "name": "hex secret",
+      "input": {
+        "kind": "parse",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "want": {
+        "ok": true,
+        "sealing": true
+      }
+    },
+    {
+      "name": "two secrets, spaces trimmed",
+      "input": {
+        "kind": "parse",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111 , 2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "want": {
+        "ok": true,
+        "sealing": true
+      }
+    },
+    {
+      "name": "short hex secret is refused",
+      "input": {
+        "kind": "parse",
+        "spec": "11111111111111111111111111111111"
+      },
+      "want": {
+        "ok": false,
+        "sealing": false
+      }
+    },
+    {
+      "name": "base64 of 31 bytes is refused",
+      "input": {
+        "kind": "parse",
+        "spec": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      },
+      "want": {
+        "ok": false,
+        "sealing": false
+      }
+    },
+    {
+      "name": "garbage is refused",
+      "input": {
+        "kind": "parse",
+        "spec": "not-a-secret"
+      },
+      "want": {
+        "ok": false,
+        "sealing": false
+      }
+    },
+    {
+      "name": "an empty entry is refused",
+      "input": {
+        "kind": "parse",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111,"
+      },
+      "want": {
+        "ok": false,
+        "sealing": false
+      }
+    },
+    {
+      "name": "seal a token",
+      "input": {
+        "kind": "seal",
+        "plain": "refresh-token-1",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "want": {
+        "length": 62,
+        "prefix": "pv1:"
+      }
+    },
+    {
+      "name": "seal empty",
+      "input": {
+        "kind": "seal",
+        "plain": "",
+        "spec": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "want": {
+        "length": 0,
+        "prefix": ""
+      }
+    }
+  ]
+}

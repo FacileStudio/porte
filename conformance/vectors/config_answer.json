@@ -1,0 +1,101 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "config_answer",
+  "cases": [
+    {
+      "name": "app keys cannot override porte's",
+      "input": {
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        },
+        "config_extra": {
+          "magic_link": true,
+          "oidc_enabled": false,
+          "sso_only": false
+        }
+      },
+      "want": {
+        "body": "{\"magic_link\":true,\"oidc_enabled\":true,\"sso_only\":true}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "app keys with oidc off",
+      "input": {
+        "config": {},
+        "config_extra": {
+          "locale": "fr"
+        }
+      },
+      "want": {
+        "body": "{\"locale\":\"fr\",\"oidc_enabled\":false,\"sso_only\":false}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off",
+      "input": {
+        "config": {}
+      },
+      "want": {
+        "body": "{\"sso_only\":false,\"oidc_enabled\":false}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off, sso only",
+      "input": {
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":false}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on implies sso only",
+      "input": {
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":true}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on with sso only",
+      "input": {
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/",
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":true}\n",
+        "content_type": "application/json",
+        "status": 200
+      }
+    }
+  ]
+}

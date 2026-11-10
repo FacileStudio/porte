@@ -1,0 +1,3236 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "spaces_ladder",
+  "fixtures": {
+    "actors": {
+      "admin": "admin of s1, resolved",
+      "member": "member of s1, resolved",
+      "owner": "owner of s1, resolved",
+      "personal": "owner, personal scope (no space)",
+      "unresolved": "a Scope literal claiming owner of s1, never resolved"
+    },
+    "ladder": [
+      "member",
+      "admin",
+      "owner"
+    ],
+    "memberships": [
+      {
+        "role": "owner",
+        "space": "s1",
+        "user": "owner"
+      },
+      {
+        "role": "admin",
+        "space": "s1",
+        "user": "admin"
+      },
+      {
+        "role": "member",
+        "space": "s1",
+        "user": "member"
+      },
+      {
+        "role": "guest",
+        "space": "s1",
+        "user": "ghost"
+      },
+      {
+        "role": "owner",
+        "space": "s2",
+        "user": "owner"
+      },
+      {
+        "role": "owner",
+        "space": "s2",
+        "user": "co-owner"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "at_least member >= member",
+      "input": {
+        "have": "member",
+        "kind": "at_least",
+        "min": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least member >= admin",
+      "input": {
+        "have": "member",
+        "kind": "at_least",
+        "min": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least member >= owner",
+      "input": {
+        "have": "member",
+        "kind": "at_least",
+        "min": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least member >= guest",
+      "input": {
+        "have": "member",
+        "kind": "at_least",
+        "min": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least member >= (empty)",
+      "input": {
+        "have": "member",
+        "kind": "at_least",
+        "min": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least admin >= member",
+      "input": {
+        "have": "admin",
+        "kind": "at_least",
+        "min": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least admin >= admin",
+      "input": {
+        "have": "admin",
+        "kind": "at_least",
+        "min": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least admin >= owner",
+      "input": {
+        "have": "admin",
+        "kind": "at_least",
+        "min": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least admin >= guest",
+      "input": {
+        "have": "admin",
+        "kind": "at_least",
+        "min": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least admin >= (empty)",
+      "input": {
+        "have": "admin",
+        "kind": "at_least",
+        "min": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least owner >= member",
+      "input": {
+        "have": "owner",
+        "kind": "at_least",
+        "min": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least owner >= admin",
+      "input": {
+        "have": "owner",
+        "kind": "at_least",
+        "min": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least owner >= owner",
+      "input": {
+        "have": "owner",
+        "kind": "at_least",
+        "min": "owner"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "at_least owner >= guest",
+      "input": {
+        "have": "owner",
+        "kind": "at_least",
+        "min": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least owner >= (empty)",
+      "input": {
+        "have": "owner",
+        "kind": "at_least",
+        "min": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least guest >= member",
+      "input": {
+        "have": "guest",
+        "kind": "at_least",
+        "min": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least guest >= admin",
+      "input": {
+        "have": "guest",
+        "kind": "at_least",
+        "min": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least guest >= owner",
+      "input": {
+        "have": "guest",
+        "kind": "at_least",
+        "min": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least guest >= guest",
+      "input": {
+        "have": "guest",
+        "kind": "at_least",
+        "min": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least guest >= (empty)",
+      "input": {
+        "have": "guest",
+        "kind": "at_least",
+        "min": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least (empty) >= member",
+      "input": {
+        "have": "",
+        "kind": "at_least",
+        "min": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least (empty) >= admin",
+      "input": {
+        "have": "",
+        "kind": "at_least",
+        "min": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least (empty) >= owner",
+      "input": {
+        "have": "",
+        "kind": "at_least",
+        "min": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least (empty) >= guest",
+      "input": {
+        "have": "",
+        "kind": "at_least",
+        "min": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "at_least (empty) >= (empty)",
+      "input": {
+        "have": "",
+        "kind": "at_least",
+        "min": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by admin grants member",
+      "input": {
+        "actor": "admin",
+        "kind": "assignable_by",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves member to member",
+      "input": {
+        "actor": "admin",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves admin to member",
+      "input": {
+        "actor": "admin",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves owner to member",
+      "input": {
+        "actor": "admin",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves guest to member",
+      "input": {
+        "actor": "admin",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves (empty) to member",
+      "input": {
+        "actor": "admin",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by admin grants admin",
+      "input": {
+        "actor": "admin",
+        "kind": "assignable_by",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves member to admin",
+      "input": {
+        "actor": "admin",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves admin to admin",
+      "input": {
+        "actor": "admin",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over admin moves owner to admin",
+      "input": {
+        "actor": "admin",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves guest to admin",
+      "input": {
+        "actor": "admin",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves (empty) to admin",
+      "input": {
+        "actor": "admin",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by admin grants owner",
+      "input": {
+        "actor": "admin",
+        "kind": "assignable_by",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves member to owner",
+      "input": {
+        "actor": "admin",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves admin to owner",
+      "input": {
+        "actor": "admin",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves owner to owner",
+      "input": {
+        "actor": "admin",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves guest to owner",
+      "input": {
+        "actor": "admin",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves (empty) to owner",
+      "input": {
+        "actor": "admin",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by admin grants guest",
+      "input": {
+        "actor": "admin",
+        "kind": "assignable_by",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves member to guest",
+      "input": {
+        "actor": "admin",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves admin to guest",
+      "input": {
+        "actor": "admin",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves owner to guest",
+      "input": {
+        "actor": "admin",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves guest to guest",
+      "input": {
+        "actor": "admin",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves (empty) to guest",
+      "input": {
+        "actor": "admin",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by admin grants (empty)",
+      "input": {
+        "actor": "admin",
+        "kind": "assignable_by",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves member to (empty)",
+      "input": {
+        "actor": "admin",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves admin to (empty)",
+      "input": {
+        "actor": "admin",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves owner to (empty)",
+      "input": {
+        "actor": "admin",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves guest to (empty)",
+      "input": {
+        "actor": "admin",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over admin moves (empty) to (empty)",
+      "input": {
+        "actor": "admin",
+        "current": "",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by member grants member",
+      "input": {
+        "actor": "member",
+        "kind": "assignable_by",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over member moves member to member",
+      "input": {
+        "actor": "member",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over member moves admin to member",
+      "input": {
+        "actor": "member",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves owner to member",
+      "input": {
+        "actor": "member",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves guest to member",
+      "input": {
+        "actor": "member",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves (empty) to member",
+      "input": {
+        "actor": "member",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by member grants admin",
+      "input": {
+        "actor": "member",
+        "kind": "assignable_by",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves member to admin",
+      "input": {
+        "actor": "member",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves admin to admin",
+      "input": {
+        "actor": "member",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves owner to admin",
+      "input": {
+        "actor": "member",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves guest to admin",
+      "input": {
+        "actor": "member",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves (empty) to admin",
+      "input": {
+        "actor": "member",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by member grants owner",
+      "input": {
+        "actor": "member",
+        "kind": "assignable_by",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves member to owner",
+      "input": {
+        "actor": "member",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves admin to owner",
+      "input": {
+        "actor": "member",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves owner to owner",
+      "input": {
+        "actor": "member",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves guest to owner",
+      "input": {
+        "actor": "member",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves (empty) to owner",
+      "input": {
+        "actor": "member",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by member grants guest",
+      "input": {
+        "actor": "member",
+        "kind": "assignable_by",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves member to guest",
+      "input": {
+        "actor": "member",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves admin to guest",
+      "input": {
+        "actor": "member",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves owner to guest",
+      "input": {
+        "actor": "member",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves guest to guest",
+      "input": {
+        "actor": "member",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves (empty) to guest",
+      "input": {
+        "actor": "member",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by member grants (empty)",
+      "input": {
+        "actor": "member",
+        "kind": "assignable_by",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves member to (empty)",
+      "input": {
+        "actor": "member",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves admin to (empty)",
+      "input": {
+        "actor": "member",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves owner to (empty)",
+      "input": {
+        "actor": "member",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves guest to (empty)",
+      "input": {
+        "actor": "member",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over member moves (empty) to (empty)",
+      "input": {
+        "actor": "member",
+        "current": "",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by owner grants member",
+      "input": {
+        "actor": "owner",
+        "kind": "assignable_by",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves member to member",
+      "input": {
+        "actor": "owner",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves admin to member",
+      "input": {
+        "actor": "owner",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves owner to member",
+      "input": {
+        "actor": "owner",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves guest to member",
+      "input": {
+        "actor": "owner",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves (empty) to member",
+      "input": {
+        "actor": "owner",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by owner grants admin",
+      "input": {
+        "actor": "owner",
+        "kind": "assignable_by",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves member to admin",
+      "input": {
+        "actor": "owner",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves admin to admin",
+      "input": {
+        "actor": "owner",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves owner to admin",
+      "input": {
+        "actor": "owner",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves guest to admin",
+      "input": {
+        "actor": "owner",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves (empty) to admin",
+      "input": {
+        "actor": "owner",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by owner grants owner",
+      "input": {
+        "actor": "owner",
+        "kind": "assignable_by",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves member to owner",
+      "input": {
+        "actor": "owner",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves admin to owner",
+      "input": {
+        "actor": "owner",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves owner to owner",
+      "input": {
+        "actor": "owner",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "assignable_over owner moves guest to owner",
+      "input": {
+        "actor": "owner",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves (empty) to owner",
+      "input": {
+        "actor": "owner",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by owner grants guest",
+      "input": {
+        "actor": "owner",
+        "kind": "assignable_by",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves member to guest",
+      "input": {
+        "actor": "owner",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves admin to guest",
+      "input": {
+        "actor": "owner",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves owner to guest",
+      "input": {
+        "actor": "owner",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves guest to guest",
+      "input": {
+        "actor": "owner",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves (empty) to guest",
+      "input": {
+        "actor": "owner",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by owner grants (empty)",
+      "input": {
+        "actor": "owner",
+        "kind": "assignable_by",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves member to (empty)",
+      "input": {
+        "actor": "owner",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves admin to (empty)",
+      "input": {
+        "actor": "owner",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves owner to (empty)",
+      "input": {
+        "actor": "owner",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves guest to (empty)",
+      "input": {
+        "actor": "owner",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over owner moves (empty) to (empty)",
+      "input": {
+        "actor": "owner",
+        "current": "",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by personal grants member",
+      "input": {
+        "actor": "personal",
+        "kind": "assignable_by",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves member to member",
+      "input": {
+        "actor": "personal",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves admin to member",
+      "input": {
+        "actor": "personal",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves owner to member",
+      "input": {
+        "actor": "personal",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves guest to member",
+      "input": {
+        "actor": "personal",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves (empty) to member",
+      "input": {
+        "actor": "personal",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by personal grants admin",
+      "input": {
+        "actor": "personal",
+        "kind": "assignable_by",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves member to admin",
+      "input": {
+        "actor": "personal",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves admin to admin",
+      "input": {
+        "actor": "personal",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves owner to admin",
+      "input": {
+        "actor": "personal",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves guest to admin",
+      "input": {
+        "actor": "personal",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves (empty) to admin",
+      "input": {
+        "actor": "personal",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by personal grants owner",
+      "input": {
+        "actor": "personal",
+        "kind": "assignable_by",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves member to owner",
+      "input": {
+        "actor": "personal",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves admin to owner",
+      "input": {
+        "actor": "personal",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves owner to owner",
+      "input": {
+        "actor": "personal",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves guest to owner",
+      "input": {
+        "actor": "personal",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves (empty) to owner",
+      "input": {
+        "actor": "personal",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by personal grants guest",
+      "input": {
+        "actor": "personal",
+        "kind": "assignable_by",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves member to guest",
+      "input": {
+        "actor": "personal",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves admin to guest",
+      "input": {
+        "actor": "personal",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves owner to guest",
+      "input": {
+        "actor": "personal",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves guest to guest",
+      "input": {
+        "actor": "personal",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves (empty) to guest",
+      "input": {
+        "actor": "personal",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by personal grants (empty)",
+      "input": {
+        "actor": "personal",
+        "kind": "assignable_by",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves member to (empty)",
+      "input": {
+        "actor": "personal",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves admin to (empty)",
+      "input": {
+        "actor": "personal",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves owner to (empty)",
+      "input": {
+        "actor": "personal",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves guest to (empty)",
+      "input": {
+        "actor": "personal",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over personal moves (empty) to (empty)",
+      "input": {
+        "actor": "personal",
+        "current": "",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by unresolved grants member",
+      "input": {
+        "actor": "unresolved",
+        "kind": "assignable_by",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves member to member",
+      "input": {
+        "actor": "unresolved",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves admin to member",
+      "input": {
+        "actor": "unresolved",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves owner to member",
+      "input": {
+        "actor": "unresolved",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves guest to member",
+      "input": {
+        "actor": "unresolved",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves (empty) to member",
+      "input": {
+        "actor": "unresolved",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "member"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by unresolved grants admin",
+      "input": {
+        "actor": "unresolved",
+        "kind": "assignable_by",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves member to admin",
+      "input": {
+        "actor": "unresolved",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves admin to admin",
+      "input": {
+        "actor": "unresolved",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves owner to admin",
+      "input": {
+        "actor": "unresolved",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves guest to admin",
+      "input": {
+        "actor": "unresolved",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves (empty) to admin",
+      "input": {
+        "actor": "unresolved",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "admin"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by unresolved grants owner",
+      "input": {
+        "actor": "unresolved",
+        "kind": "assignable_by",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves member to owner",
+      "input": {
+        "actor": "unresolved",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves admin to owner",
+      "input": {
+        "actor": "unresolved",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves owner to owner",
+      "input": {
+        "actor": "unresolved",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves guest to owner",
+      "input": {
+        "actor": "unresolved",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves (empty) to owner",
+      "input": {
+        "actor": "unresolved",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "owner"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by unresolved grants guest",
+      "input": {
+        "actor": "unresolved",
+        "kind": "assignable_by",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves member to guest",
+      "input": {
+        "actor": "unresolved",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves admin to guest",
+      "input": {
+        "actor": "unresolved",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves owner to guest",
+      "input": {
+        "actor": "unresolved",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves guest to guest",
+      "input": {
+        "actor": "unresolved",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves (empty) to guest",
+      "input": {
+        "actor": "unresolved",
+        "current": "",
+        "kind": "assignable_over",
+        "target": "guest"
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_by unresolved grants (empty)",
+      "input": {
+        "actor": "unresolved",
+        "kind": "assignable_by",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves member to (empty)",
+      "input": {
+        "actor": "unresolved",
+        "current": "member",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves admin to (empty)",
+      "input": {
+        "actor": "unresolved",
+        "current": "admin",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves owner to (empty)",
+      "input": {
+        "actor": "unresolved",
+        "current": "owner",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves guest to (empty)",
+      "input": {
+        "actor": "unresolved",
+        "current": "guest",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "assignable_over unresolved moves (empty) to (empty)",
+      "input": {
+        "actor": "unresolved",
+        "current": "",
+        "kind": "assignable_over",
+        "target": ""
+      },
+      "want": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "require owner in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": "owner"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave owner from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": "owner"
+      },
+      "want": {
+        "error": "sole_owner"
+      }
+    },
+    {
+      "name": "require owner in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": "owner"
+      },
+      "want": {
+        "error": null,
+        "role": "owner"
+      }
+    },
+    {
+      "name": "require owner in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": "owner"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave owner from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": "owner"
+      },
+      "want": {
+        "error": null
+      }
+    },
+    {
+      "name": "require owner in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": "owner"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require owner in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": "owner"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require owner in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": "owner"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require owner in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": "owner"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave owner from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": "owner"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require admin in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": "admin"
+      },
+      "want": {
+        "error": null,
+        "role": "admin"
+      }
+    },
+    {
+      "name": "require admin in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": "admin"
+      },
+      "want": {
+        "error": null,
+        "role": "admin"
+      }
+    },
+    {
+      "name": "require admin in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": "admin"
+      },
+      "want": {
+        "error": "forbidden",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": "admin"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave admin from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": "admin"
+      },
+      "want": {
+        "error": null
+      }
+    },
+    {
+      "name": "require admin in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": "admin"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave admin from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require admin in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require admin in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": "admin"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave admin from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": "admin"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require member in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": "member"
+      },
+      "want": {
+        "error": null,
+        "role": "member"
+      }
+    },
+    {
+      "name": "require member in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": "member"
+      },
+      "want": {
+        "error": "forbidden",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": "member"
+      },
+      "want": {
+        "error": "forbidden",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": "member"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave member from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": "member"
+      },
+      "want": {
+        "error": null
+      }
+    },
+    {
+      "name": "require member in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": "member"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave member from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require member in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require member in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": "member"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave member from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": "member"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require ghost in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave ghost from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role"
+      }
+    },
+    {
+      "name": "require ghost in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave ghost from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require ghost in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require ghost in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave ghost from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": "ghost"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require stranger in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave stranger from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require stranger in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave stranger from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require stranger in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require stranger in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave stranger from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": "stranger"
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require (empty) in s1 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s1",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s1 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s1",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s1 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s1",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s1 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s1",
+        "user": ""
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave (empty) from s1",
+      "input": {
+        "kind": "can_leave",
+        "space": "s1",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require (empty) in s2 at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "s2",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s2 at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "s2",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s2 at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "s2",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in s2 at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "s2",
+        "user": ""
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave (empty) from s2",
+      "input": {
+        "kind": "can_leave",
+        "space": "s2",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member"
+      }
+    },
+    {
+      "name": "require (empty) in (empty) at member",
+      "input": {
+        "kind": "require",
+        "min": "member",
+        "space": "",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in (empty) at admin",
+      "input": {
+        "kind": "require",
+        "min": "admin",
+        "space": "",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in (empty) at owner",
+      "input": {
+        "kind": "require",
+        "min": "owner",
+        "space": "",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member",
+        "role": ""
+      }
+    },
+    {
+      "name": "require (empty) in (empty) at guest",
+      "input": {
+        "kind": "require",
+        "min": "guest",
+        "space": "",
+        "user": ""
+      },
+      "want": {
+        "error": "unknown_role",
+        "role": ""
+      }
+    },
+    {
+      "name": "can_leave (empty) from (empty)",
+      "input": {
+        "kind": "can_leave",
+        "space": "",
+        "user": ""
+      },
+      "want": {
+        "error": "not_member"
+      }
+    }
+  ]
+}
