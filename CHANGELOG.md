@@ -5,6 +5,11 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.15.0 — 2026-11-10
+
+Root module: **v0.15.0**; `directory` stays at v0.3.0, `forfait` at v0.1.1 and `mcpauth` at v0.1.0.
+Additive; no migration.
+
 **Token exchange for apps: `porte/exchange`.** Each suite app is getting an Ideas page that calls
 Bulle as the signed-in user, and Plume, Glouton and Bulle already call other apps that way, each
 with its own copy of the same code. `porte/exchange` is that code once:
