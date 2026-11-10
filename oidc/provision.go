@@ -50,7 +50,8 @@ func (k *Kit) ProvisionBearer(ctx context.Context, claims jwtpkg.Claims) (porte.
 	if err != nil {
 		return porte.Identity{}, err
 	}
-	return provisioned.(porte.Identity), nil
+	identity, _ = provisioned.(porte.Identity)
+	return identity, nil
 }
 
 // provisionOnce looks again under the single flight, so a caller that waited
