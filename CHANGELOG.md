@@ -5,6 +5,38 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+**Token exchange for apps: `porte/exchange`.** Each suite app is getting an Ideas page that calls
+Bulle as the signed-in user, and Plume, Glouton and Bulle already call other apps that way, each
+with its own copy of the same code. `porte/exchange` is that code once:
+
+- **`exchange.New(Config)`** takes the Registre issuer (the same value porte/oidc uses, since it is
+  the provider identities are filed under), the app's client id and secret, and the identity store
+  (`pg.IdentityStore` fits; with a `pg.TokenSealer` the tokens stay sealed at rest).
+- **`Token(ctx, userID, Target{Audience, Scopes})`** returns an exchanged access token. It reuses the
+  stored Registre access token while it is valid, else refreshes it, then exchanges it (RFC 8693)
+  for the target. Exchanged tokens are cached in memory until expiry minus `Margin` (30 s).
+- **Refreshes are serialized per user across every audience.** Registre rotates the refresh token
+  on every refresh, so two in parallel leave one holding a dead token. Bulle keyed its single-flight
+  on (user, force), which let a forced refresh run beside a normal one; here one lock per user
+  covers both, and waiting on it honours the caller's context.
+- **A rotation is never lost.** The refresh and its save run on a context the caller cannot cancel.
+  If the save fails, the new refresh token stays in memory and is used and saved on the next
+  refresh. If Registre answers `invalid_grant` but the stored refresh token has changed since it was
+  read (another replica, or porte's role refresh, rotated it), the exchanger retries once with it.
+- **Errors.** `ErrReconnect` (a tronc `failed_precondition`, so `httpjson.WriteError` shows a usable
+  message) only when there is no Registre identity, no refresh token, or Registre refuses the grant.
+  Glouton also treated `invalid_client` and every 400 as "sign in again", which hides a config
+  error behind a user action; here those are `*RefusedError{Status, Code}` (`invalid_scope` when the
+  seed does not grant the scopes). A network error, a timeout or a 5xx wraps `ErrUnavailable`.
+- **`Do(ctx, userID, target, call)`** runs a downstream call and, on a 401, forgets the token and
+  runs it once more with a fresh one. **`Forget`** and **`ForgetUser`** drop cached tokens.
+- **`Source(target)`** binds a target to the user porte put on the request context, so
+  `src.Token` and `src.Forget` plug into a client that takes `func(ctx) (string, error)`, such as
+  `tronc/bulle`, without that client importing porte.
+
+Upgrade note: additive, no migration. The app's Registre seed entry needs a `token_exchange` grant
+for each audience it calls.
+
 ## v0.14.0 — 2026-11-08
 
 Root module: **v0.14.0**; new nested module `mcpauth` at **v0.1.0**; `directory` stays at v0.3.0 and
