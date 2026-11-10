@@ -1,0 +1,102 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "pkce",
+  "fixtures": {
+    "method": "S256",
+    "verifier_length": 43
+  },
+  "cases": [
+    {
+      "name": "RFC 7636 appendix B",
+      "input": {
+        "kind": "challenge",
+        "verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      },
+      "want": {
+        "challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+      }
+    },
+    {
+      "name": "43 characters, the shortest verifier",
+      "input": {
+        "kind": "challenge",
+        "verifier": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "want": {
+        "challenge": "ZtNPunH49FD35FWYhT5Tv8I7vRKQJ8uxMaL0_9eHjNA"
+      }
+    },
+    {
+      "name": "128 characters, the longest verifier",
+      "input": {
+        "kind": "challenge",
+        "verifier": "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+      },
+      "want": {
+        "challenge": "NJ1l6bod57ChP5o-rcxbAgLxXWAI_pR38qe4D2GUsg8"
+      }
+    },
+    {
+      "name": "unreserved punctuation",
+      "input": {
+        "kind": "challenge",
+        "verifier": "abc-._~0000000000000000000000000000000000000000"
+      },
+      "want": {
+        "challenge": "2Yf9jtucY4lTQ8HylIlxl2Ts2NUYlDw-913qYJvU6HI"
+      }
+    },
+    {
+      "name": "plain is not S256",
+      "input": {
+        "kind": "challenge",
+        "offered_challenge": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+        "verifier": "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      },
+      "want": {
+        "challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        "matches": false
+      }
+    },
+    {
+      "name": "a challenge for another verifier",
+      "input": {
+        "kind": "challenge",
+        "offered_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+        "verifier": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "want": {
+        "challenge": "ZtNPunH49FD35FWYhT5Tv8I7vRKQJ8uxMaL0_9eHjNA",
+        "matches": false
+      }
+    },
+    {
+      "name": "the login redirect asks for S256",
+      "input": {
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        },
+        "kind": "authorize",
+        "path": "/auth/oidc"
+      },
+      "want": {
+        "query": {
+          "client_id": "app-client",
+          "code_challenge": "<43 random base64url characters>",
+          "code_challenge_method": "S256",
+          "nonce": "<43 random base64url characters>",
+          "redirect_uri": "https://app.test/api/auth/oidc/callback",
+          "response_type": "code",
+          "scope": "openid email profile offline_access",
+          "state": "<43 random base64url characters>"
+        },
+        "status": 302,
+        "url": "https://sso.test/authorize"
+      }
+    }
+  ]
+}

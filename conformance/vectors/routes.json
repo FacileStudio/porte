@@ -1,0 +1,1055 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "routes",
+  "fixtures": {
+    "discovery": {
+      "authorization_endpoint": "https://sso.test/authorize",
+      "code_challenge_methods_supported": [
+        "S256"
+      ],
+      "id_token_signing_alg_values_supported": [
+        "RS256"
+      ],
+      "issuer": "https://sso.test",
+      "jwks_uri": "https://sso.test/keys",
+      "response_types_supported": [
+        "code"
+      ],
+      "subject_types_supported": [
+        "public"
+      ],
+      "token_endpoint": "https://sso.test/token",
+      "userinfo_endpoint": "https://sso.test/userinfo"
+    },
+    "issuer": "https://sso.test"
+  },
+  "cases": [
+    {
+      "name": "oidc off: GET /auth/config",
+      "input": {
+        "method": "GET",
+        "path": "/auth/config",
+        "config": {}
+      },
+      "want": {
+        "body": "{\"sso_only\":false,\"oidc_enabled\":false}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/config",
+      "input": {
+        "method": "POST",
+        "path": "/auth/config",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc off: GET /auth/oidc",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: GET /auth/oidc?flow=cli&port=8765",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=cli&port=8765",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: GET /auth/oidc?flow=mobile",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=mobile",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: GET /auth/oidc/callback",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc/callback",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/oidc/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/exchange",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/oidc/device/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/device/exchange",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/logout",
+        "config": {}
+      },
+      "want": {
+        "body": "{\"logged_out\":true}\n",
+        "location": null,
+        "set_cookie": [
+          "session=<value>; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        ],
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off: GET /auth/logout",
+      "input": {
+        "method": "GET",
+        "path": "/auth/logout",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/sync-profile",
+      "input": {
+        "method": "POST",
+        "path": "/auth/sync-profile",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/backchannel-logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/backchannel-logout",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/register",
+      "input": {
+        "method": "POST",
+        "path": "/auth/register",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off: POST /auth/login",
+      "input": {
+        "method": "POST",
+        "path": "/auth/login",
+        "config": {}
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/config",
+      "input": {
+        "method": "GET",
+        "path": "/auth/config",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":false}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/config",
+      "input": {
+        "method": "POST",
+        "path": "/auth/config",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/oidc",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/oidc?flow=cli&port=8765",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=cli&port=8765",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/oidc?flow=mobile",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=mobile",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/oidc/callback",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc/callback",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/oidc/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/exchange",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/oidc/device/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/device/exchange",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/logout",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "body": "{\"logged_out\":true}\n",
+        "location": null,
+        "set_cookie": [
+          "session=<value>; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        ],
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc off, sso only: GET /auth/logout",
+      "input": {
+        "method": "GET",
+        "path": "/auth/logout",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/sync-profile",
+      "input": {
+        "method": "POST",
+        "path": "/auth/sync-profile",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/backchannel-logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/backchannel-logout",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/register",
+      "input": {
+        "method": "POST",
+        "path": "/auth/register",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc off, sso only: POST /auth/login",
+      "input": {
+        "method": "POST",
+        "path": "/auth/login",
+        "config": {
+          "SSO_ONLY": "true"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/config",
+      "input": {
+        "method": "GET",
+        "path": "/auth/config",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":true}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/config",
+      "input": {
+        "method": "POST",
+        "path": "/auth/config",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/oidc",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "query_keys": [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "nonce",
+            "redirect_uri",
+            "response_type",
+            "scope",
+            "state"
+          ],
+          "url": "https://sso.test/authorize"
+        },
+        "set_cookie": [
+          "__Host-oidc_state=<value>; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/oidc?flow=cli&port=8765",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=cli&port=8765",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "query_keys": [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "nonce",
+            "redirect_uri",
+            "response_type",
+            "scope",
+            "state"
+          ],
+          "url": "https://sso.test/authorize"
+        },
+        "set_cookie": [
+          "__Host-oidc_state=<value>; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/oidc?flow=mobile",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=mobile",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "url": "https://app.test/login?error=could+not+start+the+login"
+        },
+        "set_cookie": null,
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/oidc/callback",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc/callback",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "url": "https://app.test/login?error=the+login+has+expired%2C+start+again"
+        },
+        "set_cookie": null,
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/oidc/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/exchange",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"invalid JSON body\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 400
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/oidc/device/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/device/exchange",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"logged_out\":true}\n",
+        "location": null,
+        "set_cookie": [
+          "__Host-session=<value>; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+          "session=<value>; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on: GET /auth/logout",
+      "input": {
+        "method": "GET",
+        "path": "/auth/logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/sync-profile",
+      "input": {
+        "method": "POST",
+        "path": "/auth/sync-profile",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"missing auth\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 401
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/backchannel-logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/backchannel-logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"missing logout_token\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 400
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/register",
+      "input": {
+        "method": "POST",
+        "path": "/auth/register",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc on: POST /auth/login",
+      "input": {
+        "method": "POST",
+        "path": "/auth/login",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/config",
+      "input": {
+        "method": "GET",
+        "path": "/auth/config",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"sso_only\":true,\"oidc_enabled\":true}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/config",
+      "input": {
+        "method": "POST",
+        "path": "/auth/config",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/oidc",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "query_keys": [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "nonce",
+            "redirect_uri",
+            "response_type",
+            "scope",
+            "state"
+          ],
+          "url": "https://sso.test/authorize"
+        },
+        "set_cookie": [
+          "__Host-oidc_state=<value>; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/oidc?flow=cli&port=8765",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=cli&port=8765",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "query_keys": [
+            "client_id",
+            "code_challenge",
+            "code_challenge_method",
+            "nonce",
+            "redirect_uri",
+            "response_type",
+            "scope",
+            "state"
+          ],
+          "url": "https://sso.test/authorize"
+        },
+        "set_cookie": [
+          "__Host-oidc_state=<value>; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/oidc?flow=mobile",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc?flow=mobile",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "url": "https://app.test/login?error=could+not+start+the+login"
+        },
+        "set_cookie": null,
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/oidc/callback",
+      "input": {
+        "method": "GET",
+        "path": "/auth/oidc/callback",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": {
+          "url": "https://app.test/login?error=the+login+has+expired%2C+start+again"
+        },
+        "set_cookie": null,
+        "status": 302
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/oidc/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/exchange",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"invalid JSON body\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 400
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/oidc/device/exchange",
+      "input": {
+        "method": "POST",
+        "path": "/auth/oidc/device/exchange",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"invalid JSON body\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 400
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"logged_out\":true}\n",
+        "location": null,
+        "set_cookie": [
+          "__Host-session=<value>; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+          "session=<value>; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+        ],
+        "status": 200
+      }
+    },
+    {
+      "name": "oidc on with cli: GET /auth/logout",
+      "input": {
+        "method": "GET",
+        "path": "/auth/logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 405
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/sync-profile",
+      "input": {
+        "method": "POST",
+        "path": "/auth/sync-profile",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"missing auth\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 401
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/backchannel-logout",
+      "input": {
+        "method": "POST",
+        "path": "/auth/backchannel-logout",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"invalid_argument\",\"message\":\"missing logout_token\"}}\n",
+        "location": null,
+        "set_cookie": null,
+        "status": 400
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/register",
+      "input": {
+        "method": "POST",
+        "path": "/auth/register",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    },
+    {
+      "name": "oidc on with cli: POST /auth/login",
+      "input": {
+        "method": "POST",
+        "path": "/auth/login",
+        "config": {
+          "OIDC_CLIENT_ID": "app-client",
+          "OIDC_CLIENT_SECRET": "conformance-secret",
+          "OIDC_CLI_AUDIENCE": "facile-cli",
+          "OIDC_ISSUER": "https://sso.test",
+          "OIDC_REDIRECT_URL": "https://app.test/api/auth/oidc/callback",
+          "OIDC_SUCCESS_URL": "https://app.test/"
+        }
+      },
+      "want": {
+        "location": null,
+        "set_cookie": null,
+        "status": 404
+      }
+    }
+  ]
+}

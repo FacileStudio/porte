@@ -1,0 +1,267 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "cookie",
+  "fixtures": {
+    "host_prefix": "__Host-",
+    "name": "session"
+  },
+  "cases": [
+    {
+      "name": "clear over https expires both names",
+      "input": {
+        "action": "clear",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+          "session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "clear over plain http",
+      "input": {
+        "action": "clear",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "read ignores __Host- over http",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false,
+        "cookie_header": "__Host-session=abc"
+      },
+      "want": {
+        "found": false,
+        "value": ""
+      }
+    },
+    {
+      "name": "read prefers the prefixed name",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": true,
+        "cookie_header": "session=old; __Host-session=new"
+      },
+      "want": {
+        "found": true,
+        "value": "new"
+      }
+    },
+    {
+      "name": "read refuses the bare name over https",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false,
+        "cookie_header": "session=abc"
+      },
+      "want": {
+        "found": false,
+        "value": ""
+      }
+    },
+    {
+      "name": "read skips an empty value",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false,
+        "cookie_header": "session="
+      },
+      "want": {
+        "found": false,
+        "value": ""
+      }
+    },
+    {
+      "name": "read the bare name over http",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false,
+        "cookie_header": "session=abc"
+      },
+      "want": {
+        "found": true,
+        "value": "abc"
+      }
+    },
+    {
+      "name": "read the legacy name when accepted",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": true,
+        "cookie_header": "session=old"
+      },
+      "want": {
+        "found": true,
+        "value": "old"
+      }
+    },
+    {
+      "name": "read the prefixed name over https",
+      "input": {
+        "action": "read",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false,
+        "cookie_header": "__Host-session=abc"
+      },
+      "want": {
+        "found": true,
+        "value": "abc"
+      }
+    },
+    {
+      "name": "set behind a TLS proxy",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set over direct TLS",
+      "input": {
+        "action": "set",
+        "tls": true,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set over plain http",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set when the config is https",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "",
+        "redirect_url": "https://app.test/api/auth/oidc/callback",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set with a one hour ttl",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "https",
+        "redirect_url": "",
+        "ttl_seconds": 3600,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=3600; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set with forwarded http, config https",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "http",
+        "redirect_url": "https://app.test/api/auth/oidc/callback",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    },
+    {
+      "name": "set with forwarded proto in caps",
+      "input": {
+        "action": "set",
+        "tls": false,
+        "forwarded_proto": "HTTPS",
+        "redirect_url": "",
+        "ttl_seconds": 0,
+        "accept_legacy_cookie": false
+      },
+      "want": {
+        "set_cookie": [
+          "__Host-session=TOKEN; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax"
+        ]
+      }
+    }
+  ]
+}

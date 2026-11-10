@@ -1,0 +1,468 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "csrf",
+  "fixtures": {
+    "header": "X-Facile-CSRF",
+    "route": "a route behind RequireAuth that answers 200"
+  },
+  "cases": [
+    {
+      "name": "DELETE bearer with header",
+      "input": {
+        "method": "DELETE",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "DELETE bearer without header",
+      "input": {
+        "method": "DELETE",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "DELETE cookie with header",
+      "input": {
+        "method": "DELETE",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "DELETE cookie without header",
+      "input": {
+        "method": "DELETE",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "GET bearer with header",
+      "input": {
+        "method": "GET",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "GET bearer without header",
+      "input": {
+        "method": "GET",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "GET cookie with header",
+      "input": {
+        "method": "GET",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "GET cookie without header",
+      "input": {
+        "method": "GET",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "HEAD bearer with header",
+      "input": {
+        "method": "HEAD",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "HEAD bearer without header",
+      "input": {
+        "method": "HEAD",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "HEAD cookie with header",
+      "input": {
+        "method": "HEAD",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "HEAD cookie without header",
+      "input": {
+        "method": "HEAD",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "OPTIONS bearer with header",
+      "input": {
+        "method": "OPTIONS",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "OPTIONS bearer without header",
+      "input": {
+        "method": "OPTIONS",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "OPTIONS cookie with header",
+      "input": {
+        "method": "OPTIONS",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "OPTIONS cookie without header",
+      "input": {
+        "method": "OPTIONS",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PATCH bearer with header",
+      "input": {
+        "method": "PATCH",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PATCH bearer without header",
+      "input": {
+        "method": "PATCH",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PATCH cookie with header",
+      "input": {
+        "method": "PATCH",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PATCH cookie without header",
+      "input": {
+        "method": "PATCH",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "POST bearer with header",
+      "input": {
+        "method": "POST",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "POST bearer without header",
+      "input": {
+        "method": "POST",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "POST cookie with header",
+      "input": {
+        "method": "POST",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "POST cookie without header",
+      "input": {
+        "method": "POST",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "PUT bearer with header",
+      "input": {
+        "method": "PUT",
+        "transport": "bearer",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PUT bearer without header",
+      "input": {
+        "method": "PUT",
+        "transport": "bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PUT cookie with header",
+      "input": {
+        "method": "PUT",
+        "transport": "cookie",
+        "header_present": true,
+        "header_value": "1"
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "PUT cookie without header",
+      "input": {
+        "method": "PUT",
+        "transport": "cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "cookie first, so the header applies",
+      "input": {
+        "method": "POST",
+        "transport": "cookie_and_unknown_bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "cookie wins over a bearer",
+      "input": {
+        "method": "GET",
+        "transport": "cookie_and_unknown_bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "",
+        "set_cookie": null,
+        "status": 200
+      }
+    },
+    {
+      "name": "empty header value does not count",
+      "input": {
+        "method": "POST",
+        "transport": "cookie",
+        "header_present": true
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"missing X-Facile-CSRF header\"}}\n",
+        "set_cookie": null,
+        "status": 403
+      }
+    },
+    {
+      "name": "no credential",
+      "input": {
+        "method": "GET",
+        "transport": "none",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"missing auth\"}}\n",
+        "set_cookie": null,
+        "status": 401
+      }
+    },
+    {
+      "name": "unknown bearer",
+      "input": {
+        "method": "POST",
+        "transport": "unknown_bearer",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"invalid session\"}}\n",
+        "set_cookie": null,
+        "status": 401
+      }
+    },
+    {
+      "name": "unknown cookie",
+      "input": {
+        "method": "GET",
+        "transport": "unknown_cookie",
+        "header_present": false
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"invalid session\"}}\n",
+        "set_cookie": [
+          "session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        ],
+        "status": 401
+      }
+    }
+  ]
+}

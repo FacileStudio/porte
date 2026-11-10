@@ -1,0 +1,559 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "jwt",
+  "fixtures": {
+    "audience": "app-client",
+    "discovery": {
+      "authorization_endpoint": "https://sso.test/authorize",
+      "code_challenge_methods_supported": [
+        "S256"
+      ],
+      "id_token_signing_alg_values_supported": [
+        "RS256"
+      ],
+      "issuer": "https://sso.test",
+      "jwks_uri": "https://sso.test/keys",
+      "response_types_supported": [
+        "code"
+      ],
+      "subject_types_supported": [
+        "public"
+      ],
+      "token_endpoint": "https://sso.test/token",
+      "userinfo_endpoint": "https://sso.test/userinfo"
+    },
+    "issuer": "https://sso.test",
+    "jwks": {
+      "keys": [
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "kid": "conformance-key",
+          "kty": "RSA",
+          "n": "yMVxjrnBj7SB7EF8LPKLFlDcwcs9Ry2OvWHidFFVetFvArkD9URFab9agLEL9uMnvjioO_Fce-sSv1g5AOdsQrLnLxtVuZsTFmLYFifw5R9jCR6rq72nOk2GXDXT1-kP3XP9N1HPFashgMV1pJkkoaPtLZMQKyUuJrgoyc5CXPBDhCGwQSGkH0JBdYuhcCvKL1k1k5HgYU87Ogx41l7rNYdyTW6r9wVyHJFEQckmYoAQJSxnUqUxUmIXD9PASiayigCMCduwcJ0KypWwyYnKTXv1G7wqRIUhcj4TRi9atwsBA6KHyKTM06ETSkp-FiwCQnr1vXHXtA4hF3Ts9cVD9Q",
+          "use": "sig"
+        }
+      ]
+    },
+    "leeway_seconds": 30,
+    "now": 1794312000
+  },
+  "cases": [
+    {
+      "name": "valid",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.m8HRSmr0cb7GOUgMaz2bl_pxdkH40A9ymi-RGi0mHcSDldMhn75541edfHErETxCzmsg4wmV1M_62gxwPNkC7JJoGuQBNMJ-9v9j_3jsFb0srnOkpT81ZigXRb4wb-jRZ1sqVdmDmLio2abl45bRB7J6vEmAcxvRuIDWmAOW0yTkmADQRKiw_zCntpxBXmUgUUZZu2b72tYVg9Rkh0XAP5Opr9RzpeCZXXeLze6HNaDHkUigYW9hcvQC0CyRQZgRcRYGSgj404pfchsM2K79ydE8QqpHewZHTXFg88MDjHor6ARgooxmS58idGmdJ5TW5-iLVvPSaa-Pe_g5g7bhXg"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "audience as an array",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsib3RoZXIiLCJhcHAtY2xpZW50Il0sImVtYWlsIjoidXNlckBleGFtcGxlLnRlc3QiLCJleHAiOjE3OTQzMTU2MDAsImlhdCI6MTc5NDMxMTk0MCwiaXNzIjoiaHR0cHM6Ly9zc28udGVzdCIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.JQgP7uZNTV_46kkCMyJKP2MJR2iZVwyhkTcSHA-51YBZmVRJt3xg3Nsh0kjI5_SiM9siEi8w4MbFPkeLFQWiz8Pn_TPS0yg6IiYzUXbCY8KhcTDps-eP-Hkmdi0ggiSKlCDj_a2GSH1cVvqqMbdALQ8cKSQSWshLmOvr8Vddd0Vvbi2FFDfU1kU-9WHBkkZBuzDhJ-qng4l13aPjJQCFT4TzFqdD8Kj3CMfTThH4x-bBrWa0rmO6Qpmdbt91tS5YN_17j-utHKNYn2gps62Cu6COUSSc66NiP5iqx2ppnQ20YGQdp4CwlPT0lL2ci_y_SbG_CytTXvEDQDjofRCP_Q"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "other",
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "an extra audience is accepted",
+      "input": {
+        "extra_audiences": [
+          "https://app.test/mcp"
+        ],
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJodHRwczovL2FwcC50ZXN0L21jcCIsImVtYWlsIjoidXNlckBleGFtcGxlLnRlc3QiLCJleHAiOjE3OTQzMTU2MDAsImlhdCI6MTc5NDMxMTk0MCwiaXNzIjoiaHR0cHM6Ly9zc28udGVzdCIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.a5tCk_KY6dKFgwCw8NJmKJnE6qJUPpCr6Xs-02fQBcnJYBrfIhwm-mFsTak_Pq1FBJRMTosBvcvbFJzjpjq7ZAiyfxBSkoo7d_YHg8wTKAHjW8UouvzjfncpQS_K0FiVF9dM5x74jgK1LsDjycZI9BXAW9pvfl3oHbPnIThkwgEA0iI82ad6jcJc4lqm_A8-AEsl5rRlA4W_EDJXdfgjDr9tCPLVMBgetgA0jXClGorJmXeL-9oZLW-M1SXkmlwNKhGROWtSRAKZdS70IAF07G2b4FUSUbVn925EBTIUbxRwRBkj08IO7u2gy-18o6S6BD_2dzMCqqwsEK2eZU4FJg"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "https://app.test/mcp"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "expired inside the leeway",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxMTk3MSwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.WXdh_Q61nXpdJJ1MFpBdtSs5XEPyVb1-FqCu1IUk-SQ4EbZwbDg7N_2bnfjRP6HDDg7RmVukiB9G7AKLDbUogQ27Tj3_J0pCdfxerFvqOILr8AuERfE00GvRJQ-qrvKzjd2FyDMzlOkLfa2wxckNJsom6QMvgPX8Y9nXUIGCeATkswCzg46k74uNxHB2GrZl2jjp2l3hFat5ZUA7DP-dCfi-tGXEJqTnuQqmee_xzbzjCAxHLRgKEFpFFYUJkRMxoUC2GHQ5Fyi2_Dy7esIABS50HHpBssWJjl8cPLQID0Z_0VxrruTAegXQgJEPS9hDa-NSQKDRpsuubBp1kWiFRg"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794311971,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "nested act keeps the outer actor",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhY3QiOnsiYWN0Ijp7InN1YiI6Imdsb3V0b24ifSwic3ViIjoiYnVsbGUifSwiYXVkIjoiYXBwLWNsaWVudCIsImVtYWlsIjoidXNlckBleGFtcGxlLnRlc3QiLCJleHAiOjE3OTQzMTU2MDAsImlhdCI6MTc5NDMxMTk0MCwiaXNzIjoiaHR0cHM6Ly9zc28udGVzdCIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.Dh48CABRIibmZOj1-Eo40jSmzytx0rqqrX4oxb6G9H5hxxmy0vestWfkLG8x0GPQcVGKQYeQ9aABuHa5cwGomBWcejMBEmfmkupRqGC2376ZWbmV93f1nhdKFvYXzTcuMzA8DJsJZ_-lOoR8nGGRC_mtxTbZMnnsGzIVhD5r5yZyNohz0OaPgbbfoiKRRKS6tRQqln8K5Tj3_m07SHmfv55HBVCFv0sKYrBFTjdUEaeq2Lrf90vXRV__JlBJOUNVuy6Qbiolk26Zat3VzS2Du7oHTq1ofiX-yMHf_ejnMe4KuithJa0HH9haMjXuwSHD9A6P-IQ0I68bWNfCZ0MqoQ"
+      },
+      "want": {
+        "claims": {
+          "actor": "bulle",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "act without a subject",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhY3QiOnt9LCJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.BOwOof8SFUgzE_HpRQYKMyumhMDeQvSECAvO6vr5VpNVxr6kYkiacr9mNTjG9WWFF4m0JIyOofxhiumswm0P1zKNs6LJMCpT1SBeEsgMjUUjAzkxpgF9Twc8nTw_e94qwbQThtkXWkbFLX2B6EzKnTL2kOxGxi_4yaQ-O5Hop77LV-gO3kjRj-CLsOMnisVTJgZ-2PFrjzom82xksT5T25gvifu30O6TpEUMwz-YDvByTdTbJSThY4mwIwfef3V13QotVpR_5Fph2Tkh9_KiDeBZ-5DubQ1ezmVtQpuXS7i185ANM1ABiBlp0xZEbXzd3O_ScUFMEfi4nA4WOZj_rA"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "scope splits on any whitespace",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInNjb3BlIjoiIGFwcC5yZWFkICBhcHAud3JpdGVcdHggIiwic3ViIjoic3ViamVjdC0xIn0.SS-b5YnbD3l3kiUZDic6sLWkO_bPVwn0Mj4BiFT-lkZEdd5YAj3r89X3kIEvWR0pFr3glfT-yOkzKedfHLlz94tglqtGAWOGkz9HpVaaD8KO8VuT-H_bPXgamAaab_RWLRY6VSvIGvO6BH_uFFU75nbkoZd0HmiGbRBVwThdYMuPXqTn6RcKiWeVo9_i-cKjy7f8Kjj55v3SC8HRpOuHJGPuc1Cb3EVD7CZWDzVsOiRGblbHAqdPsF-YPEFFoj7Lj3md7z_H7kyXoAxZHyZwHyav5Sex7zVd9eioszdiFQ1iHPT5uNYGElDwbYT4pu5Nqp5AuTcSy1IAwCpz4USZ3w"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [
+            "app.read",
+            "app.write",
+            "x"
+          ],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "roles, client id and jti",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiY2xpZW50X2lkIjoiYnVsbGUiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS50ZXN0IiwiZXhwIjoxNzk0MzE1NjAwLCJpYXQiOjE3OTQzMTE5NDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJqdGkiOiJqdGktMSIsIm5hbWUiOiJUZXN0IFVzZXIiLCJyb2xlcyI6WyJhZG1pbiIsInN0YWZmIl0sInN1YiI6InN1YmplY3QtMSJ9.x9O3Asz-xX4UsNmQMiHG9qy_lczPEeilxlJh0Gr6JptBo3OciIaMkwRijfXxKJDRISueojrVGvaIbO7J2TqBYNN605s4VHTWFnMOYIjpkIbqiAPVM0vh7OAVY-5IKVqRhBR5Wj3XtiSMuk1XPbEA-g-7CBywmelstkiJb8cz8vwu6AVgHKZqGTM_zgHymatDwOSsFzBaH-iQn4Qg-qwr9Sw9aiJw1Tbkl_R5jYzfA7TAPLAKl3hVIaTIvoruKTyj0QGX5IXTZqwOLucw0zVQ8GBU8m-9I45dbvQMv2qADhSBYmI2zunYeiwVO6puGnfAPnnbF-hdR06iH9q1wcnl-Q"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "bulle",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "jti-1",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [
+            "admin",
+            "staff"
+          ],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "profile claims",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImVtYWlsX3ZlcmlmaWVkIjoidHJ1ZSIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibG9jYWxlIjoiZnIiLCJuYW1lIjoiVGVzdCBVc2VyIiwicGljdHVyZSI6Imh0dHBzOi8vc3NvLnRlc3QvYS5wbmciLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJ1c2VyIiwic3ViIjoic3ViamVjdC0xIn0.QI7clv6vMkbfTOc8GeAao_vf22i9xSRd-wPhEOIrJ-fwcrjRRa7ss5E1f8TWKidZuIbXzMFklk_ZVWns0s1PkPGPmulUSwpP-xySVth_HSlVupCvAyK66kUVyLl6xsSKUr8EqXmlVtsJUCiTcPCFwQCZWeFl-K65KDQUGibPzIApFWGxj2hqftRkezrhs6r9jYsbVsysl_DOvvnBTs3lF8GQWzu-mCNqRufhUiD4kjmf1ikab-JjDkbXl_ew_yQf7QD9onOG1MpvVAQsMi4YHxVNRatFXTQD-iXyTOWD5JLJEavH2GN8olbNrarcmriz_-Zzf1eQCcvX5mAfAQoDig"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": true,
+            "locale": "fr",
+            "picture": "https://sso.test/a.png",
+            "preferred_username": "user"
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "odd profile types drop the claim, not the token",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImVtYWlsX3ZlcmlmaWVkIjoieWVzIiwiZXhwIjoxNzk0MzE1NjAwLCJpYXQiOjE3OTQzMTE5NDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJsb2NhbGUiOjUsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.jir-h6zD1Ksqcb1uA53grhAr0lb4xZE80GjwlXrzxM-5iLhSl6BY96oyZZKNefdRGk0qKdESUXw7V9QXAhndRXfeN1RH8oCKW5G-uJTzUMkJ5RjkdG-gO7BcgBvwpDObS2JphYezMr4kfJTZa81iz5X4pDPtvwZL5hU-CUHfy3vIfbWxdWprr6Y_XTsBgqZ2fbqO6JIqFMXXja2IVqa5BCAQ5pYetBCLDJRXM6u7vRnnFtYBu6OWhgqXX-BHaJHwioOg5_mSTE7ZNPSEwxsfbtV8YysDBL8HQbHlp12mvfY9r8PU8u2RWy4O2fOBAEZVdwDrxEb1iqeW5UmPWPlsyQ"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": null,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "email_verified false",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImVtYWlsX3ZlcmlmaWVkIjpmYWxzZSwiZXhwIjoxNzk0MzE1NjAwLCJpYXQiOjE3OTQzMTE5NDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJuYW1lIjoiVGVzdCBVc2VyIiwic3ViIjoic3ViamVjdC0xIn0.DtO33uNHPLnpj_zZa7P7L07VidLuau9TEC17AqBCral5wKsTM369XR5c_tFRc1HWgkgGc9cW9DUiU1SlEHDE-9a2-wAJCVMsT39okx-IVbxow_vkTdgpzcr_qKg2vuFfgQkDslGYclCto5jWtm5jVPHF53XUI9QTKuJcjFeaQR28GBEVWLypPhstqM2p-DEeJ-6q1310w-b75ecTvyQ4uCManvzxOQVPrybDDheon5b6RFskuud1rBzBsYkEfjrpEKZMrxANL9W0JrdoeuRGdmqT8g6QmMKfQmtv9RklWbDZM7GHYZLXMTPhrvvQ2fwipta_6WRcy-B9mFP9BFkH5A"
+      },
+      "want": {
+        "claims": {
+          "actor": "",
+          "audience": [
+            "app-client"
+          ],
+          "client_id": "",
+          "email": "user@example.test",
+          "expires_at": 1794315600,
+          "id": "",
+          "name": "Test User",
+          "profile": {
+            "email_verified": false,
+            "locale": "",
+            "picture": "",
+            "preferred_username": ""
+          },
+          "roles": [],
+          "scopes": [],
+          "subject": "subject-1"
+        },
+        "reason": null,
+        "valid": true
+      }
+    },
+    {
+      "name": "wrong audience",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJvdGhlci1hcHAiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS50ZXN0IiwiZXhwIjoxNzk0MzE1NjAwLCJpYXQiOjE3OTQzMTE5NDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJuYW1lIjoiVGVzdCBVc2VyIiwic3ViIjoic3ViamVjdC0xIn0.aslCb3-Wqb_kjr1PkrqxYda3Kk_Oaj83PN-Cj_YbqtVuu6Ij-Nc47bS3Z6sBrnPwRm5e6PdUzV_NXbgvA1UBn-UAn00cMqbIDeDJqxHcwd2Yt2Gz09hJvHGBoYULc7mcQz-oHGDtyPSx_KpsFHNbWcS2ypojPhT2p1nxmyKQqcgKYkMXwhd7f7fzfuvi6wQHhtt5m27HdSbGz0wR6gBepVHW84UZUbvstXyyccmzLucqbCmWycM0tJ0EGEm7dIx22ZlE0ljI6h3wBfQBnvoA9E1qsDHmcAOUPQJFXSfKAdu_LbFlLoBPSyl0CpzLT5TLN_77e2LXS7KIZ2gSrRKdPg"
+      },
+      "want": {
+        "reason": "audience",
+        "valid": false
+      }
+    },
+    {
+      "name": "no audience",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS50ZXN0IiwiZXhwIjoxNzk0MzE1NjAwLCJpYXQiOjE3OTQzMTE5NDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJuYW1lIjoiVGVzdCBVc2VyIiwic3ViIjoic3ViamVjdC0xIn0.vfn4cnpXN62LX93ZXNc9azmyQlK8pmCSDX4rlsT8x30RMfNuI3UtctdqO1N0Eb_PI6RgxNUmbB9Ebddx_nKZnwjjSoZ0UcVjaTmQZUQt_iki9TbVna0c-cl-3ZWHNBO2Q9digPESEbigSKsT1_CJKjXRemcbRHfDXXY7nY9cTYlc31P5GidnbcxV5BV27_bfOmeTBegIiVjhd_Bm4Y9j9IW0yS63rZHHWEVPZ2UlgAWFbf_8UUGIqSREWaluI6vT987DhFJhXqdbGYzNNkpMI3NEQv4bfb5gt7HLcgHYUcHBHp9-ij_8jvC22vx7Ln-RYSLBmmGuLQUfYqfZMLaf0w"
+      },
+      "want": {
+        "reason": "audience",
+        "valid": false
+      }
+    },
+    {
+      "name": "expired past the leeway",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxMTk2OSwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.AHVejhdtx4bhqzBxsINxHU8fe2peHFGdigqO7XXAsun2Bax1UUptRhbOm5Pa_CUUZlDwpEiXDpQNhfWMRQ3ppKEV8hrSCSRIbbw8gAGbgnS3l1f1HzmVLhcPDZWkJYVDk_FEKpd47CldoDXWGjDgN87q2y_aK91oRRtw-WsLce6bSPC3TD0UroESDJe-G1n330KTrT_7qM-3Kgt5xVFaY3QwM1Q67acQ8RJNbLK3drPgMpdrzOYzdBc6NpugAa1AgT9_domACxAgixUFw482Fsm5tA895NpSonpBzrG-eCcf1umyusUfl8VYbA7zX6ACzleIRnU1ou7GrJJdY21V2w"
+      },
+      "want": {
+        "reason": "expired",
+        "valid": false
+      }
+    },
+    {
+      "name": "no exp is expired",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImlhdCI6MTc5NDMxMTk0MCwiaXNzIjoiaHR0cHM6Ly9zc28udGVzdCIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.Nbtdt8z180IVBTImGlzuIW8dmFVZxwqzYrUqbXmaEcaC2NWfE2YhJWsus1_Qp3ALNqWja1aUstTvYArTG0a9HV8NgDHxIKfWxtbIySwJSr6tfG6hXFk0162IYkfGL_5Idwo_Oaw8svdm4Gs9vfle2D3C-HszpM8JWLUky6IoVzBsKPYaqW_Gtx2_BQVQAIKHP8k3zYo5sRNRxck3P8od8m2KYWjdcorXCsDp0QqgY5Qlw_KJSTXzENyVXk-EY_xw4P6mP45gtyLyxHweUSPxhB3-oMlViYlcu5xBTKrYQ1KsQEJ4KW_ZpjtzG7SoDYnlql6_8Y5Lq5zKVoBiS2Sncw"
+      },
+      "want": {
+        "reason": "expired",
+        "valid": false
+      }
+    },
+    {
+      "name": "not valid yet",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsIm5iZiI6MTc5NDMxMjAzMSwic3ViIjoic3ViamVjdC0xIn0.NNoOKrej8YMMKsnKg8N-08q00gkFjs6qv87YT3whsgeNE6-Rx41x18YY-1Ka5t0wdFmEQOmGGSmx1Eiz2u5EreEANTvb2RTwpC8Y6n830c6NbtNh7T1Y85bRvXOsvTQLuUw_UgYQpyAfQf0lPOdUdd_vHo4h4c06CUDYgRYX0ozaOcZQb_hxXK__IupuPWbaamNf3yVTuDvjMjN9YuqvYfQxXz7aViibSCaXStDm52V7nCF6k4B7WWVlNDQeIrY_QxAk_kFzsLIwJeNF87_t2SGHoL9aaPHZOwIY0MkJFPOyxgINLxcUg0iylkVGmnlCbbiluBia6mwUOcM8BoXySg"
+      },
+      "want": {
+        "reason": "not_yet_valid",
+        "valid": false
+      }
+    },
+    {
+      "name": "issued in the future",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzEyMDMxLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.uxiO0Sfq2J2-W0MXyahGMVRUJEZc3E9av8s9ee_hMoWT-AR8JfuprvZpfE7JKumgJHK80GRTWym_tErU7jbGg5_uEPZYQSEJv58jNAIqpaD6xJtJ0EoZUsBiqz--TmJaNGccwvnpyKb9h_QodMYO0yBNsDtQoSgJ6parlBhkXkXzsWQ8hNmndwtUcuztSeXAsupAP9MNjumOLacqiyi2zzEzZ5XPPeurbraUA6pTgOeIgH8aCR0KE7TcpN6BxFtP5q37J3B5ijQReo71wPVcHQ_KZzQGSQ5nvvw-dEs98BbnYMdyjjOtOm0JWbszsvks9JqmxsgjQSlbwk_M3zIwEA"
+      },
+      "want": {
+        "reason": "issued_in_future",
+        "valid": false
+      }
+    },
+    {
+      "name": "wrong issuer",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL2V2aWwudGVzdCIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.kbghsnnk3K4vfxRhwcUd-FN7sE8ZDZdapN2_LJL-mBsL-unxcLrep8afSC1xEkJM0bN2JbH1aUf4D02aIVcAqYxvFdrB-giXSD-MdlqGg9hHyoLXUnfhzWoLrRR1I3wKFwropQF6eHtnlpUFFbW4eDjDokAwlO3cfj2p4oocr-CJAH4JmDqkUW91HW6n8uLGcG4H_tH6CNRYYuFHlXOeqRImRXi065hEYz2s06Sl4Di8R45J9R_rpp1f4rQAtwiYvhDaap3bEqPA0hIJ3PpgtoQEDVEiNugCOzPv0rnnED1JFzJuyvXKeD3Vg61gjZ7d3QoFJ4YDDonZYP8etorURw"
+      },
+      "want": {
+        "reason": "issuer",
+        "valid": false
+      }
+    },
+    {
+      "name": "issuer with a trailing slash",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0LyIsIm5hbWUiOiJUZXN0IFVzZXIiLCJzdWIiOiJzdWJqZWN0LTEifQ.TgnxnGwyVjltAPhGVcNd14TfGwHsJ3QFc47vTq6cvBI5IlrxZKMuEeCEcZTTsmFcb87Fl7CGeNfMill_kgSsG68sUyFILun6nGkX6Mn4QoLglf4tK2_N_N4eK9BUBItWivqA_4TO8wpKOfuUH-qlzb8DW1by5WucXuRmFDaF_6sndtpzefBiL3sQZsR8xVxEP47ug_7hA-bP_zU5us4W_7Qk3u892vMdFLo2Af5kLxwhT8KlkA4zsOEXtzdndgPSF1H30jIHpQIOEAPkXq47dLH7_PJ05cd7FfLyrgVhsCrvooE3WYu3c-ydMmEQIrjvEQw-1ZYLUgOlQu2jjk_TEQ"
+      },
+      "want": {
+        "reason": "issuer",
+        "valid": false
+      }
+    },
+    {
+      "name": "alg none",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJub25lIn0.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9."
+      },
+      "want": {
+        "reason": "algorithm",
+        "valid": false
+      }
+    },
+    {
+      "name": "alg HS256 keyed with the client id",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.wsrXfPokJSbOnqVJ3aCTRNroz8nuazhtE8lSfLOfEtI"
+      },
+      "want": {
+        "reason": "algorithm",
+        "valid": false
+      }
+    },
+    {
+      "name": "unknown kid",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6Im90aGVyIn0.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.hl1REVFtX91k_XbJVo95f7ar6ccu-K9dkQsWudhtTd3oAuzP0PGmgrP4QWwaHGxWVvCUFOmxhFdPo03kLDBC-fxy0rQmejgHXF_UByIDrskUHXEjqHRKmOgrEXSDj8qSXLF98_eX8B3NOb8AFp2sDi1MnARsXEpdfgVICdwZhjvMNzOc8Br3oU_Mp746Ya3hTTIcV4NZrfU3QJ10epLtywzZwuE9xSfAUzmiaTCm8vVonwBqBGkTb1pAYEGWeptcxTgOZDcCLsXS7cp1IIYoPgOrzKWVo01F7MU-tgPyzDmV_QQGo9TwJ9Sb9rvC9BSdL-QmmsbmpPKKJVwPF6LAlQ"
+      },
+      "want": {
+        "reason": "unknown_key",
+        "valid": false
+      }
+    },
+    {
+      "name": "signed by another key under the right kid",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9.J6bfsYzZEIlgfQ9I7Ual4zV_CH4z4SxWaO_YtwhwM_HF8CqaHcmeMDicVverASYsaFBGWuKpSrc_tee-CCJrVaXrMDBu6S7VLIoJwkKCx0HxHIwJPBUKxTtLv5-1ud3B-itQ4G0y7LQVhYUnW3hRGLCuq3ZFKwVvs-wgjmyK2zpqpL1AFRpnwssSlEpn7xrtwHY-OCnRs5XGdz4mShUCieDQ0fA5CgIoWbizYfI2oCwEtGHaHj0xBtw-Kpv-xxquh8B6PRWnp9KSiKRj4v9ZH0mstgUac4PUjZaIHjZ1RsXYBaHXeT7nBI0hW0WGzUuJCyPfW4fHawCWKzQZQXFeQQ"
+      },
+      "want": {
+        "reason": "signature",
+        "valid": false
+      }
+    },
+    {
+      "name": "payload swapped after signing",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6ImFkbWluIn0.m8HRSmr0cb7GOUgMaz2bl_pxdkH40A9ymi-RGi0mHcSDldMhn75541edfHErETxCzmsg4wmV1M_62gxwPNkC7JJoGuQBNMJ-9v9j_3jsFb0srnOkpT81ZigXRb4wb-jRZ1sqVdmDmLio2abl45bRB7J6vEmAcxvRuIDWmAOW0yTkmADQRKiw_zCntpxBXmUgUUZZu2b72tYVg9Rkh0XAP5Opr9RzpeCZXXeLze6HNaDHkUigYW9hcvQC0CyRQZgRcRYGSgj404pfchsM2K79ydE8QqpHewZHTXFg88MDjHor6ARgooxmS58idGmdJ5TW5-iLVvPSaa-Pe_g5g7bhXg"
+      },
+      "want": {
+        "reason": "signature",
+        "valid": false
+      }
+    },
+    {
+      "name": "two segments",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUudGVzdCIsImV4cCI6MTc5NDMxNTYwMCwiaWF0IjoxNzk0MzExOTQwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwibmFtZSI6IlRlc3QgVXNlciIsInN1YiI6InN1YmplY3QtMSJ9"
+      },
+      "want": {
+        "reason": "malformed",
+        "valid": false
+      }
+    },
+    {
+      "name": "payload is not JSON",
+      "input": {
+        "extra_audiences": null,
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.bm90IGpzb24.N3PWwaMYVK8zgDTL290ZVCPhkVt3IKemTHHzGKunLJFoV-rFAiiRGoiYF7GUU3MZwIxYk5Q_YI1Y_S0C3E5jrXJBcTe2hgd50kQ-dy-nyJOuLM3jxol9jHrihA_Q5ysa3TejC7isTBlpQRTAoy0dSQ8Xf2NNNnvGuwgNEyhUz9V0bLSslJyIn9CeLl23-xWS3A-2gLhHf9n84KPokmQUzlO49S3yAwo_v2gvPfNihoToGs09pa_GhA0zGzPcKRYeAwZxlx5Pr4VvxG8S4wwn0q2tbKroZ0hAHRm2hFvBmI4Pv6491pVcXb3a4ioSZMfWWm583jwfxFEGDCQ4_7g4sg"
+      },
+      "want": {
+        "reason": "malformed",
+        "valid": false
+      }
+    }
+  ]
+}

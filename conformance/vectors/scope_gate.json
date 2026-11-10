@@ -1,0 +1,968 @@
+{
+  "source": "github.com/FacileStudio/porte@v0.16.1",
+  "subject": "scope_gate",
+  "fixtures": {
+    "clock": "wall clock; every token is issued at 1600000000 and expires at 4102444800 unless the case says otherwise",
+    "discovery": {
+      "authorization_endpoint": "https://sso.test/authorize",
+      "code_challenge_methods_supported": [
+        "S256"
+      ],
+      "id_token_signing_alg_values_supported": [
+        "RS256"
+      ],
+      "issuer": "https://sso.test",
+      "jwks_uri": "https://sso.test/keys",
+      "response_types_supported": [
+        "code"
+      ],
+      "subject_types_supported": [
+        "public"
+      ],
+      "token_endpoint": "https://sso.test/token",
+      "userinfo_endpoint": "https://sso.test/userinfo"
+    },
+    "issuer": "https://sso.test",
+    "jwks": {
+      "keys": [
+        {
+          "alg": "RS256",
+          "e": "AQAB",
+          "kid": "conformance-key",
+          "kty": "RSA",
+          "n": "yMVxjrnBj7SB7EF8LPKLFlDcwcs9Ry2OvWHidFFVetFvArkD9URFab9agLEL9uMnvjioO_Fce-sSv1g5AOdsQrLnLxtVuZsTFmLYFifw5R9jCR6rq72nOk2GXDXT1-kP3XP9N1HPFashgMV1pJkkoaPtLZMQKyUuJrgoyc5CXPBDhCGwQSGkH0JBdYuhcCvKL1k1k5HgYU87Ogx41l7rNYdyTW6r9wVyHJFEQckmYoAQJSxnUqUxUmIXD9PASiayigCMCduwcJ0KypWwyYnKTXv1G7wqRIUhcj4TRi9atwsBA6KHyKTM06ETSkp-FiwCQnr1vXHXtA4hF3Ts9cVD9Q",
+          "use": "sig"
+        }
+      ]
+    },
+    "known_subject": "subject-1",
+    "machine_audience": "app-client",
+    "route": "a route behind RequireAuth that answers 200"
+  },
+  "cases": [
+    {
+      "name": "prefix \"\" GET no scope claim sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD no scope claim sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" HEAD scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST no scope claim sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" POST scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE no scope claim sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" DELETE scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"\" GET scope \"app.write\" sub unknown-subject",
+      "input": {
+        "method": "GET",
+        "prefix": "",
+        "scope_claim": "app.write",
+        "subject": "unknown-subject",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InVua25vd24tc3ViamVjdCJ9.I2UyXNACd68VfCOHsu_ybTNqJ1Tal5R-ZZO3v5SCLWNPBo1VdLmLZUGLK-uXDLbgDYukQuj9QlxvmJxQYYOTJVymjxorXLtUPS7UTAF_QNlbw6C-qAXmTKw1kV2j5q_FSswdtXyHDdgzhy7aR0gjX4V4O_d7Kq0rMlVzRd37nb-k9_RH-uvtqRFzi2F-zzll3WTskAt3SGzMhYUL5gLFHBS4tr4iUsu35h4Npuvxs5HfwA0ajR5kBsGGPxyyQceXGS7_YFId9jx-iRUTKWGG6N0KqPTVFI6m_6VwwBJfXoUk3wjwR1B7rtHM8oYaDDfXTNoEVw8_uGzMncZxydUI5g"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"invalid token\"}}\n",
+        "status": 401
+      }
+    },
+    {
+      "name": "prefix \"app\" GET no scope claim sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD no scope claim sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" HEAD scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "HEAD",
+        "prefix": "app",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST no scope claim sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" POST scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "POST",
+        "prefix": "app",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE no scope claim sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": null,
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzdWIiOiJzdWJqZWN0LTEifQ.CdPyKpsutdaUZDub6tmBiU0b7dE7pXmeHvEoTMwaboCZdRMzNqSIWVJq6YuES7Q-0JOOt7BVk9V1DTILcrgakO-9o8O6EMZ67PfNv8EGTBJU4TJWTq5650tF3XAycE3i1WNZbE_6wV9c3WCpnX1TX_yAYsOjpIoI7KczngBo-M0UZSdKaAwU1Y0Ua2FzjpMLZKVniUky40whqxZjDV16nErQ4mmv9p9olMbR-jkaKicVm-K9Zg1A-HcYizCK_KdlxfFkNv7FdZkxcNTLzqDv2o8hjp8Qlv2f_56LV_xPEvbcHJRp4XhIlN4kkSD2pdAaQUfKAt3gJlcXwg61lQ_Z0A"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IiIsInN1YiI6InN1YmplY3QtMSJ9.s3h0UBxU5a_usIvSlADXwUPQFIv_mv9PKCqwL-xE5dSnE3xKP0l8XmT_9sGB3rv8r-YwrjrP24bUwqCD3OnKk52gfJs71Tc9qZ31nvcwhCCt49hk-moU9SATRwQSe-JbRViWLZ1scfkw30I5IPH2tjIrmnfqCbyU3W-dNlrsdvimb_8f--1hXcEfsesG5Nrlglw8o4pSzrQB9NQSGUDc6Iqy5NRWbGOZ8TQCtrYQnDow4VUhPMoe5IwhlvdkhexWj36mn0wgAeyEoAAZtzgKOxkSNO3fs1DivKuhRHCn9CoTQ2szw7w8ZxFURmQzDAzT68QlcU5sDbhcjFg5vSnSBw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"app.read\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "app.read",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIiwic3ViIjoic3ViamVjdC0xIn0.TZDrCo5MP81o3nbgdg7XkHCG17VDhxe0dBA5fE0svS18KQXXbqLKHdIN09QANY2QtB01zCHtiauVdDbC2oA1HvDpw42TdIVRelxf4v-PuzA_JbbG0mQzqMfKyI1kCIDHI4qVTrZLrsRnITglEtnWgVL_XzJ_y9aQbJvpccOSo_pezryhQk4VBYSEz90L3ftHuPcq8EkDz6wqP1jTApqrifaO1NQPPw3AoG9X0h4zSopNcs9Udnp2thO2IoWjaSHMr-S-03CeFfseKl96Z9n0ZDFVDDc_BHbRu6H3r6vb47BB_576HaDVD5SoImXEPWLHhBkEC11h0vwj57c23KOHCA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"app.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.L3QKm_OaZlsGNp3aphfQekG4zrhFl6z0hpU8oeq9JBxj_7ZLCEd1yotMeEh8KLs1uNAizJTJ3ZwLPqWoQKrlfthwnmtrBgRsqSzKZL0ikhNQnK1aK0ih8fsB4N0Hvi81_aQ-FjJsw0LfIwMgvarJukNqWl3D6lW4aIqH4D29v7qt4ZzbsJTBiYTViafS9K6OfdX0ytIB5YCpCZ9qFhSw6414G_VJN_CGwR58BEERzwAyuQpXrOaH7_HYIex5PkUk_rrDDGNm15KxH9cJ5oKY6Ds1WgKzhWgcTLVIJy4riV3hLibNNlJfaf2qNkOYlhBOvskZXEEl_pTYFtUWp7FAUA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"app.read app.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "app.read app.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkIGFwcC53cml0ZSIsInN1YiI6InN1YmplY3QtMSJ9.qQMG41IW2SYtcGWA3EuPAKoNpCoxrxgy8kwK1EhyAbSacSWoz0_F5eiQn6JciulcNof-Xu5tyB_NzjxnV2IRjwp4w3KYtvrX5ImgJ_TraRozZ8oLvfnf3qrmCWIArtG7Yw386cn8zKMRG0FVwNOKeQ0wXY8yyVYrMAS5DSiKBOlT4WJFfN6etS-4PRJICHYXRxioLKRZj7--00U196NB1s4ZFu2_Sbc5-gAfImZnNhNaKlIIRBmayJdksALzt2rpW73RTuKRziznBaBQ0VKDipNDxIC8YddD6_ubCn5-WjwIgOUttAEwa7uhGHlxCxZQpZoZJEj_WnBSq4Pbkl6IkA"
+      },
+      "want": {
+        "body": "",
+        "status": 200
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"other.write\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "other.write",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6Im90aGVyLndyaXRlIiwic3ViIjoic3ViamVjdC0xIn0.PWZ9-EPIV1uBKhXrHKGnZ11Pgu1XlOFRDR9oMn5dcA8o2E3XFANfNgklYy1YxApFZtiNhDQ9JSmqAkOsdzLeRb6GM3pjEbGQEDZNuvuh78QDWr2LZO81D_EZIVxNUPw1G6BBPVik4p_QfRIg1vR4FlSgQJluKXctQuZUwSW13oJaordJ4lqNj-u-IFbRtsBu17fXEWGqBiowCGUFv9uvDS9msWAzAG8TECJbdTme06gM8IYMSoXP6urWkjUlt7j7mwGbFyMtMQeWGOk6JHcaXgmZWDAAOt5mrLAQ2toUPKDSIDRtSnlelHQURXgDRZ0XvZsDcqbt-aYJU9DeZQcTiA"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"app.readonly\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "app.readonly",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC5yZWFkb25seSIsInN1YiI6InN1YmplY3QtMSJ9.DKIQBxOlPLIpIxJGFogZ9qhLMYV7Nu_47Qjfr0v93_EXFdTEVq2lg-yr3TR1HTyyKnfNNoHKjxez331PakqtyjkDwEmgNSrnEGsPAny46Rpo4c6m7xurdMKp9WQ8AedOjNydj6bOxfiAB4ESBzxIbsLbiEh_luBYf2JKC1Qg6JnKCw2QH0mdVjNwIbzysFKxlRRF6K2d5b3_oJ4aobYweXPWuzyQYL8cinFBHb8w6lXSYD2HSPpDJRszr1depG7AleLuJcO4TlhFym-S_lZynp_vSN2DnBayE71YnLg_381PPNmKrCHs8SDertgFv0iOLG9B-RYZDhjaM07QAm7MJw"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" DELETE scope \"APP.WRITE\" sub subject-1",
+      "input": {
+        "method": "DELETE",
+        "prefix": "app",
+        "scope_claim": "APP.WRITE",
+        "subject": "subject-1",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6IkFQUC5XUklURSIsInN1YiI6InN1YmplY3QtMSJ9.hggi1LCa5hgmVUd921WXu2-tx-7vY7-nwsECE0oDnUCY0oACogkt5jQu-Z-dYl17ZtYsWh8UwvqjWBGeGXdxKdtkmyBttzBOsUzIovLcYgTmnHSG1Waq7ARdvx6BO-Yt_4G8I1qzIYtvmwvLILMCjhtKdFS3epvTDEIpRhkAt7zk54XATw6MePo-g0ht_j-Zskm1q_Bd5QV91-6VVOfd-N-auHIo8OgEyw6JkdcKUrr3NP1a53h2Kz-A4g0iH37vYlanh0JqTZegKbDfbjeRoTj1nMlbcQHCjw4Hh725cJd6hq7QIQW-IBQ3VIaAPUqTCSzKnX09E3rquTVaMoSO7w"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"permission_denied\",\"message\":\"insufficient scope\"}}\n",
+        "status": 403
+      }
+    },
+    {
+      "name": "prefix \"app\" GET scope \"app.write\" sub unknown-subject",
+      "input": {
+        "method": "GET",
+        "prefix": "app",
+        "scope_claim": "app.write",
+        "subject": "unknown-subject",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXhwIjo0MTAyNDQ0ODAwLCJpYXQiOjE2MDAwMDAwMDAsImlzcyI6Imh0dHBzOi8vc3NvLnRlc3QiLCJzY29wZSI6ImFwcC53cml0ZSIsInN1YiI6InVua25vd24tc3ViamVjdCJ9.I2UyXNACd68VfCOHsu_ybTNqJ1Tal5R-ZZO3v5SCLWNPBo1VdLmLZUGLK-uXDLbgDYukQuj9QlxvmJxQYYOTJVymjxorXLtUPS7UTAF_QNlbw6C-qAXmTKw1kV2j5q_FSswdtXyHDdgzhy7aR0gjX4V4O_d7Kq0rMlVzRd37nb-k9_RH-uvtqRFzi2F-zzll3WTskAt3SGzMhYUL5gLFHBS4tr4iUsu35h4Npuvxs5HfwA0ajR5kBsGGPxyyQceXGS7_YFId9jx-iRUTKWGG6N0KqPTVFI6m_6VwwBJfXoUk3wjwR1B7rtHM8oYaDDfXTNoEVw8_uGzMncZxydUI5g"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unauthenticated\",\"message\":\"invalid token\"}}\n",
+        "status": 401
+      }
+    }
+  ]
+}
