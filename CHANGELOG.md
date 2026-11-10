@@ -5,6 +5,23 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Deprecated
+
+- **A `kit.Store` literal is deprecated: build the store with `kit.NewStore`.** Since v0.18.2
+  only a store built by `NewStore` writes `created_at` and `updated_at` on a table without
+  database defaults. A literal still compiles and still writes NULL there, and that is how a
+  regression reached production. The literal stays legal, because removing it would break every
+  app that has not moved yet. Instead, a store `NewStore` did not build logs one warning per
+  process, the first time it inserts or updates an account (`UpsertFromOIDC` or
+  `BackfillPictures`), naming the literal, the NULL timestamps and `kit.NewStore`. One per
+  process, not per call, so a busy app's logs carry the signal without the flood. The warning
+  goes to `Store.Logger`, or `slog.Default()` when it is nil. It runs no extra query and changes
+  no write. Go's `Deprecated:` marker is not used: it attaches to an identifier, and the only
+  identifier here is the `Store` type that `NewStore` itself returns, so marking it would flag
+  every correct caller. The deprecation is in the doc comments of `Store`, `UpsertFromOIDC` and
+  `BackfillPictures` instead. `EraseAccount` only deletes and does not warn. No route, status
+  code, cookie, CSRF rule, `/auth/config` body or `pg.Schema` changes.
+
 ## v0.18.2 — 2026-11-10
 
 Root module: **v0.18.2**; nested modules unchanged. Fix; no migration.

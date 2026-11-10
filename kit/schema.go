@@ -46,6 +46,7 @@ func NewStore(ctx context.Context, store Store) (*Store, error) {
 	store.Columns.CreatedAt = fallback(c.CreatedAt, table.adoptable("created_at"))
 	store.Columns.UpdatedAt = fallback(c.UpdatedAt, table.adoptable("updated_at"))
 	store.unwritten = table.unwritten(append([]string{c.ID}, store.Columns.resolved().inserted()...))
+	store.built = true
 	store.warnUnwritten(c.Table)
 	return &store, nil
 }
@@ -54,11 +55,7 @@ func (s *Store) warnUnwritten(table string) {
 	if len(s.unwritten) == 0 || s.OnCreate != nil {
 		return
 	}
-	logger := s.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	logger.Warn("porte/kit: columns "+strings.Join(s.unwritten, ", ")+" of "+table+
+	s.logger().Warn("porte/kit: columns "+strings.Join(s.unwritten, ", ")+" of "+table+
 		" have no default and will be NULL on accounts the kit creates",
 		slog.String("table", table), slog.Any("columns", s.unwritten))
 }

@@ -20,6 +20,14 @@ opt-in. It adds no route, no status code, no cookie and no CSRF rule, and it doe
 Build the store with `kit.NewStore`, not a `kit.Store` literal. `NewStore` reads the table's
 columns once, at construction, and fails when the table or a column `Columns` names is missing.
 
+A `kit.Store` literal is deprecated. It still compiles and still signs people in, but it never
+reads the table, so on a table whose `created_at` and `updated_at` have no database default it
+writes NULL into both. That is how the v0.18.2 regression reached production. A store that
+`NewStore` did not build logs one warning per process, at warn, the first time it inserts or
+updates an account (a sign-in or `BackfillPictures`): `porte/kit: this Store was built as a
+literal; ... build it with kit.NewStore`. It runs no extra query and changes nothing else. Seeing
+that line in an app's logs means the app still has a literal to replace.
+
 - **Timestamps.** `Columns.CreatedAt` and `Columns.UpdatedAt` name columns the kit fills itself:
   `now()` into both when it creates an account, `now()` into `UpdatedAt` on every update it makes
   (the sign-in refresh and `BackfillPictures`). Left empty, `NewStore` adopts a timestamp column
