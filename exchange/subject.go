@@ -95,17 +95,35 @@ func (e *Exchanger) persist(ctx context.Context, u *user, identity porte.StoredI
 }
 
 // identity is the user's Registre identity: the federated row filed under
-// the configured issuer.
+// the configured issuer. A user can hold several, such as a subject left over
+// from a recreated Registre account, so the one holding a refresh token wins,
+// and among those the most recently synced.
 func (e *Exchanger) identity(ctx context.Context, userID int64) (porte.StoredIdentity, error) {
 	stored, err := e.cfg.Identities.ListByUser(ctx, userID)
 	if err != nil {
 		return porte.StoredIdentity{}, fmt.Errorf("exchange: reading the identities: %w", err)
 	}
 	issuer := strings.TrimRight(e.cfg.Issuer, "/")
+	var best porte.StoredIdentity
+	found := false
 	for _, identity := range stored {
-		if strings.TrimRight(identity.Provider, "/") == issuer && identity.PasswordHash == "" {
-			return identity, nil
+		if strings.TrimRight(identity.Provider, "/") != issuer || identity.PasswordHash != "" {
+			continue
+		}
+		if !found || better(identity, best) {
+			best, found = identity, true
 		}
 	}
-	return porte.StoredIdentity{}, ErrReconnect
+	if !found {
+		return porte.StoredIdentity{}, ErrReconnect
+	}
+	return best, nil
+}
+
+func better(candidate, current porte.StoredIdentity) bool {
+	hasToken, hadToken := candidate.Tokens.RefreshToken != "", current.Tokens.RefreshToken != ""
+	if hasToken != hadToken {
+		return hasToken
+	}
+	return candidate.SyncedAt.After(current.SyncedAt)
 }
