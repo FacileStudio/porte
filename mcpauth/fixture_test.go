@@ -18,6 +18,7 @@ import (
 
 	"github.com/FacileStudio/porte"
 	"github.com/FacileStudio/porte/mcpauth"
+	"github.com/FacileStudio/porte/oidc/jwt"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 )
 
@@ -120,3 +121,33 @@ func newVerifier(t *testing.T, r *registre, store porte.IdentityStore) auth.Toke
 }
 
 var errStore = errors.New("database is down")
+
+type provisioner struct {
+	issuer string
+	calls  int
+	seen   jwt.Claims
+	answer error
+}
+
+func (p *provisioner) Config() porte.Config { return porte.Config{Issuer: p.issuer} }
+
+func (p *provisioner) ProvisionBearer(_ context.Context, claims jwt.Claims) (porte.Identity, error) {
+	p.calls++
+	p.seen = claims
+	if p.answer != nil {
+		return porte.Identity{}, p.answer
+	}
+	return porte.Identity{UserID: 77, Subject: claims.Subject}, nil
+}
+
+func provisioningVerifier(t *testing.T, r *registre, accounts *provisioner) auth.TokenVerifier {
+	t.Helper()
+	verifier, err := mcpauth.Verifier(context.Background(), mcpauth.Config{
+		Issuer: r.srv.URL, Resource: resource, ScopePrefix: "courrier", Identities: identities{},
+		Provision: true, Accounts: accounts, Logger: slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return verifier
+}
