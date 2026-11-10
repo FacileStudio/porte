@@ -5,6 +5,11 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.0 — 2026-11-10
+
+Root module: **v0.18.0**; `directory` **v0.4.0**; `forfait` and `mcpauth` unchanged. Additive; no
+migration. Both tags carry the MIT `LICENSE` files.
+
 ### Added
 
 - **`kit.MountInvitations`: pending space invitations for every app's user menu, written once.**
