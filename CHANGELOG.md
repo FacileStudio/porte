@@ -5,6 +5,10 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.1 — 2026-11-10
+
+Root module: **v0.18.1**; nested modules unchanged. Fix; no migration.
+
 ### Fixed
 
 - **`porte/kit` treats `<issuer>` and `<issuer>/` as one provider everywhere.** The sign-in lookup,
