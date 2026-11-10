@@ -3,7 +3,7 @@ module github.com/FacileStudio/porte/mcpauth
 go 1.26
 
 require (
-	github.com/FacileStudio/porte v0.14.0
+	github.com/FacileStudio/porte v0.16.0
 	github.com/FacileStudio/porte/directory v0.2.1
 	github.com/FacileStudio/porte/forfait v0.1.1
 	github.com/FacileStudio/tronc v0.17.1
