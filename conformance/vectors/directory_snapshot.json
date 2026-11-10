@@ -468,6 +468,6 @@
     "max_snapshot_bytes": 8388608,
     "path": "/api/directory/snapshot"
   },
-  "source": "github.com/FacileStudio/porte/directory@v0.3.0",
+  "source": "github.com/FacileStudio/porte/directory@deed682",
   "subject": "directory_snapshot"
 }
