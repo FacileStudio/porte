@@ -1,6 +1,6 @@
 module github.com/FacileStudio/porte/mcpauth
 
-go 1.26
+go 1.26.11
 
 require (
 	github.com/FacileStudio/porte v0.16.0
