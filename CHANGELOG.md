@@ -5,6 +5,22 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.4 — 2026-11-11
+
+Root module: **v0.18.4**, `directory/v0.4.1`, `forfait/v0.1.2`, `mcpauth/v0.2.1`. Build and
+dependency patch; no API, route, cookie, CSRF, `/auth/config` or `pg.Schema` change, so every
+conformance vector is unchanged.
+
+### Security
+
+- build: Go 1.26.11 in all four modules (`go` directives; `directory` and `forfait` move up from
+  `go 1.22`) and the mise pin. It fixes GO-2026-6848 to GO-2026-6859 in the standard library and
+  toolchain, which douane reported as unscored gaps and which failed the gate.
+- build(deps): `golang.org/x/crypto` v0.54.0 to v0.55.0 (GO-2026-6303) and `golang.org/x/text`
+  v0.40.0 to v0.41.0 (GO-2026-6629) in the root module.
+- `douane.yml` permits GO-2026-5932 on `golang.org/x/crypto` until 2027-02-09: its fix exists
+  only as an unreleased x/crypto commit, and porte links `argon2` and `blake2b`, never `openpgp`.
+
 ### Added
 
 - **Conformance vectors.** `conformance/vectors/*.json` pins what the root module answers today:
