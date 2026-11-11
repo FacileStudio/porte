@@ -5,6 +5,19 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.18.5 — 2026-11-11
+
+Root module: **v0.18.5**, `mcpauth/v0.2.2`. Dependency patch; no API, route, cookie, CSRF,
+`/auth/config` or `pg.Schema` change, so every conformance vector is unchanged. `directory` and
+`forfait` are untouched and keep `directory/v0.4.1` and `forfait/v0.1.2`.
+
+### Security
+
+- build(deps): `golang.org/x/crypto` v0.55.0 to v0.58.0 (CVE-2026-56855, CVE-2026-78662),
+  `github.com/go-jose/go-jose/v4` v4.1.4 to v4.1.9 (CVE-2026-116585, CVE-2026-116586,
+  CVE-2026-116587) and `github.com/go-chi/chi/v5` v5.3.1 to v5.5.0 (CVE-2026-114437) in the root
+  module; the same go-jose and chi bumps in `mcpauth`.
+
 ## v0.18.4 — 2026-11-11
 
 Root module: **v0.18.4**, `directory/v0.4.1`, `forfait/v0.1.2`, `mcpauth/v0.2.1`. Build and
