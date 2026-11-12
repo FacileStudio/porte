@@ -5,6 +5,42 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+Root module: **v0.19.0**; `directory` **v0.5.0**; `forfait` and `mcpauth` unchanged. Additive; no
+migration, no route, cookie, CSRF, `/auth/config` or `pg.Schema` change, and every conformance
+vector is unchanged.
+
+### Fixed
+
+- **`directory`: an account re-created after an erasure is erased again, without a restart.**
+  The receiver records every handled subject and skipped any later notice for it. When the
+  account came back for that subject (a Bulle provisioning call, a bearer token minted before
+  the erasure, a JIT or MCP first call), a re-pushed or re-polled notice was skipped as handled,
+  so the account survived (Prisme, 2026-11-11). The new optional `Deletions.Holds` field is
+  asked for every handled subject that arrives again; when it reports an account, the person is
+  erased again (`OnPersonDeleted`, then `Erase`) and recorded again, on push and on poll. Only
+  that subject is touched, and the callbacks were already required to be idempotent. Nil
+  `Holds` keeps the old skip, so existing apps compile and behave as before until they set it.
+  The alternative, re-running the callbacks for every repeat, would re-erase the subjects of
+  every poll's one-minute overlap, and an app whose callback refuses an unknown subject would
+  then fail every poll.
+
+### Added
+
+- `directory`: `(*Deletions).Erased(ctx, provider, subject) (bool, error)`. It reads `State` on
+  every call, never the receiver's in-memory copy, so a replica that does not run the receiver
+  answers the same and a sign-in never waits for a poll. No `StateStore` method is added.
+- `pg`: `(*Store).HoldsIdentity(ctx, provider, subject) (bool, error)`, the `Deletions.Holds`
+  for every porte/pg app, matching the provider exactly as `EraseIdentity` does.
+- `porte.ErasedSubjects` (the `Erased` method above) and `porte.ErrSubjectErased`.
+- `oidc.Deps.Erased`: when set, the login callback, `ProvisionBearer` and `RouteSyncProfile`
+  refuse an erased identity before `UpsertFromOIDC` with a tronc `permission_denied` (403)
+  wrapping `porte.ErrSubjectErased`. `ProvisionBearer` also wraps `ErrProvisionRefused`, so
+  mcpauth answers an invalid token. A ledger read error fails closed as an internal error. This
+  is the guard Prisme wrote in its own `auth.Erased`, moved to the one write path every app
+  shares. The tombstone lasts as long as the receiver keeps the subject (`DeletionRetention`,
+  60 days); Registre never reuses a subject, so the guard only has to outlast the race.
+- The root module requires `directory` v0.5.0, so `directory/v0.5.0` is tagged first.
+
 ## v0.18.5 — 2026-11-11
 
 Root module: **v0.18.5**, `mcpauth/v0.2.2`. Dependency patch; no API, route, cookie, CSRF,
