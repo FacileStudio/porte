@@ -38,6 +38,7 @@ passwords must not compile an OIDC client.
 | `ErrRegistrationClosed` | Registration is off and an account already exists |
 | `ErrWeakPassword` | Shorter than `local.Config.MinPasswordLength` |
 | `ErrInvalidEmail` | The address did not parse |
+| `ErrSubjectErased` | The identity belongs to a person the app already erased. porte/oidc wraps it in a tronc `permission_denied` (403) when `Deps.Erased` refuses a sign-in or an account; `errors.Is` finds it |
 
 `ErrWrongPassword` covering an unknown address as well is the point, not an omission: an error
 that distinguishes them turns the login form into an account enumeration oracle, and
@@ -494,6 +495,14 @@ app running without SSO needs.
 environment, an unreachable issuer, a missing store, a roles scope the provider does not
 advertise, and a session manager built from a different configuration.
 
+`Deps.Erased` (a `porte.ErasedSubjects`, normally the app's `*directory.Deletions`) is optional.
+When set, the login callback, `ProvisionBearer` and `RouteSyncProfile` ask
+`Erased(ctx, provider, subject)` before `UpsertFromOIDC` and refuse an erased identity with a
+tronc `permission_denied` wrapping `porte.ErrSubjectErased`: the callback sends the browser to
+the login page with the reason, `ProvisionBearer` wraps it in `ErrProvisionRefused` as well (so
+mcpauth answers an invalid token), and the profile sync answers 403. A ledger that cannot be
+read fails the request as an internal error and creates nothing.
+
 | Method | What it does |
 |---|---|
 | `Mount(chi.Router)` | Registers the routes at the frozen paths, relative to that router |
@@ -740,6 +749,11 @@ token, login code and magic link of its account, under the account's advisory lo
 `porte_users` stay for the app, and it is a no-op for an identity already gone. Pass it as
 `directory.Deletions.Erase`.
 
+`Store.HoldsIdentity(ctx, provider, subject) (bool, error)` reports whether an account holds
+that identity, matching the provider exactly as `EraseIdentity` does. Pass it as
+`directory.Deletions.Holds`, so a person whose account came back after the erasure is erased
+again.
+
 `UpsertFromOIDC` runs in one transaction. A login that created a user but failed to link the
 identity would create a second user on the next attempt. The insert is
 `ON CONFLICT (email) DO NOTHING RETURNING id` and re-selects when it returns nothing: the
@@ -926,7 +940,7 @@ library only.
 | `ErrUnavailable` | Registre unreachable, a non-200, or a body that does not decode. Retry later |
 | `ErrSnapshotTooLarge` | A body over `MaxSnapshotBytes`. Retrying cannot help |
 | `Client.Deletions(ctx, since)` | `GET /api/directory/deletions?since=`: the `[]Deleted{Subject, DeletedAt}` Registre erased, oldest first, at most 1000 per call, kept 60 days (`DeletionRetention`) |
-| `Deletions` | GDPR receiver. `Client`, `OnPersonDeleted(ctx, provider, subject) error`, `Erase` (optional, `pg.Store.EraseIdentity`), `State` (`StateStore`: `Load`/`Save` bytes), `Interval`, `Logger`. `Poll(ctx)` and `Run(ctx)` list and handle; `Handler()` verifies Registre's signed push on `DeletionsPath` |
+| `Deletions` | GDPR receiver. `Client`, `OnPersonDeleted(ctx, provider, subject) error`, `Erase` (optional, `pg.Store.EraseIdentity`), `Holds` (optional, `pg.Store.HoldsIdentity`), `State` (`StateStore`: `Load`/`Save` bytes), `Interval`, `Logger`. `Poll(ctx)` and `Run(ctx)` list and handle; `Handler()` verifies Registre's signed push on `DeletionsPath` |
 | `UserDeletedEvent` | The `events` key of a deletion notice |
 
 `Sync` calls are serialised, pull included: `Apply` never runs twice at once and never commits a
@@ -955,6 +969,15 @@ issuer's JWKS, `iss`, `aud` containing `Client.ClientID`, `iat`/`exp` within a m
 most an hour apart, and the `UserDeletedEvent` key. The JWKS comes from the discovery document,
 which must name the configured issuer; `jwks_uri` must be https unless the issuer is plain http,
 and redirects are not followed. Mount it on `DeletionsPath`, never on `SyncPath`.
+
+A subject already handled is skipped, unless `Holds(ctx, Client.Issuer, subject)` reports that an
+account holds it again (a sign-in, a provisioning call or a bearer token that raced the erasure).
+Then the person is erased again at once, on push and on poll, with no restart, and recorded
+again; a failed `Holds` fails the notice as a failed callback does. Nil `Holds` keeps the plain
+skip. `Erased(ctx, provider, subject)` answers from `State`, read on every call, whether the
+receiver handled that subject: it implements `porte.ErasedSubjects` for `oidc.Deps.Erased`, and
+answers the same on replicas that do not run the receiver. Another provider, an empty subject
+or a nil `State` answers false.
 
 ## porte/forfait
 

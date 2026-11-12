@@ -87,7 +87,13 @@ if err := kit.Mount(api, kit.Config{Sessions: sessions, OIDC: oidcKit}); err != 
 	return err
 }
 
-deletions := &directory.Deletions{OnPersonDeleted: users.EraseAccount, Erase: store.EraseIdentity /* ... */}
+deletions := &directory.Deletions{
+	OnPersonDeleted: users.EraseAccount,
+	Erase:           store.EraseIdentity,
+	Holds:           store.HoldsIdentity,
+	State:           state, /* ... */
+}
+oidcKit, err := oidc.New(ctx, cfg, oidc.Deps{Users: users, Erased: deletions /* ... */})
 ```
 
 `users` is also the `Users` dependency of `oidc.New`. Handlers read
