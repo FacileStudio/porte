@@ -5,6 +5,12 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+### Fixed
+
+- build(mcpauth): its `go.mod` requires `directory` v0.5.0, as the root module now does; the
+  `replace ../` made CI's nested-module step ask for `go mod tidy` on the v0.19.0 commit. No
+  mcpauth code change, so `mcpauth/v0.2.2` stays the current tag.
+
 ## v0.19.0 — 2026-11-12
 
 Root module: **v0.19.0**; `directory` **v0.5.0**; `forfait` and `mcpauth` unchanged. Additive; no
