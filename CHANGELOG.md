@@ -5,6 +5,8 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.19.0 — 2026-11-12
+
 Root module: **v0.19.0**; `directory` **v0.5.0**; `forfait` and `mcpauth` unchanged. Additive; no
 migration, no route, cookie, CSRF, `/auth/config` or `pg.Schema` change, and every conformance
 vector is unchanged.
