@@ -1,0 +1,402 @@
+{
+  "cases": [
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        },
+        "provision": "ok"
+      },
+      "name": "a known subject is never provisioned again",
+      "want": {
+        "actor": "",
+        "outcome": "account",
+        "provisionings": 0,
+        "scopes": [
+          "courrier.read"
+        ],
+        "subject": "user-sub",
+        "user_id": "42"
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "email": "new@example.com",
+          "email_verified": true,
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "newcomer"
+        },
+        "provision": "ok"
+      },
+      "name": "a newcomer is provisioned",
+      "want": {
+        "actor": "",
+        "outcome": "account",
+        "provisionings": 1,
+        "scopes": [
+          "courrier.read"
+        ],
+        "subject": "newcomer",
+        "user_id": "77"
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "email": "new@example.com",
+          "email_verified": true,
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "newcomer"
+        },
+        "provision": "refused"
+      },
+      "name": "a newcomer the provisioner refuses",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 1
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "email": "new@example.com",
+          "email_verified": true,
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "newcomer"
+        },
+        "provision": "fails"
+      },
+      "name": "a newcomer whose provisioning store fails",
+      "want": {
+        "outcome": "unavailable",
+        "provisionings": 1
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "stranger"
+        }
+      },
+      "name": "a subject with no account",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "a token for this resource",
+      "want": {
+        "actor": "",
+        "outcome": "account",
+        "provisionings": 0,
+        "scopes": [
+          "courrier.read"
+        ],
+        "subject": "user-sub",
+        "user_id": "42"
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": [
+            "other",
+            "https://courrier.example/mcp"
+          ],
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "an audience list naming the resource",
+      "want": {
+        "actor": "",
+        "outcome": "account",
+        "provisionings": 0,
+        "scopes": [
+          "courrier.read"
+        ],
+        "subject": "user-sub",
+        "user_id": "42"
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "https://elsewhere.example",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "another issuer",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://agenda.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "another resource",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 1600000000,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "expired",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": null,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "no exp",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": null
+        }
+      },
+      "name": "no subject",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "act": {
+            "sub": "bulle"
+          },
+          "aud": "courrier-client",
+          "client_id": "bulle",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "the app audience on a delegated token",
+      "want": {
+        "actor": "bulle",
+        "outcome": "account",
+        "provisionings": 0,
+        "scopes": [
+          "courrier.read"
+        ],
+        "subject": "user-sub",
+        "user_id": "42"
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "courrier-client",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "the app audience without delegation",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        },
+        "store": "fails"
+      },
+      "name": "the identity store fails",
+      "want": {
+        "outcome": "unavailable",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp/",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.read",
+          "sub": "user-sub"
+        }
+      },
+      "name": "the resource with a trailing slash",
+      "want": {
+        "message": "invalid token",
+        "outcome": "invalid_token",
+        "provisionings": 0
+      }
+    },
+    {
+      "input": {
+        "claims": {
+          "aud": "https://courrier.example/mcp",
+          "client_id": "claude",
+          "exp": 4102444800,
+          "iat": 1600000000,
+          "iss": "<issuer>",
+          "jti": "j1",
+          "scope": "courrier.write",
+          "sub": "user-sub"
+        }
+      },
+      "name": "write implies read",
+      "want": {
+        "actor": "",
+        "outcome": "account",
+        "provisionings": 0,
+        "scopes": [
+          "courrier.write",
+          "courrier.read"
+        ],
+        "subject": "user-sub",
+        "user_id": "42"
+      }
+    }
+  ],
+  "fixtures": {
+    "audience": "courrier-client",
+    "issuer": "<issuer> is Config.Issuer",
+    "known_subject": "user-sub",
+    "known_user_id": 42,
+    "provisioned_user_id": 77,
+    "resource": "https://courrier.example/mcp",
+    "scope_prefix": "courrier",
+    "signing": "RS256, kid k1, typ at+jwt, the key the issuer's JWKS serves"
+  },
+  "source": "github.com/FacileStudio/porte/mcpauth@v0.3.0",
+  "subject": "mcpauth_tokens"
+}

@@ -1,4 +1,4 @@
-# Contract changes from v0.11.0 to v0.18.0
+# Contract changes from v0.11.0 to v0.20.0
 
 Source: `CHANGELOG.md` at v0.18.0. One line per change a port must match. Read the changelog entry for the reasoning.
 
@@ -87,8 +87,17 @@ Source: `CHANGELOG.md` at v0.18.0. One line per change a port must match. Read t
 - `GET /auth/oidc?flow=mobile` with no mobile redirect configured answers 302 to the failure URL, not 400 (`vectors/routes.json`).
 - The `__Host-` prefix is not an option: porte writes it whenever the cookie is Secure, and Secure is `RedirectURL`/`SuccessURL` https, TLS, or `X-Forwarded-Proto: https` (case-insensitive) (`vectors/cookie.json`).
 - `directory` decodes with `encoding/json`: field names match case-insensitively, a duplicate key keeps the last value, and every field may be missing (`spaces`, `members` and all member strings included). Any decode error wraps `ErrUnavailable` (`vectors/directory_snapshot.json`).
-- Go `Identity` is `UserID, Subject, Email, EmailVerified, Name, Roles, Scopes, Actor, SessionID, RolesSyncedAt`: it has no `Provider`, and the plan's struct lacks `EmailVerified`, `SessionID` and `RolesSyncedAt`.
+- Go `Identity` is `UserID, Subject, Email, EmailVerified, Name, Roles, Scopes, Actor, SessionID, BrowserSession (v0.20.0), RolesSyncedAt`: it has no `Provider`, and the plan's struct lacks `EmailVerified`, `SessionID` and `RolesSyncedAt`.
 
 ## v0.18.1 to v0.18.3
 
 No contract change for a port. All three releases touch only `kit`, the Go helper over an app's own users table: provider lookups match `<issuer>` and `<issuer>/` (v0.18.1), `kit.NewStore` writes `created_at` and `updated_at` where the table has no default (v0.18.2), and a `kit.Store` literal warns once (v0.18.3). `oidc`, `session`, `pg` and every vector are unchanged.
+
+## v0.20.0 (`mcpauth` v0.3.0, `forfait` v0.1.3)
+
+- Back-channel logout answers 503 `{"error":{"code":"unavailable","message":"could not fetch the provider keys"}}` when the JWKS cannot be fetched (unreachable, non-200, unreadable); every other verification failure stays 401 `invalid logout token` (`vectors/backchannel_logout.json`, input field `keys`).
+- `Identity.BrowserSession` is true only for the session cookie on a row with no label; a bearer, a named API token sent as a cookie and a bearer JWT are false.
+- `mcpauth.RequireOwnSession(r)`: no identity is 401 `missing auth`; anything but a browser session (no `Authorization` header, no `porte/keys` key, no actor, subject or scopes, a session id and a user id) is one 403 `permission_denied` "only the person's own session can confirm actions".
+- `mcpauth.AccountExists(ctx, info, lookup)` answers `ErrNoAccount` for a token not from `Verifier` or a failed lookup.
+- New vectors: `exchange_errors.json`, `mcpauth_tokens.json`, `provision_bearer.json`, `directory_erased.json`. Every vector's `source` names its release tag.
+- `forfait.LimitError` gains `PlanLimit() (key, upgradeURL string)`.

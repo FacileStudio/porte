@@ -1,0 +1,105 @@
+{
+  "cases": [
+    {
+      "name": "a receiver without State never says erased",
+      "input": {
+        "provider": "<issuer>",
+        "subject": "alice",
+        "no_state": true
+      },
+      "want": {
+        "erased": false
+      }
+    },
+    {
+      "name": "a subject never handled",
+      "input": {
+        "provider": "<issuer>",
+        "subject": "bob"
+      },
+      "want": {
+        "erased": false
+      }
+    },
+    {
+      "name": "an empty subject",
+      "input": {
+        "provider": "<issuer>",
+        "subject": ""
+      },
+      "want": {
+        "erased": false
+      }
+    },
+    {
+      "name": "the handled subject at another provider",
+      "input": {
+        "provider": "https://other.test",
+        "subject": "alice"
+      },
+      "want": {
+        "erased": false
+      }
+    },
+    {
+      "name": "the handled subject at the issuer",
+      "input": {
+        "provider": "<issuer>",
+        "subject": "alice"
+      },
+      "want": {
+        "erased": true
+      }
+    },
+    {
+      "name": "the issuer with one trailing slash",
+      "input": {
+        "provider": "<issuer>/",
+        "subject": "alice"
+      },
+      "want": {
+        "erased": true
+      }
+    },
+    {
+      "name": "a redelivered notice whose holds check fails is retried",
+      "input": {
+        "holds": "fails"
+      },
+      "want": {
+        "callbacks": 1,
+        "porte_erasures": 1,
+        "status": 500
+      }
+    },
+    {
+      "name": "a redelivered notice whose subject holds an account again",
+      "input": {
+        "holds": "yes"
+      },
+      "want": {
+        "callbacks": 2,
+        "porte_erasures": 2,
+        "status": 202
+      }
+    },
+    {
+      "name": "a redelivered notice whose subject holds no account is skipped",
+      "input": {
+        "holds": "no"
+      },
+      "want": {
+        "callbacks": 1,
+        "porte_erasures": 1,
+        "status": 202
+      }
+    }
+  ],
+  "fixtures": {
+    "counts": "callbacks and porte_erasures count both deliveries of the notice",
+    "handled": "alice, by one pushed notice before each case",
+    "issuer": "<issuer> is Client.Issuer"
+  },
+  "source": "github.com/FacileStudio/porte/directory@v0.5.0",
+  "subject": "directory_erased"
+}

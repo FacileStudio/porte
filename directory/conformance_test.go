@@ -15,7 +15,7 @@ import (
 
 const vectorPath = "../conformance/vectors/directory_snapshot.json"
 
-var update = flag.Bool("update", false, "rewrite ../conformance/vectors/directory_snapshot.json")
+var update = flag.Bool("update", false, "rewrite the directory vectors under ../conformance/vectors")
 
 type snapshotInput struct {
 	Status int    `json:"status"`
@@ -101,28 +101,28 @@ func TestDirectorySnapshotVector(t *testing.T) {
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(map[string]any{
-		"source": "github.com/FacileStudio/porte/directory@deed682", "subject": "directory_snapshot",
+		"source": "github.com/FacileStudio/porte/directory@v0.5.0", "subject": "directory_snapshot",
 		"fixtures": map[string]any{"max_snapshot_bytes": MaxSnapshotBytes, "path": "/api/directory/snapshot"},
 		"cases":    cases,
 	}); err != nil {
 		t.Fatalf("encoding the vector: %v", err)
 	}
-	compareVector(t, buffer.Bytes())
+	compareVector(t, vectorPath, buffer.Bytes())
 }
 
-func compareVector(t *testing.T, got []byte) {
+func compareVector(t *testing.T, path string, got []byte) {
 	t.Helper()
 	if *update {
-		if err := os.WriteFile(vectorPath, got, 0o644); err != nil {
-			t.Fatalf("writing %s: %v", vectorPath, err)
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatalf("writing %s: %v", path, err)
 		}
 		return
 	}
-	want, err := os.ReadFile(vectorPath)
+	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("reading %s: %v (run go test -run DirectorySnapshotVector -update)", vectorPath, err)
+		t.Fatalf("reading %s: %v (run go test -update)", path, err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf("%s no longer matches what directory does; review, then run go test -run DirectorySnapshotVector -update", vectorPath)
+		t.Errorf("%s no longer matches what directory does; review, then run go test -update", path)
 	}
 }
