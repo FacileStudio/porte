@@ -19,6 +19,7 @@ const (
 type logoutInput struct {
 	ContentType string `json:"content_type"`
 	Body        string `json:"body"`
+	Keys        string `json:"keys,omitempty"`
 }
 
 func logoutClaims(changes map[string]any) map[string]any {
@@ -58,12 +59,23 @@ func logoutInputs(t *testing.T) map[string]logoutInput {
 		"missing logout_token":                          {ContentType: formType, Body: "other=1"},
 		"a JSON body is not a form":                     {ContentType: "application/json", Body: `{"logout_token":"x"}`},
 		"malformed form":                                {ContentType: formType, Body: "logout_token=%zz"},
+		"the provider keys are unreachable":             keysDownForm(t, "unreachable"),
+		"the provider keys answer an error":             keysDownForm(t, "error"),
 	}
+}
+
+func keysDownForm(t *testing.T, keys string) logoutInput {
+	t.Helper()
+	in := logoutForm(sign(t, logoutClaims(nil)))
+	in.Keys = keys
+	return in
 }
 
 func logout(t *testing.T, in logoutInput) map[string]any {
 	t.Helper()
 	server := newApp(t, oidcEnv(nil), nil)
+	keysDown = in.Keys
+	defer func() { keysDown = "" }()
 	server.issue(t, userID)
 	server.issue(t, userID)
 	server.issue(t, otherUserID)

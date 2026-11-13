@@ -1,5 +1,5 @@
 {
-  "source": "github.com/FacileStudio/porte@deed682",
+  "source": "github.com/FacileStudio/porte@v0.20.0",
   "subject": "backchannel_logout",
   "fixtures": {
     "client_id": "app-client",
@@ -210,6 +210,36 @@
         "other_user_sessions_left": 1,
         "sessions_deleted": 0,
         "status": 401
+      }
+    },
+    {
+      "name": "the provider keys answer an error",
+      "input": {
+        "content_type": "application/x-www-form-urlencoded",
+        "body": "logout_token=eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXZlbnRzIjp7Imh0dHA6Ly9zY2hlbWFzLm9wZW5pZC5uZXQvZXZlbnQvYmFja2NoYW5uZWwtbG9nb3V0Ijp7fX0sImV4cCI6NDEwMjQ0NDgwMCwiaWF0IjoxNjAwMDAwMDAwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwianRpIjoibG9nb3V0LTEiLCJzdWIiOiJzdWJqZWN0LTEifQ.sxSpPSaPq03CKBwazcGT8Pzq1DTVjt1X0DARIISXN0GbhwV-ShOWXFZay1WVbw-HScBj73ibjamsEIlFccU5g1jdIJqwObGAatMJFsmgH_O64jGdhdIIusJWhn17qXdP3TfC_yG7TJrrS4PJX2p64vk1m-P00urIbZz1ob2R6TyYE6kUEHnL2fVQohqSjBllZDus4c_kqUXBrIJjiNFItWlX78QZDup66jGBrbaPtEHGpcmx2A0dF3PKW_STjqhxtr4qhVeymjThHBjgH65FZtmvACNjiIQhxOqB2O5jeyiEFtYuQ8FZP5DxZLO1gDYmrIsFnB6xRK-dS-ezgLEf9w",
+        "keys": "error"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"could not fetch the provider keys\"}}\n",
+        "cache_control": "no-store",
+        "other_user_sessions_left": 1,
+        "sessions_deleted": 0,
+        "status": 503
+      }
+    },
+    {
+      "name": "the provider keys are unreachable",
+      "input": {
+        "content_type": "application/x-www-form-urlencoded",
+        "body": "logout_token=eyJhbGciOiJSUzI1NiIsImtpZCI6ImNvbmZvcm1hbmNlLWtleSIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJhcHAtY2xpZW50IiwiZXZlbnRzIjp7Imh0dHA6Ly9zY2hlbWFzLm9wZW5pZC5uZXQvZXZlbnQvYmFja2NoYW5uZWwtbG9nb3V0Ijp7fX0sImV4cCI6NDEwMjQ0NDgwMCwiaWF0IjoxNjAwMDAwMDAwLCJpc3MiOiJodHRwczovL3Nzby50ZXN0IiwianRpIjoibG9nb3V0LTEiLCJzdWIiOiJzdWJqZWN0LTEifQ.sxSpPSaPq03CKBwazcGT8Pzq1DTVjt1X0DARIISXN0GbhwV-ShOWXFZay1WVbw-HScBj73ibjamsEIlFccU5g1jdIJqwObGAatMJFsmgH_O64jGdhdIIusJWhn17qXdP3TfC_yG7TJrrS4PJX2p64vk1m-P00urIbZz1ob2R6TyYE6kUEHnL2fVQohqSjBllZDus4c_kqUXBrIJjiNFItWlX78QZDup66jGBrbaPtEHGpcmx2A0dF3PKW_STjqhxtr4qhVeymjThHBjgH65FZtmvACNjiIQhxOqB2O5jeyiEFtYuQ8FZP5DxZLO1gDYmrIsFnB6xRK-dS-ezgLEf9w",
+        "keys": "unreachable"
+      },
+      "want": {
+        "body": "{\"error\":{\"code\":\"unavailable\",\"message\":\"could not fetch the provider keys\"}}\n",
+        "cache_control": "no-store",
+        "other_user_sessions_left": 1,
+        "sessions_deleted": 0,
+        "status": 503
       }
     },
     {
