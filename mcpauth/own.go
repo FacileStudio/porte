@@ -24,13 +24,17 @@ var ErrNoAccount = stderrors.New("porte/mcpauth: the token names no account")
 
 var errNoIdentity = errors.Unauthorized("missing auth")
 
-// RequireOwnSession returns the person behind a confirm page request, and
-// refuses everything that is not their own browser session: a bearer header
-// of any kind (an opaque session, a named API token, a JWT, delegated or
-// not), a named API token sent as a cookie, a machine token, and a request a
-// porte/keys API key authenticated. A request with no porte identity is a
-// 401; every other refusal is ErrNotOwnSession, decided on every condition at
-// once, so the answer and its timing say nothing about which one failed.
+// RequireOwnSession returns the person behind a confirm page request. It
+// passes only porte.Identity.BrowserSession: the session cookie carrying a
+// token a browser login minted (session.Manager.IssueCookieFor, the OIDC web
+// callback, local login and magic link). It refuses a bearer header of any
+// kind (an opaque session, a named API token, a JWT, delegated or not), a
+// named API token or a CLI, device or mobile session token sent as a cookie,
+// a machine token, and a request a porte/keys API key authenticated. A cookie
+// issued before porte v0.20.0 carries no browser mark, so it is refused until
+// the person signs in again. A request with no porte identity is a 401; every
+// other refusal is ErrNotOwnSession, decided on every condition at once, so
+// the answer and its timing say nothing about which one failed.
 func RequireOwnSession(r *http.Request) (porte.Identity, error) {
 	identity, ok := porte.From(r.Context())
 	if !ok {

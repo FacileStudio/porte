@@ -40,8 +40,25 @@ func TestTokenVector(t *testing.T) {
 		Input: map[string]string{"kind": "new_token"},
 		Want:  map[string]any{"token_length": 43, "decoded_bytes": 32, "alphabet": tokenAlphabet.String(), "padding": false},
 	})
+	cases = append(cases, browserTokenCase(t))
 	cases = append(cases, compareCases()...)
 	pin(t, "token", nil, cases)
+}
+
+func browserTokenCase(t *testing.T) testCase {
+	t.Helper()
+	browser, err := porte.NewBrowserToken()
+	if err != nil {
+		t.Fatalf("NewBrowserToken: %v", err)
+	}
+	if len(browser) != 45 || browser[:2] != porte.BrowserTokenPrefix || !tokenAlphabet.MatchString(browser) {
+		t.Fatalf("NewBrowserToken returned %q, outside the pinned shape", browser)
+	}
+	return testCase{
+		Name:  "new_browser_token shape",
+		Input: map[string]string{"kind": "new_browser_token"},
+		Want:  map[string]any{"prefix": porte.BrowserTokenPrefix, "token_length": 45, "decoded_bytes_after_prefix": 32, "alphabet": tokenAlphabet.String(), "padding": false},
+	}
 }
 
 func compareCases() []testCase {

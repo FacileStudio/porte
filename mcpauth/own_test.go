@@ -43,6 +43,7 @@ func (s *sessions) DeleteExpired(context.Context, time.Time) (int64, error) { re
 type confirmPage struct {
 	manager *session.Manager
 	login   string
+	cli     string
 	named   string
 }
 
@@ -54,15 +55,19 @@ func newConfirmPage(t *testing.T) confirmPage {
 	if err != nil {
 		t.Fatalf("session.New: %v", err)
 	}
-	login, _, err := manager.Issue(context.Background(), 7, "")
+	login, _, err := manager.IssueCookieFor(context.Background(), httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), porte.Session{UserID: 7})
 	if err != nil {
-		t.Fatalf("issuing a login: %v", err)
+		t.Fatalf("issuing a browser login: %v", err)
+	}
+	cli, _, err := manager.Issue(context.Background(), 7, "")
+	if err != nil {
+		t.Fatalf("issuing a CLI session: %v", err)
 	}
 	named, _, err := manager.Issue(context.Background(), 7, "agent")
 	if err != nil {
 		t.Fatalf("issuing a named token: %v", err)
 	}
-	return confirmPage{manager: manager, login: login, named: named}
+	return confirmPage{manager: manager, login: login, cli: cli, named: named}
 }
 
 func (p confirmPage) confirm(r *http.Request) (int, porte.Identity) {
@@ -108,12 +113,30 @@ func TestOnlyThePersonsBrowserSessionMayConfirm(t *testing.T) {
 		"the login session as a bearer":            confirmRequest("", "Bearer "+page.login),
 		"a named API token as a bearer":            confirmRequest("", "Bearer "+page.named),
 		"a named API token sent as a cookie":       confirmRequest(page.named, ""),
+		"a CLI exchange token sent as a cookie":    confirmRequest(page.cli, ""),
 		"a browser session with a bearer attached": confirmRequest(page.login, "Bearer "+page.named),
 	}
 	for name, r := range refused {
 		if status, _ := page.confirm(r); status != http.StatusForbidden {
 			t.Errorf("%s: status %d, want 403", name, status)
 		}
+	}
+}
+
+func TestACookieFromBeforeTheBrowserPrefixStillSignsInButCannotConfirm(t *testing.T) {
+	page := newConfirmPage(t)
+	r := confirmRequest(page.cli, "")
+	r.Method = http.MethodGet
+	recorder := httptest.NewRecorder()
+	var signedIn bool
+	page.manager.RequireAuth(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		signedIn = true
+	})).ServeHTTP(recorder, r)
+	if !signedIn {
+		t.Fatalf("an unprefixed cookie session was signed out: status %d", recorder.Code)
+	}
+	if status, _ := page.confirm(confirmRequest(page.cli, "")); status != http.StatusForbidden {
+		t.Fatalf("an unprefixed cookie session confirmed: status %d, want 403", status)
 	}
 }
 

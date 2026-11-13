@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,9 +20,20 @@ func browserSessionOf(t *testing.T, manager *Manager, r *http.Request) bool {
 	return identity.BrowserSession
 }
 
-func TestOnlyALoginSessionInTheCookieIsABrowserSession(t *testing.T) {
+func browserLogin(t *testing.T, manager *Manager, userID int64) string {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	token, _, err := manager.IssueCookieFor(context.Background(), httptest.NewRecorder(), r, porte.Session{UserID: userID})
+	if err != nil {
+		t.Fatalf("IssueCookieFor: %v", err)
+	}
+	return token
+}
+
+func TestOnlyABrowserLoginInTheCookieIsABrowserSession(t *testing.T) {
 	manager := testManager(t, newMemory(), time.Now())
-	login := issue(t, manager, 7)
+	browser := browserLogin(t, manager, 7)
+	cli := issue(t, manager, 7)
 	named, _, err := manager.Issue(context.Background(), 7, "ci")
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
@@ -36,8 +48,10 @@ func TestOnlyALoginSessionInTheCookieIsABrowserSession(t *testing.T) {
 		r    *http.Request
 		want bool
 	}{
-		{"a login session in the cookie", cookieRequest(manager, login), true},
-		{"the same login session as a bearer", bearer(login), false},
+		{"a browser login in the cookie", cookieRequest(manager, browser), true},
+		{"the same browser login as a bearer", bearer(browser), false},
+		{"a CLI exchange token sent as a cookie", cookieRequest(manager, cli), false},
+		{"a CLI exchange token as a bearer", bearer(cli), false},
 		{"a named API token as a bearer", bearer(named), false},
 		{"a named API token sent as a cookie", cookieRequest(manager, named), false},
 	}
@@ -45,6 +59,24 @@ func TestOnlyALoginSessionInTheCookieIsABrowserSession(t *testing.T) {
 		if got := browserSessionOf(t, manager, c.r); got != c.want {
 			t.Errorf("%s: BrowserSession = %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+func TestOnlyIssueCookieForMintsABrowserToken(t *testing.T) {
+	manager := testManager(t, newMemory(), time.Now())
+	if browser := browserLogin(t, manager, 7); !strings.HasPrefix(browser, porte.BrowserTokenPrefix) {
+		t.Fatalf("IssueCookieFor minted %q, want the %q prefix", browser, porte.BrowserTokenPrefix)
+	}
+	if cli := issue(t, manager, 7); strings.HasPrefix(cli, porte.BrowserTokenPrefix) {
+		t.Fatalf("Issue minted %q with the browser prefix", cli)
+	}
+}
+
+func TestAPrefixAddedToACLITokenIsNoSession(t *testing.T) {
+	manager := testManager(t, newMemory(), time.Now())
+	forged := porte.BrowserTokenPrefix + issue(t, manager, 7)
+	if _, err := manager.Authenticate(httptest.NewRecorder(), cookieRequest(manager, forged)); err == nil {
+		t.Fatalf("a CLI token behind the browser prefix authenticated")
 	}
 }
 
