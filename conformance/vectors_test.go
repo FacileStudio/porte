@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-const source = "github.com/FacileStudio/porte@deed682"
+const source = "github.com/FacileStudio/porte@v0.20.0"
 
 var update = flag.Bool("update", false, "rewrite the vector files from the real packages")
 

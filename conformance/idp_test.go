@@ -31,6 +31,10 @@ type idp struct {
 
 var provider idp
 
+// keysDown makes the fake issuer's JWKS unreachable ("unreachable") or answer
+// a 500 ("error"); empty serves the keys.
+var keysDown string
+
 func TestMain(m *testing.M) {
 	provider = idp{key: loadKey("testdata/idp_key.pem"), rogue: loadKey("testdata/rogue_key.pem")}
 	http.DefaultTransport = provider
@@ -62,9 +66,21 @@ func (p idp) RoundTrip(r *http.Request) (*http.Response, error) {
 	case "/.well-known/openid-configuration":
 		writeJSON(recorder, discovery())
 	case "/keys":
-		writeJSON(recorder, p.jwks())
+		return p.keys(recorder)
 	default:
 		recorder.WriteHeader(http.StatusNotFound)
+	}
+	return recorder.Result(), nil
+}
+
+func (p idp) keys(recorder *httptest.ResponseRecorder) (*http.Response, error) {
+	switch keysDown {
+	case "unreachable":
+		return nil, errors.New("conformance: the JWKS is unreachable")
+	case "error":
+		recorder.WriteHeader(http.StatusInternalServerError)
+	default:
+		writeJSON(recorder, p.jwks())
 	}
 	return recorder.Result(), nil
 }

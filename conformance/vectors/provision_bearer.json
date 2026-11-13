@@ -1,0 +1,190 @@
+{
+  "cases": [
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "roles_scope": true
+      },
+      "name": "a roles scope and no roles",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "roles": [
+          "admin"
+        ],
+        "roles_scope": true
+      },
+      "name": "a roles scope and roles",
+      "want": {
+        "outcome": "account",
+        "upserts": 1,
+        "user_id_is_existing": false
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true
+      },
+      "name": "a verified email creates the account",
+      "want": {
+        "outcome": "account",
+        "upserts": 1,
+        "user_id_is_existing": false
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": false
+      },
+      "name": "an email the provider says is unverified",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": null
+      },
+      "name": "an email with no verified claim",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "erasures": "erased"
+      },
+      "name": "an erased subject",
+      "want": {
+        "erased": true,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "existing_account": true,
+        "erasures": "erased"
+      },
+      "name": "an erased subject that still has its account",
+      "want": {
+        "outcome": "account",
+        "upserts": 0,
+        "user_id_is_existing": true
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "existing_account": true
+      },
+      "name": "an existing account is returned untouched",
+      "want": {
+        "outcome": "account",
+        "upserts": 0,
+        "user_id_is_existing": true
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": false,
+        "trust_email_without_verified_claim": true
+      },
+      "name": "an unverified email is never trusted",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "",
+        "email_verified": true
+      },
+      "name": "no email",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": null,
+        "trust_email_without_verified_claim": true
+      },
+      "name": "no verified claim, trusted by configuration",
+      "want": {
+        "outcome": "account",
+        "upserts": 1,
+        "user_id_is_existing": false
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "erasures": "fails"
+      },
+      "name": "the erasure ledger cannot be read",
+      "want": {
+        "outcome": "failed",
+        "upserts": 0
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "store": "fails"
+      },
+      "name": "the user store fails",
+      "want": {
+        "outcome": "failed",
+        "upserts": 1
+      }
+    },
+    {
+      "input": {
+        "email": "new@example.com",
+        "email_verified": true,
+        "store": "refuses"
+      },
+      "name": "the user store refuses the person",
+      "want": {
+        "erased": false,
+        "outcome": "refused",
+        "upserts": 1
+      }
+    }
+  ],
+  "fixtures": {
+    "outcomes": "refused is a 401 invalid_token at mcpauth; failed is a 500; erased refusals are permission_denied wrapping ErrSubjectErased",
+    "subject": "registre-sub, under the kit's issuer"
+  },
+  "source": "github.com/FacileStudio/porte@v0.20.0",
+  "subject": "provision_bearer"
+}

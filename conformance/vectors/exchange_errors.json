@@ -1,0 +1,168 @@
+{
+  "cases": [
+    {
+      "input": {
+        "status": 200,
+        "body": "<html>"
+      },
+      "name": "a 200 that is not JSON",
+      "want": {
+        "outcome": "unavailable"
+      }
+    },
+    {
+      "input": {
+        "status": 200,
+        "body": "{\"expires_in\":300}"
+      },
+      "name": "a 200 with no access token",
+      "want": {
+        "outcome": "unavailable"
+      }
+    },
+    {
+      "input": {
+        "status": 429,
+        "body": "{\"error\":\"slow_down\"}"
+      },
+      "name": "a 429 is a refusal, not a retry",
+      "want": {
+        "code": "slow_down",
+        "outcome": "refused",
+        "status": 429
+      }
+    },
+    {
+      "input": {
+        "status": 400,
+        "body": "<html>"
+      },
+      "name": "a 4xx that is not JSON",
+      "want": {
+        "code": "unknown",
+        "outcome": "refused",
+        "status": 400
+      }
+    },
+    {
+      "input": {
+        "status": 403,
+        "body": "{}"
+      },
+      "name": "a 4xx with no error code",
+      "want": {
+        "code": "unknown",
+        "outcome": "refused",
+        "status": 403
+      }
+    },
+    {
+      "input": {
+        "status": 500,
+        "body": "{\"error\":\"server_error\"}"
+      },
+      "name": "a 500",
+      "want": {
+        "outcome": "unavailable"
+      }
+    },
+    {
+      "input": {
+        "status": 502,
+        "body": "{\"error\":\"invalid_grant\"}"
+      },
+      "name": "a 502 naming invalid_grant",
+      "want": {
+        "outcome": "unavailable"
+      }
+    },
+    {
+      "input": {
+        "status": 503,
+        "body": ""
+      },
+      "name": "a 503 with an empty body",
+      "want": {
+        "outcome": "unavailable"
+      }
+    },
+    {
+      "input": {
+        "status": 200,
+        "body": "{\"access_token\":\"bulle-at\",\"expires_in\":300}"
+      },
+      "name": "a token",
+      "want": {
+        "outcome": "token",
+        "token": "bulle-at"
+      }
+    },
+    {
+      "input": {
+        "status": 401,
+        "body": "{\"error\":\"invalid_client\"}"
+      },
+      "name": "invalid_client",
+      "want": {
+        "code": "invalid_client",
+        "outcome": "refused",
+        "status": 401
+      }
+    },
+    {
+      "input": {
+        "status": 400,
+        "body": "{\"error\":\"invalid_grant\"}"
+      },
+      "name": "invalid_grant",
+      "want": {
+        "outcome": "reconnect"
+      }
+    },
+    {
+      "input": {
+        "status": 400,
+        "body": "{\"error\":\"invalid_scope\"}"
+      },
+      "name": "invalid_scope",
+      "want": {
+        "code": "invalid_scope",
+        "outcome": "refused",
+        "status": 400
+      }
+    },
+    {
+      "input": {
+        "status": 400,
+        "body": "{\"error\":\"invalid_target\"}"
+      },
+      "name": "invalid_target",
+      "want": {
+        "code": "invalid_target",
+        "outcome": "refused",
+        "status": 400
+      }
+    },
+    {
+      "input": {
+        "status": 400,
+        "body": "{\"error\":\"unauthorized_client\"}"
+      },
+      "name": "unauthorized_client",
+      "want": {
+        "code": "unauthorized_client",
+        "outcome": "refused",
+        "status": 400
+      }
+    }
+  ],
+  "fixtures": {
+    "note": "the refresh always succeeds; input is the token endpoint's answer to the RFC 8693 exchange",
+    "reconnect": {
+      "code": "failed_precondition",
+      "status": 412
+    }
+  },
+  "source": "github.com/FacileStudio/porte@v0.20.0",
+  "subject": "exchange_errors"
+}
