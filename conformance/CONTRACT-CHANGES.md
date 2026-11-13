@@ -1,6 +1,6 @@
 # Contract changes from v0.11.0 to v0.20.0
 
-Source: `CHANGELOG.md` at v0.18.0. One line per change a port must match. Read the changelog entry for the reasoning.
+Source: `CHANGELOG.md` at v0.20.0. One line per change a port must match. Read the changelog entry for the reasoning.
 
 ## v0.12.0 (`directory` v0.3.0)
 
@@ -96,7 +96,8 @@ No contract change for a port. All three releases touch only `kit`, the Go helpe
 ## v0.20.0 (`mcpauth` v0.3.0, `forfait` v0.1.3)
 
 - Back-channel logout answers 503 `{"error":{"code":"unavailable","message":"could not fetch the provider keys"}}` when the JWKS cannot be fetched (unreachable, non-200, unreadable); every other verification failure stays 401 `invalid logout token` (`vectors/backchannel_logout.json`, input field `keys`).
-- `Identity.BrowserSession` is true only for the session cookie on a row with no label; a bearer, a named API token sent as a cookie and a bearer JWT are false.
+- A browser login's session token is `b-` + the 43-character token (`NewBrowserToken`, `vectors/token.json` case `new_browser_token shape`); `IssueCookieFor` mints it, and `Issue`/`IssueFor` (CLI code exchange, device exchange, mobile) mint the plain token. The stored hash is over the whole string, prefix included.
+- `Identity.BrowserSession` is true only for the session cookie, on a row with no label, whose token starts with `b-`; a bearer, a named API token sent as a cookie, a CLI or device token sent as a cookie, an unprefixed cookie from before v0.20.0 and a bearer JWT are false. An unprefixed cookie still authenticates.
 - `mcpauth.RequireOwnSession(r)`: no identity is 401 `missing auth`; anything but a browser session (no `Authorization` header, no `porte/keys` key, no actor, subject or scopes, a session id and a user id) is one 403 `permission_denied` "only the person's own session can confirm actions".
 - `mcpauth.AccountExists(ctx, info, lookup)` answers `ErrNoAccount` for a token not from `Verifier` or a failed lookup.
 - New vectors: `exchange_errors.json`, `mcpauth_tokens.json`, `provision_bearer.json`, `directory_erased.json`. Every vector's `source` names its release tag.

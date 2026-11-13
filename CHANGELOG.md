@@ -5,9 +5,17 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
-Planned tags: root module **v0.20.0**; `mcpauth` **v0.3.0** (its `go.mod` requires porte v0.20.0
+## v0.20.0 — 2026-11-13
+
+Tags: root module **v0.20.0**; `mcpauth` **v0.3.0** (its `go.mod` requires porte v0.20.0
 for `Identity.BrowserSession`, so both tags go on the same commit); `forfait` **v0.1.3**;
-`directory` unchanged. Additive; no migration, no route, cookie, CSRF or `pg.Schema` change.
+`directory` unchanged. No migration, no route, CSRF or `pg.Schema` change. A browser login's
+session token now starts with `b-` (see `NewBrowserToken`); existing sessions keep working.
+
+**Upgrade note.** An app that adopts `RequireOwnSession` needs each person to sign in once in the
+browser after deploying v0.20.0 before they can confirm a pending action: a cookie minted before
+the upgrade has no `b-` mark and is refused (403) by the helper only. It still authenticates for
+everything else, so nobody is signed out.
 
 ### Added
 
@@ -16,15 +24,26 @@ for `Identity.BrowserSession`, so both tags go on the same commit); `forfait` **
   only delegated tokens, so an agent holding the person's CLI or API token could confirm its own
   `courrier_send`; Nuage, Sablier and Plume also required a session row, which an opaque bearer
   or a named API token has; Capsule refused any `Authorization` header; Mycelium accepted only a
-  browser session. The helper takes the strictest rule: the session cookie on a login session,
-  and nothing else. It refuses every bearer (opaque session, named API token, JWT, delegated or
-  not, machine token), a named API token sent as a cookie, a request carrying an
-  `Authorization` header next to the cookie, and a `porte/keys` API key. A request with no porte
+  browser session. The helper takes the strictest rule: the session cookie carrying a token a
+  browser login minted, and nothing else. It refuses every bearer (opaque session, named API
+  token, JWT, delegated or not, machine token), a named API token sent as a cookie, a CLI,
+  device or mobile session token sent as a cookie, a request carrying an `Authorization` header
+  next to the cookie, and a `porte/keys` API key. What it guarantees: the token in the cookie
+  came out of `IssueCookieFor` (OIDC web callback, local login, register, password change,
+  magic link). What it does not: local login and magic link also return that token in their
+  JSON body, so a CLI that signs in with the person's password or mailbox holds a browser token. A request with no porte
   identity is the 401 the apps answered; every other refusal is one 403, `ErrNotOwnSession`,
   with the text of tronc's `mcp.ErrDelegated`.
 - `porte.Identity.BrowserSession`, set by `session.Manager.Authenticate` when the credential came
-  from the session cookie and the row is not a named API token. The bearer JWT path clears it.
-  Nothing else sets it.
+  from the session cookie, the row is not a named API token, and the token starts with
+  `porte.BrowserTokenPrefix` (`b-`). The bearer JWT path clears it. Nothing else sets it.
+- `porte.NewBrowserToken()`: `b-` + `NewToken()`. `session.Manager.IssueCookieFor` (and so
+  `IssueCookie`) mints it; `Issue` and `IssueFor` (CLI code exchange, device exchange, mobile)
+  keep plain tokens. Why a mark on the token and not an `origin` column: about fourteen apps keep
+  their own copy of porte's DDL in goose migrations, so a column means a migration in each and a
+  broken login until it lands (the v0.10.0 `porte_login_codes` precedent). The stored hash
+  covers the prefix, so adding `b-` to a CLI token makes it fail its lookup (401). A session
+  minted before v0.20.0 has no mark and fails closed for `RequireOwnSession` only.
 - `mcpauth.AccountExists(ctx, info, lookup)`: the "account still exists" check six apps copy into
   their tool `userOf`. It resolves the Verifier token's user and reads it with the app's own
   lookup; a token from elsewhere or a failed lookup is `ErrNoAccount`, wrapping the lookup's error.
@@ -40,15 +59,17 @@ for `Identity.BrowserSession`, so both tags go on the same commit); `forfait` **
 ### Fixed
 
 - oidc: back-channel logout answers 503 `unavailable` ("could not fetch the provider keys") when
-  the provider's JWKS cannot be fetched, as porte-rs does, instead of 401. Registre retries a
-  503 and drops a 401, so a deactivation during a JWKS outage left the person's sessions alive
-  for up to 30 days. Every other verification failure stays 401. go-oidc formats the fetch error
+  the provider's JWKS cannot be fetched, as porte-rs does, instead of 401. The failure is the
+  app's, not the token's, so 503 is the correct status, and it lets a provider retry. Registre
+  delivers a logout once today and treats every status alike, so a deactivation during a JWKS
+  outage still leaves the person's sessions alive until they expire; a bounded retry on 5xx in
+  Registre would close that. Every other verification failure stays 401. go-oidc formats the fetch error
   with `%v`, so the kit matches the `failed to verify signature: fetching keys` prefix; the
   vector cases "the provider keys are unreachable" and "the provider keys answer an error" fail
   if a go-oidc upgrade changes it.
 - build(mcpauth): its `go.mod` requires `directory` v0.5.0, as the root module now does; the
   `replace ../` made CI's nested-module step ask for `go mod tidy` on the v0.19.0 commit. No
-  mcpauth code change, so `mcpauth/v0.2.2` stays the current tag.
+  mcpauth code change in that fix alone; it ships in `mcpauth/v0.3.0`.
 
 ## v0.19.0 — 2026-11-12
 
