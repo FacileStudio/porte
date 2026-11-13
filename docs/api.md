@@ -145,6 +145,7 @@ supported path and not a workaround. `porte` has no idea what a user looks like.
 | `Name` | `string` | |
 | `Roles` | `[]string` | What the IdP says, for this app, as of the last refresh |
 | `SessionID` | `int64` | The session row this request authenticated against |
+| `BrowserSession` | `bool` | The session cookie on a login session: never a bearer or a named API token |
 | `RolesSyncedAt` | `time.Time` | When `Roles` were last refreshed |
 
 | Function | What it does |

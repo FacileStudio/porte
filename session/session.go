@@ -396,7 +396,7 @@ func (m *Manager) Authenticate(w http.ResponseWriter, r *http.Request) (porte.Id
 		}
 	}
 
-	identity := porte.Identity{UserID: stored.UserID, SessionID: stored.ID}
+	identity := porte.Identity{UserID: stored.UserID, SessionID: stored.ID, BrowserSession: fromCookie && !stored.IsAPIToken()}
 	if m.claims != nil {
 		m.claims.Attach(r.Context(), &identity)
 	}
@@ -423,6 +423,7 @@ func (m *Manager) verifyBearerJWT(r *http.Request, token string) (porte.Identity
 	if !m.scopeAllows(r, identity.Scopes) {
 		return porte.Identity{}, errors.Forbidden("insufficient scope")
 	}
+	identity.BrowserSession = false
 	return identity, nil
 }
 

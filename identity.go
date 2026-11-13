@@ -58,6 +58,12 @@ type Identity struct {
 	// handling the token itself.
 	SessionID int64
 
+	// BrowserSession is true when the request authenticated with the session
+	// cookie on a login session: not an Authorization header, and not a named
+	// API token sent as a cookie. session.Manager sets it; nothing else does,
+	// so an identity rebuilt from a bearer or an MCP token never carries it.
+	BrowserSession bool
+
 	// RolesSyncedAt is when Roles were last refreshed against the IdP.
 	RolesSyncedAt time.Time
 }
