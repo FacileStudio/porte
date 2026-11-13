@@ -5,7 +5,7 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
-## v0.20.0 — 2026-11-13
+## v0.20.0 — 2026-11-14
 
 Tags: root module **v0.20.0**; `mcpauth` **v0.3.0** (its `go.mod` requires porte v0.20.0
 for `Identity.BrowserSession`, so both tags go on the same commit); `forfait` **v0.1.3**;
