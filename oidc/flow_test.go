@@ -707,6 +707,16 @@ func TestCLILoginFlowEndToEnd(t *testing.T) {
 	}
 }
 
+// assertNotBrowserToken fails when an exchange handed a CLI, a device or a
+// mobile app a token behind porte.BrowserTokenPrefix, which would pass
+// mcpauth.RequireOwnSession once sent back as a session cookie.
+func assertNotBrowserToken(t *testing.T, token string) {
+	t.Helper()
+	if strings.HasPrefix(token, porte.BrowserTokenPrefix) {
+		t.Fatalf("the exchange minted a browser token %q, want a plain session token", porte.BrowserTokenPrefix+"...")
+	}
+}
+
 func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 	h := newHarness(t, nil)
 	client := h.client(t)
@@ -750,6 +760,7 @@ func TestCLIExchangeIssuesABearerThatAuthenticates(t *testing.T) {
 	if response.StatusCode != http.StatusOK || exchanged.Token == "" {
 		t.Fatalf("exchange = %d %+v, want 200 with a token", response.StatusCode, exchanged)
 	}
+	assertNotBrowserToken(t, exchanged.Token)
 
 	request, _ := http.NewRequest(http.MethodGet, h.app.URL+"/whoami", nil)
 	request.Header.Set("Authorization", "Bearer "+exchanged.Token)

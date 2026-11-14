@@ -8,9 +8,11 @@ import (
 )
 
 // keyFetchFailure is how go-oidc's Verify starts the error of a key set it
-// could not fetch: unreachable, a non-200 answer or an unreadable body. The
-// signature is checked before any claim, so no token content precedes it, and
-// Verify formats the cause with %v, so the text is all that survives.
+// could not fetch: unreachable, a non-200 answer or an unreadable body. In
+// go-oidc v3.20.0, Verify runs verifyJWT, which checks the signature and so
+// fetches the keys, before it reads the issuer, audience or expiry; a claim
+// failure starts with "oidc:" and never matches this prefix. Verify formats
+// the cause with %v, so the text is all that survives.
 const keyFetchFailure = "failed to verify signature: fetching keys"
 
 // logoutRefusal is the answer to a logout token that did not verify. When the
