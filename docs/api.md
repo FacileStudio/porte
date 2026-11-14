@@ -145,7 +145,7 @@ supported path and not a workaround. `porte` has no idea what a user looks like.
 | `Name` | `string` | |
 | `Roles` | `[]string` | What the IdP says, for this app, as of the last refresh |
 | `SessionID` | `int64` | The session row this request authenticated against |
-| `BrowserSession` | `bool` | The session cookie on a token a browser login minted (`b-` prefix, `IssueCookieFor`): never a bearer, a named API token, or a CLI or device token sent as a cookie |
+| `BrowserSession` | `bool` | The session cookie on a token a browser login minted (`b~` prefix, `IssueCookieFor`): never a bearer, a named API token, or a CLI or device token sent as a cookie |
 | `RolesSyncedAt` | `time.Time` | When `Roles` were last refreshed |
 
 | Function | What it does |
@@ -381,7 +381,7 @@ at rest. `Consume` is atomic, so a code still yields at most one session.
 | Symbol | What it does |
 |---|---|
 | `NewToken() (string, error)` | 32 random bytes, URL-safe. Every credential porte issues |
-| `NewBrowserToken() (string, error)` | `BrowserTokenPrefix` (`b-`) + `NewToken()`. Only `IssueCookieFor` mints it, and only it makes `Identity.BrowserSession` true |
+| `NewBrowserToken() (string, error)` | `BrowserTokenPrefix` (`b~`, outside the base64url alphabet) + `NewToken()`. Only `IssueCookieFor` mints it, and only it makes `Identity.BrowserSession` true |
 | `HashToken(token) string` | The stored form. SHA-256, hex — the encoding all six apps already use, so their existing session rows keep authenticating |
 | `SecureCompare(a, b) bool` | Constant-time comparison. Five of six apps compare the OIDC state with a plain `!=`; this is Plume's line, which was the one that was right |
 

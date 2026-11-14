@@ -1,5 +1,5 @@
 {
-  "source": "github.com/FacileStudio/porte@v0.20.0",
+  "source": "github.com/FacileStudio/porte@v0.20.1",
   "subject": "backchannel_logout",
   "fixtures": {
     "client_id": "app-client",
