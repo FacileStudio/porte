@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,13 +46,13 @@ type confirmPage struct {
 	login   string
 	cli     string
 	named   string
+	chance  string
 }
 
 func newConfirmPage(t *testing.T) confirmPage {
 	t.Helper()
-	manager, err := session.New(porte.Config{SuccessURL: "http://app.test/"}, session.Deps{
-		Sessions: &sessions{rows: map[string]porte.Session{}},
-	})
+	store := &sessions{rows: map[string]porte.Session{}}
+	manager, err := session.New(porte.Config{SuccessURL: "http://app.test/"}, session.Deps{Sessions: store})
 	if err != nil {
 		t.Fatalf("session.New: %v", err)
 	}
@@ -67,7 +68,11 @@ func newConfirmPage(t *testing.T) confirmPage {
 	if err != nil {
 		t.Fatalf("issuing a named token: %v", err)
 	}
-	return confirmPage{manager: manager, login: login, cli: cli, named: named}
+	chance := "b-" + strings.Repeat("A", 41)
+	if _, err := store.Create(context.Background(), porte.Session{UserID: 7, TokenHash: porte.HashToken(chance)}); err != nil {
+		t.Fatalf("planting a plain token starting with b-: %v", err)
+	}
+	return confirmPage{manager: manager, login: login, cli: cli, named: named, chance: chance}
 }
 
 func (p confirmPage) confirm(r *http.Request) (int, porte.Identity) {
@@ -115,6 +120,7 @@ func TestOnlyThePersonsBrowserSessionMayConfirm(t *testing.T) {
 		"a named API token sent as a cookie":       confirmRequest(page.named, ""),
 		"a CLI exchange token sent as a cookie":    confirmRequest(page.cli, ""),
 		"a browser session with a bearer attached": confirmRequest(page.login, "Bearer "+page.named),
+		"a plain token starting with b- as cookie": confirmRequest(page.chance, ""),
 	}
 	for name, r := range refused {
 		if status, _ := page.confirm(r); status != http.StatusForbidden {

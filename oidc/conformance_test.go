@@ -108,7 +108,7 @@ func TestProvisionBearerVector(t *testing.T) {
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(map[string]any{
-		"source": "github.com/FacileStudio/porte@v0.20.0", "subject": "provision_bearer",
+		"source": "github.com/FacileStudio/porte@v0.20.1", "subject": "provision_bearer",
 		"fixtures": map[string]any{
 			"subject":  "registre-sub, under the kit's issuer",
 			"outcomes": "refused is a 401 invalid_token at mcpauth; failed is a 500; erased refusals are permission_denied wrapping ErrSubjectErased",

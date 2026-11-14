@@ -397,6 +397,6 @@
     "scope_prefix": "courrier",
     "signing": "RS256, kid k1, typ at+jwt, the key the issuer's JWKS serves"
   },
-  "source": "github.com/FacileStudio/porte/mcpauth@v0.3.0",
+  "source": "github.com/FacileStudio/porte/mcpauth@v0.3.1",
   "subject": "mcpauth_tokens"
 }

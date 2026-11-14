@@ -102,3 +102,11 @@ No contract change for a port. All three releases touch only `kit`, the Go helpe
 - `mcpauth.AccountExists(ctx, info, lookup)` answers `ErrNoAccount` for a token not from `Verifier` or a failed lookup.
 - New vectors: `exchange_errors.json`, `mcpauth_tokens.json`, `provision_bearer.json`, `directory_erased.json`. Every vector's `source` names its release tag.
 - `forfait.LimitError` gains `PlanLimit() (key, upgradeURL string)`.
+
+## v0.20.1 (`mcpauth` v0.3.1)
+
+- `BrowserTokenPrefix` is `b~`, not `b-`. `~` is outside the base64url alphabet, so a plain 43-character token can never start with it; `b-` starts about one plain token in 4096. `vectors/token.json` case `new_browser_token shape` pins `prefix: "b~"`, and its alphabet key is renamed `alphabet_after_prefix` (the prefix itself is outside it).
+- `Identity.BrowserSession` is true only for a `b~` token in the session cookie, on a row with no label. A `b-` token (a v0.20.0 browser login, or a plain token that starts with `b-` by chance) is a plain token: it authenticates, and it is not a browser session.
+- New `token.json` kind `browser_session`: input `token`, `transport` (`cookie` or `bearer`), `label`; want `browser_session`. A port stores a row for `HashToken(token)` with that label for user 7 and authenticates the request. Case names include "plain token starting with b- is not a browser session".
+- `Issue`/`IssueFor` redraw any plain token that starts with `BrowserTokenPrefix` (cannot happen with `b~`; kept so a future prefix change cannot reopen the hole).
+- Every vector's `source` is `porte@v0.20.1` or `porte/mcpauth@v0.3.1`; nothing else changed.

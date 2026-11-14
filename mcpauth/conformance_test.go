@@ -124,7 +124,7 @@ func TestMCPAuthTokenVector(t *testing.T) {
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(map[string]any{
-		"source": "github.com/FacileStudio/porte/mcpauth@v0.3.0", "subject": "mcpauth_tokens",
+		"source": "github.com/FacileStudio/porte/mcpauth@v0.3.1", "subject": "mcpauth_tokens",
 		"fixtures": map[string]any{
 			"issuer": "<issuer> is Config.Issuer", "resource": resource, "audience": appAudience,
 			"scope_prefix": "courrier", "known_subject": subject, "known_user_id": userID,

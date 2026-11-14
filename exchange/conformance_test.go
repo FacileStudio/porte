@@ -20,7 +20,7 @@ import (
 
 const (
 	vectorPath     = "../conformance/vectors/exchange_errors.json"
-	vectorSource   = "github.com/FacileStudio/porte@v0.20.0"
+	vectorSource   = "github.com/FacileStudio/porte@v0.20.1"
 	vectorIssuer   = "https://sso.test"
 	vectorEndpoint = vectorIssuer + "/oauth/token"
 )

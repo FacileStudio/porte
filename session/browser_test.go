@@ -80,6 +80,38 @@ func TestAPrefixAddedToACLITokenIsNoSession(t *testing.T) {
 	}
 }
 
+func plantPlain(t *testing.T, store *memory, token string) {
+	t.Helper()
+	if _, err := store.Create(context.Background(), porte.Session{UserID: 7, TokenHash: porte.HashToken(token), ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+}
+
+func TestAPlainTokenStartingWithTheOldMarkIsNoBrowserSession(t *testing.T) {
+	store := newMemory()
+	manager := testManager(t, store, time.Now())
+	chance := "b-" + strings.Repeat("A", 41)
+	plantPlain(t, store, chance)
+	if browserSessionOf(t, manager, cookieRequest(manager, chance)) {
+		t.Fatalf("a plain token starting with b- passed as a browser session")
+	}
+	if browser := browserLogin(t, manager, 7); !browserSessionOf(t, manager, cookieRequest(manager, browser)) {
+		t.Fatalf("a %q browser login in the cookie was not a browser session", porte.BrowserTokenPrefix)
+	}
+}
+
+func TestAPlainMintNeverCarriesTheBrowserPrefix(t *testing.T) {
+	draws := []string{porte.BrowserTokenPrefix + "first", porte.BrowserTokenPrefix + "second", "plain"}
+	mint := plainToken(func() (string, error) {
+		token := draws[0]
+		draws = draws[1:]
+		return token, nil
+	})
+	if token, err := mint(); err != nil || token != "plain" {
+		t.Fatalf("plainToken returned %q, %v; want the first draw without the browser prefix", token, err)
+	}
+}
+
 func TestABearerJWTIsNeverABrowserSession(t *testing.T) {
 	manager := testManager(t, newMemory(), time.Now())
 	manager.WithJWT(&stubJWT{accepted: map[string]porte.Identity{
@@ -89,5 +121,23 @@ func TestABearerJWTIsNeverABrowserSession(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer aaa.bbb.ccc")
 	if browserSessionOf(t, manager, r) {
 		t.Fatalf("a bearer JWT passed as a browser session")
+	}
+}
+
+func TestABrowserTokenSurvivesTheSetCookieRoundTrip(t *testing.T) {
+	manager := testManager(t, newMemory(), time.Now())
+	recorder := httptest.NewRecorder()
+	token, _, err := manager.IssueCookieFor(context.Background(), recorder, httptest.NewRequest(http.MethodGet, "/", nil), porte.Session{UserID: 7})
+	if err != nil {
+		t.Fatalf("IssueCookieFor: %v", err)
+	}
+	header := recorder.Result().Header.Get("Set-Cookie")
+	if !strings.Contains(header, "="+token+";") {
+		t.Fatalf("Set-Cookie %q does not carry the token %q verbatim", header, token)
+	}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("Cookie", strings.SplitN(header, ";", 2)[0])
+	if !browserSessionOf(t, manager, r) {
+		t.Fatalf("the browser cookie read back from Set-Cookie was not a browser session")
 	}
 }
