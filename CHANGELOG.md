@@ -5,6 +5,39 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.20.2 — 2026-11-14
+
+Tags: root module **v0.20.2** only; `mcpauth`, `forfait` and `directory` unchanged. No
+behaviour change, no migration, no route, CSRF or `pg.Schema` change.
+
+### Tests
+
+- The CLI code exchange, the device exchange and the mobile (PKCE) exchange are now asserted to
+  return a plain session token, never one behind `porte.BrowserTokenPrefix` (`b~`). Before,
+  only `IssueFor`'s own tests pinned it, so an exchange handler switched to `IssueCookieFor`
+  would have handed a CLI a token that passes `mcpauth.RequireOwnSession` as a cookie, with
+  every test green.
+
+### Known limits
+
+- **A CLI session can still obtain a browser token when local login is enabled and the account
+  has no password.** `local.Kit.SetPassword` (`local/local.go:310`) asks for no confirmation,
+  because the account has no current password, so the caller's session is its only evidence.
+  A caller holding a plain CLI, device or mobile session token can set a first password, then
+  call `local.Kit.Login` (`local/local.go:241`) with it, which mints a `b~` token through
+  `IssueCookieFor` and returns it in the JSON body. That token passes
+  `RequireOwnSession`. This is the same class as the v0.20.0 limit (local login and magic link
+  return the browser token in their body), with one extra step. It is open only where an app
+  mounts local login and lets a session call `SetPassword`; a federated-only app is not
+  affected. Not changed in this release.
+
+### Fixed
+
+- `oidc/backchannel.go`: the `keyFetchFailure` comment now names the check order it relies on.
+  go-oidc v3.20.0's `IDTokenVerifier.Verify` runs `verifyJWT` (signature, `verify.go:336`)
+  before it reads issuer, audience or expiry (`verify.go:237-281`), so a key-fetch failure is
+  reported before any claim. Comment only.
+
 ## v0.20.1 — 2026-11-14
 
 Tags: root module **v0.20.1**; `mcpauth` **v0.3.1** (its `go.mod` requires porte v0.20.1, so

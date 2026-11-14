@@ -87,6 +87,7 @@ func TestMobileLoginHappyPath(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&exchanged); err != nil || exchanged.Token == "" {
 		t.Fatalf("exchange response = %+v, %v; want a token", exchanged, err)
 	}
+	assertNotBrowserToken(t, exchanged.Token)
 	whose := whoami(t, h, exchanged.Token)
 	closeLater(t, whose)
 	if whose.StatusCode != http.StatusOK {

@@ -111,6 +111,7 @@ func TestTheDeviceExchangeMintsThisAppsOwnSession(t *testing.T) {
 	if body.UserID != "7" {
 		t.Errorf("user_id = %q, want the local account the subject resolves to", body.UserID)
 	}
+	assertNotBrowserToken(t, body.Token)
 	whose := whoami(t, h, body.Token)
 	closeLater(t, whose)
 	if whose.StatusCode != http.StatusOK {
