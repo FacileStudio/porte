@@ -95,6 +95,11 @@ type Kit struct {
 	// provisioning joins concurrent first bearer calls for one subject into
 	// one account creation. See ProvisionBearer.
 	provisioning singleflight.Group
+
+	// roleRefreshes collapses the role refreshes of one identity, so two
+	// requests of one person never spend the same refresh token: the
+	// provider rotates it, and the loser would be refused.
+	roleRefreshes singleflight.Group
 }
 
 // New performs discovery and returns a kit. It is the boot path, so every
