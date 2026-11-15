@@ -87,14 +87,35 @@ if err := kit.Mount(api, kit.Config{Sessions: sessions, OIDC: oidcKit}); err != 
 	return err
 }
 
-deletions := &directory.Deletions{
+deletions, err := kit.NewDeletions(kit.DeletionsConfig{
+	OIDC:            cfg,
+	Store:           store, // *pg.Store
 	OnPersonDeleted: users.EraseAccount,
-	Erase:           store.EraseIdentity,
-	Holds:           store.HoldsIdentity,
-	State:           state, /* ... */
+	Logger:          logger,
+})
+if err != nil {
+	return err
 }
-oidcKit, err := oidc.New(ctx, cfg, oidc.Deps{Users: users, Erased: deletions /* ... */})
+oidcKit, err := oidc.New(ctx, cfg, oidc.Deps{Users: users, Erased: kit.ErasedGuard(deletions) /* ... */})
+if deletions != nil {
+	root.Method(http.MethodPost, directory.DeletionsPath, deletions.Handler())
+	go deletions.Run(ctx)
+}
 ```
+
+`NewDeletions` is the wiring every app repeated: Registre's credentials from the sign-in
+configuration, `pg.Store.EraseIdentity` after the callback, `pg.Store.HoldsIdentity` for an
+account that came back, and the receiver state in the `directory_deletion_state` table through
+`pg.DeletionState`. The receiver itself is still `porte/directory`'s: it verifies Registre's
+signed notice, handles each subject once and answers 202, 400, 500 or 503. Only
+`OnPersonDeleted` is the app's. An app with files to remove wraps `users.EraseAccount` in its own
+function. Set `State` when the app keeps the state elsewhere, for instance
+`pg.DeletionState{DB: sqlDB, Table: "deletion_state"}`.
+
+`NewDeletions` returns nil without an issuer. `ErasedGuard` turns that nil into a nil
+`porte.ErasedSubjects`; a nil `*directory.Deletions` put into `oidc.Deps.Erased` directly is a
+non-nil interface and panics on the first sign-in. Mount `Handler` outside the session and CSRF
+middleware, and start `Run` in one replica.
 
 `users` is also the `Users` dependency of `oidc.New`. Handlers read
 `kit.FromContext(r.Context())`. A GORM app passes `db.DB()`.

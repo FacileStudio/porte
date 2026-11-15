@@ -98,6 +98,7 @@ eight adopters.
 | `ClaimsEnabled() bool` | Whether to request and verify the roles claim |
 | `Scopes() []string` | The scopes to request, with `ClaimsScope` appended when set |
 | `Validate() error` | Names **every** missing variable at once, so a misconfiguration takes one fix |
+| `ConfigFromEnv(get, defaults) (Config, error)` | A function, not a method: the `Config` read from the suite's `OIDC_*` variables and `SSO_ONLY` through `get`, over `defaults`, already validated. See [configuration.md](configuration.md#configfromenv) |
 | `Resolved() Config` | A copy with zero durations replaced by their defaults |
 | `HTTPS() bool` | Whether the app is served over TLS, read off `RedirectURL` or `SuccessURL` |
 | `IdleTimeout() time.Duration` | The browser session idle window: zero `SessionIdleTTL` means the default, negative means disabled |
@@ -467,6 +468,10 @@ precisely so this package does not import `porte/oidc` — that would put `go-oi
 binary and undo the split. An app with only a local login leaves it nil and pays one query per
 authenticated request, the session lookup, which is what it pays today.
 
+`oidc.Kit`'s `Attach` drops the cached roles when the provider refuses the refresh, and keeps
+them only when the provider cannot be reached. The table is in
+[configuration.md](configuration.md#oidc_claims_scope--roles-and-the-two-ways-they-go-wrong).
+
 ### Cookies
 
 | Method | What it does |
@@ -730,6 +735,23 @@ A panic in `Send` is recovered and logged.
 ## porte/pg
 
 `New(db *sql.DB) *Store`, then `Users()`, `Identities()`, `Sessions()`, `LoginCodes()` and `MagicLinks()`.
+
+`NewFromEnv(db) (*Store, error)` is `New` with the token sealer read from `PORTE_TOKEN_KEY`
+(`TokenKeyEnv`). An unset or blank variable leaves sealing off; a value `ParseTokenSealer` cannot
+read is an error, `PORTE_TOKEN_KEY is set but invalid`, so a mistyped key stops the boot.
+`ResealInBackground(ctx, store, logger)` runs `ResealIdentities` once in a goroutine and logs
+`porte token reseal complete` or `porte token reseal failed` with the row count. It does nothing
+for a store without a sealer, and a nil logger means `slog.Default`. The two replace the
+`porte_seal.go` file each app carried, with one difference: the app copy decided whether to
+reseal from the raw variable, so a whitespace-only key logged a failed reseal at every boot; the
+store's own sealer decides now, and that case is silent.
+
+`DeletionState{DB, Table}` keeps the state of `directory.Deletions` in the row `id = 1` of the
+app's `directory_deletion_state` table (`DeletionStateTable`), or of `Table` when the app named
+it otherwise. It satisfies `directory.StateStore`. `Store.DeletionState()` returns it over the
+store's database. `DeletionStateSchema` is the table's DDL for an app that has none; it is not
+part of `Schema`, and no existing app needs a migration. `Table` must be a lowercase identifier,
+optionally schema-qualified, since it goes into the statement.
 
 `Users()` implements `porte.UserStore` **and** `porte.PasswordUserStore`, so an app on the default
 tables passes the same value to `oidc.Deps.Users` and `local.Deps.Users`. An app with its own

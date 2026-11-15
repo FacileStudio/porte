@@ -55,7 +55,7 @@ reasoning behind both.
 | `porte/magiclink` | Passwordless sign-in: a one-time emailed link, single use, rate limited, landing in the same session | `porte/session`, tronc, chi |
 | `porte/pg` | The identity tables and the stores over them | `database/sql` |
 | `porte/exchange` | Per-user RFC 8693 token exchange from the stored Registre refresh token to another app's audience: refreshes serialized per user, rotations persisted, tokens cached, `ErrReconnect` | the contract, tronc |
-| `porte/kit` | Opt-in glue for an app with its own `users` table: the request identity, a `UserStore` over that table, `RequireAuth`, the erase callback, the picture backfill, `Mount`, and the opt-in `MountInvitations` user-menu route. See [docs/kit.md](docs/kit.md) | `porte/session`, `porte/oidc`, `database/sql`, tronc, chi |
+| `porte/kit` | Opt-in glue for an app with its own `users` table: the request identity, a `UserStore` over that table, `RequireAuth`, the erase callback, the picture backfill, `Mount`, and the opt-in `MountInvitations` user-menu route. See [docs/kit.md](docs/kit.md) | `porte/session`, `porte/oidc`, `porte/pg`, `porte/directory`, `database/sql`, tronc, chi |
 | `porte/avatarfs` | A filesystem `AvatarStore`: atomic writes, a guarded key, and an `http.Handler` that serves them | the standard library |
 | `porte/loopback` | The CLI's half of the CLI login: the loopback listener, the login URL, the pages a browser lands on | the standard library |
 | `porte/devicelogin` | The CLI's default login: the RFC 8628 device grant against Registre, then the app's device exchange | the standard library |
@@ -115,8 +115,15 @@ router.Group(func(r chi.Router) {
 To seal the OIDC access and refresh tokens at rest, give the store a key. With none, nothing changes.
 
 ```go
-sealer, err := pg.ParseTokenSealer(os.Getenv("PORTE_TOKEN_KEY"))
-store := pg.New(db, pg.WithTokenSealer(sealer))
+store, err := pg.NewFromEnv(db)          // reads PORTE_TOKEN_KEY, fails on a key it cannot read
+pg.ResealInBackground(ctx, store, log)   // seals the rows written before the key was set
+```
+
+`cfg` comes from the suite's `OIDC_*` variables in one call. The second argument carries the
+app's own fallbacks and the fields that have no variable:
+
+```go
+cfg, err := porte.ConfigFromEnv(os.Getenv, porte.Config{SuccessURL: firstCORSOrigin})
 ```
 
 
