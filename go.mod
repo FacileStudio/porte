@@ -4,7 +4,7 @@ go 1.26.11
 
 require (
 	github.com/FacileStudio/porte/directory v0.5.0
-	github.com/FacileStudio/tronc v0.10.1
+	github.com/FacileStudio/tronc v0.21.0
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/jackc/pgx/v5 v5.10.0
@@ -21,5 +21,3 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
-
-replace github.com/FacileStudio/porte/directory => ./directory
