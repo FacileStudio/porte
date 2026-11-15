@@ -5,6 +5,113 @@ session from undoing a deliberate choice.
 
 ## [Unreleased]
 
+## v0.21.0 — 2026-11-16
+
+Tags: root module **v0.21.0**; `forfait` **v0.1.4** (its `go.mod` only); `mcpauth` **v0.3.2**
+(its `go.mod` only, so apps that take porte through `mcpauth` get the security fix);
+`directory` unchanged at v0.5.0. Additive, apart from the security fix below. No migration, no
+route, CSRF or `pg.Schema` change, and no change to the notice Registre sends or to what
+`directory.Deletions.Handler` answers.
+
+**Upgrade note.** Only an app that sets `OIDC_CLAIMS_SCOPE` sees a behaviour change: a role the
+provider no longer confirms is dropped within one `ClaimsTTL` (five minutes) and stays dropped
+until the person signs in again. See Security.
+
+### Security
+
+- **A revoked role survived until the session expired, up to thirty days.** `oidc.Kit.Attach`
+  kept the cached roles on every refresh failure and stamped them fresh. Three paths led there,
+  and each is reproduced by a test that fails on v0.20.2:
+  - the provider refused the refresh with `invalid_grant` (a revoked grant, a disabled account);
+  - the last role was revoked. Registre leaves the `roles` claim out of an ID token for a person
+    with no role, and the refresh read a missing claim as a provider fault, as the login
+    callback does;
+  - the stored access token was still valid. `oauth2`'s token source then returns it without
+    calling the provider, so no ID token arrived and roles were only ever re-read after the
+    access token expired, one hour with Registre's default.
+  A row with no refresh token (after a failed profile sync cleared it, or an account created by
+  bearer provisioning) took the first path too.
+
+  Now the refresh always spends the refresh token; a response with no `roles` claim means no
+  roles; `invalid_grant` or a missing refresh token clears the roles on the identity and on the
+  row. A provider that cannot be reached, a 5xx or an ID token that does not verify keeps the
+  cached roles and stamps the attempt, as before, so an outage costs one token call per person
+  per `ClaimsTTL` and locks nobody out. The table is in `docs/configuration.md`.
+
+  This is the Go side of porte-rs issue 6. The suggested "do not stamp on a transient failure"
+  was not taken: without the stamp every request of every signed-in person calls the token
+  endpoint for as long as the provider is down.
+
+  Two things keep the stricter rule from dropping roles by accident. One refresh per identity
+  runs at a time in a process (`singleflight`), because Registre rotates the refresh token on
+  every use and refuses the second spender. And after an `invalid_grant` the row is read again:
+  if it holds another refresh token, a second replica or a new sign-in rotated it, and that
+  row's roles are used. The refresh runs on a context the request cannot cancel, 30 seconds at
+  most, and saves the rotated tokens even when the ID token is unusable, so a closed tab cannot
+  strand a rotated token.
+
+### Known limits
+
+- Clearing the roles after a refusal is a read then a `Save` of the whole row, because
+  `IdentityStore` has no narrower write for roles and adding a method would break every app
+  that implements the interface. A sign-in that lands between the two is overwritten: the
+  person then holds no roles and signs in once more.
+- A profile sync that fails for any reason, a network error included, still clears the stored
+  tokens (`oidc/handlers.go`, unchanged). The next role refresh then finds no refresh token and
+  drops the roles. Fail closed, and recoverable by signing in, but a provider blip during a
+  profile sync now costs an admin their roles where it used to cost nothing.
+- An account that only ever came through `ProvisionBearer` has no refresh token. A CLI session
+  on it keeps the roles of the provisioning token for one `ClaimsTTL`, then none, until a
+  browser sign-in.
+- Roles are still not a kill switch for the session itself. A disabled account is ended by the
+  back-channel logout, which Registre delivers once.
+- Registre omits `roles` for a person with none, and the login callback still refuses a token
+  without the claim ("the provider is missing its scope mapping"). So a person with no role in
+  an app that sets `OIDC_CLAIMS_SCOPE` cannot sign in to it at all. Unchanged here; it needs a
+  decision between Registre (emit `[]`) and the callback.
+
+### Added
+
+- **`pg.NewFromEnv(db)` and `pg.ResealInBackground(ctx, store, logger)`**, with
+  `pg.TokenKeyEnv`. They are `newPorteStore` and `resealInBackground` from the `porte_seal.go`
+  that 15 apps carry (13 byte-identical in `package main`, Capsule and Prisme identical but for
+  `package auth`), moved as they are. One difference: the copy decided whether to reseal from
+  the raw variable, so a whitespace-only `PORTE_TOKEN_KEY` logged a failed reseal at each boot;
+  the store's own sealer decides now and that case is silent.
+- **`porte.ConfigFromEnv(get, defaults)`** reads the `OIDC_*` block and `SSO_ONLY` that 22 apps
+  map by hand, and validates it. The variable names are the ones every app already uses: no app
+  uses another name for any of them. It takes the reader as an argument (nil means
+  `os.Getenv`), so porte still reads nothing on its own and a test can build two configurations
+  in one process, which was the reason `docs/configuration.md` gave for not reading the
+  environment. It lives in the root package and does not use `tronc/env`: the root package is
+  standard library only, and with the reader passed in there is nothing left for `tronc/env` to
+  do. `defaults` carries what differs per app (see `docs/configuration.md`). It does not fail on
+  an unset `OIDC_ISSUER`, which means "OIDC off" in the suite; it fails on everything `Validate`
+  fails on and on an `SSO_ONLY` that is not a boolean.
+- **`kit.NewDeletions(kit.DeletionsConfig{...})` and `kit.ErasedGuard`**, plus
+  **`pg.DeletionState`**, `(*pg.Store).DeletionState()`, `pg.DeletionStateTable` and
+  `pg.DeletionStateSchema`. The 19 apps that receive Registre's erasure notice all verify it
+  through `directory.Deletions.Handler` already, so verification, parsing, idempotency and the
+  response codes were never copied and are untouched. What each app repeated is the wiring
+  (credentials from the sign-in config, `EraseIdentity`, `HoldsIdentity`, a nil-safe
+  `ErasedSubjects`) and a `StateStore` over a one-row table; those are what moved. The deletion
+  of the app's own data stays the app's `OnPersonDeleted` callback.
+
+### Changed
+
+- The root module requires tronc v0.21.0, up from v0.10.1. v0.21.0 is the lowest tronc any app
+  on porte pins, so the bump moves no app. It is not v0.25.0, tronc's latest, on purpose: the
+  floor of a library is what consumers are forced up to, and 21 apps sit below v0.25.0.
+- The root module and `forfait` no longer carry `replace ... => ./directory`. Both build
+  against the tagged `directory` v0.5.0 they require (`forfait` required v0.2.1 and was only
+  ever built against the working tree, so that floor was untested). This reverses the choice
+  recorded under v0.18.0 and for `forfait`: a replace is invisible to consumers, but it also
+  hides a floor that no longer compiles. What it gave, one module's change tested against the
+  others before a tag, is now a CI step that builds a `go.work` over all four modules.
+- `mcpauth` requires porte v0.21.0, forfait v0.1.4 and tronc v0.21.0. Its replaces go in a
+  second commit once those tags exist, since a module without a replace cannot require a
+  version that is not published yet.
+
 ## v0.20.2 — 2026-11-14
 
 Tags: root module **v0.20.2** only; `mcpauth`, `forfait` and `directory` unchanged. No
