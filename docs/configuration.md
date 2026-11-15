@@ -22,9 +22,43 @@ so `porte` adopts the names rather than improving them.
 | `OIDC_MOBILE_REDIRECT` | no | — | Where the mobile login sends the browser with the one-time code. An absolute https URL or a custom scheme URI such as `dev.facile.app:/auth`, with no fragment. **Empty refuses `?flow=mobile`.** It is never read from the request |
 | `SSO_ONLY` | no | `false` | Suppresses the local password routes entirely |
 
-`porte` does not read the environment itself. An app builds a `Config` however it already builds
-one — `troncenv` in every suite app today — and passes it in. A library that reads `os.Getenv`
-behind your back is a library you cannot test twice in one process.
+`PORTE_TOKEN_KEY` is the one variable outside this block: `pg.NewFromEnv` reads it. See
+[api.md](api.md#portepg).
+
+### `ConfigFromEnv`
+
+```go
+cfg, err := porte.ConfigFromEnv(os.Getenv, porte.Config{})
+```
+
+`ConfigFromEnv(get, defaults)` maps every variable of the table above onto a `Config`, plus
+`OIDC_FAILURE_URL` and `OIDC_SCOPE_PREFIX`, and runs `Validate` on the result. It replaces the
+block each suite app wrote by hand in `internal/env`.
+
+`porte` still reads nothing behind your back: the caller hands in the reader. `os.Getenv` in an
+app, a map lookup in a test, so a test can build two configurations in one process. A nil reader
+means `os.Getenv`. Values are trimmed and a blank one counts as unset, which is what
+`troncenv.String` does in the apps today.
+
+`defaults` holds what the environment does not:
+
+- the fields with no variable: `ExtraScopes`, `ExtraClaims`, the TTLs,
+  `TrustEmailWithoutVerifiedClaim`, `AcceptLegacyCookie`;
+- the app's own fallback for a variable its deployments leave out. Twelve apps fall back to an
+  origin of their own when `OIDC_SUCCESS_URL` is unset, four default `OIDC_MOBILE_REDIRECT` to
+  their custom scheme, and Gare defaults `SSO_ONLY` to true.
+
+A variable that is set wins over its default. A default `MobileRedirect` is dropped while
+`OIDC_ISSUER` is unset, because `Validate` refuses a mobile redirect without an issuer and the
+deployment set neither.
+
+It fails loudly. An issuer with a missing client id, secret, redirect URL or success URL is one
+error naming every missing variable; an `SSO_ONLY` that is not a boolean is an error naming it.
+An unset `OIDC_ISSUER` is **not** an error: it leaves OIDC off, the convention below. An app that
+requires single sign-on in production checks `cfg.Enabled()` itself, as the apps do today.
+
+`MCP_RESOURCE`, which some apps keep next to their `OIDC_*` block, belongs to `porte/mcpauth` and
+is not read here.
 
 ### The presence-enables-it convention
 
@@ -167,6 +201,27 @@ attaches those strings to `Identity.Roles` — refreshing them against the IdP t
 
 The strings are opaque to `porte`. It transports them and keeps them fresh and never assigns them
 meaning: what an `admin` may do is the app's, through `Identity.HasRole`.
+
+**A refresh the provider refuses fails closed** (since v0.21.0). Every `ClaimsTTL` the middleware
+spends the stored refresh token, whether or not the access token is still valid, and reads the
+roles off the new ID token:
+
+| The refresh | Roles on the request | Stored row |
+|---|---|---|
+| succeeds with a `roles` claim | the new roles | new roles and tokens, stamped |
+| succeeds with no `roles` claim (Registre omits it once the last role is revoked) | none | empty roles, new tokens, stamped |
+| is refused with `invalid_grant` (revoked grant, disabled account) | none | roles cleared, stamped |
+| cannot run because the row holds no refresh token | none | roles cleared, stamped |
+| fails any other way (network, 5xx, an ID token that does not verify) | the cached roles | stamped only, so the retry comes one `ClaimsTTL` later |
+
+A person whose roles were dropped gets them back by signing in again. Before v0.21.0 every
+failure kept the cached roles and stamped them fresh, so a revoked role lasted until the session
+expired, up to thirty days.
+
+Two requests of one person share one refresh in a process, and after an `invalid_grant` the row
+is read again: when it holds a different refresh token, another replica or a new sign-in rotated
+it, and that row's roles are used. Roles are not a kill switch for a session: a disabled account
+is ended by the back-channel logout.
 
 Turning it on costs **one query per authenticated request** — the identity row the roles are
 cached on — on top of the session lookup. That is why it is opt-in rather than always-on: an app

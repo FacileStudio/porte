@@ -110,3 +110,13 @@ No contract change for a port. All three releases touch only `kit`, the Go helpe
 - New `token.json` kind `browser_session`: input `token`, `transport` (`cookie` or `bearer`), `label`; want `browser_session`. A port stores a row for `HashToken(token)` with that label for user 7 and authenticates the request. Case names include "plain token starting with b- is not a browser session".
 - `Issue`/`IssueFor` redraw any plain token that starts with `BrowserTokenPrefix` (cannot happen with `b~`; kept so a future prefix change cannot reopen the hole).
 - Every vector's `source` is `porte@v0.20.1` or `porte/mcpauth@v0.3.1`; nothing else changed.
+
+## v0.21.0 (`forfait` v0.1.4, `mcpauth` v0.3.2)
+
+- The role refresh (`oidc.Kit.Attach`, run when the cached roles are older than `ClaimsTTL`) always spends the refresh token, even while the stored access token is valid.
+- A refresh answered `invalid_grant`, or a row with no refresh token, yields no roles on the request and clears the roles on the row, stamped as synced. The row is read again first: if it holds another refresh token, its roles are used and nothing is cleared.
+- A refresh response whose verified ID token has no `roles` claim yields empty roles, saved and stamped. The login callback still refuses a token without the claim.
+- Any other failure (network, 5xx, an ID token that does not verify) keeps the cached roles and moves only the `roles_synced_at` stamp, so the next attempt comes one `ClaimsTTL` later.
+- The rotated tokens of a successful refresh are saved even when its ID token is unusable.
+- No vector covers the refresh yet; `oidc/roles_refresh_test.go` holds the five cases. The additions (`ConfigFromEnv`, `pg.NewFromEnv`, `pg.DeletionState`, `kit.NewDeletions`) are Go helpers and change no wire shape or vector.
+

@@ -61,3 +61,13 @@ jobs:
         with:
           version: v2.12.2
           working-directory: mcpauth
+      # The root module and forfait carry no replace line, so the steps above
+      # build them against the tagged directory and forfait their go.mod names.
+      # A workspace puts every module of this commit together, so a change in
+      # one that breaks another fails here and not after a tag. It runs last
+      # because the go.work it writes would change what the steps above see.
+      - name: every module against this commit
+        run: |
+          go work init . ./directory ./forfait ./mcpauth
+          go vet ./... ./directory/... ./forfait/... ./mcpauth/...
+          go test -race -timeout 20m ./directory/... ./forfait/... ./mcpauth/...
