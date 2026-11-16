@@ -23,9 +23,3 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 )
-
-replace (
-	github.com/FacileStudio/porte => ../
-	github.com/FacileStudio/porte/directory => ../directory
-	github.com/FacileStudio/porte/forfait => ../forfait
-)

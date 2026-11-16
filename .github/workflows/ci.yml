@@ -61,8 +61,8 @@ jobs:
         with:
           version: v2.12.2
           working-directory: mcpauth
-      # The root module and forfait carry no replace line, so the steps above
-      # build them against the tagged directory and forfait their go.mod names.
+      # No module carries a replace line, so the steps above build each one
+      # against the tagged versions of the others that its go.mod names.
       # A workspace puts every module of this commit together, so a change in
       # one that breaks another fails here and not after a tag. It runs last
       # because the go.work it writes would change what the steps above see.

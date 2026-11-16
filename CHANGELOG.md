@@ -7,8 +7,9 @@ session from undoing a deliberate choice.
 
 ## v0.21.0 — 2026-11-16
 
-Tags: root module **v0.21.0**; `forfait` **v0.1.4** (its `go.mod` only); `mcpauth` **v0.3.2**
-(its `go.mod` only, so apps that take porte through `mcpauth` get the security fix);
+Tags: root module **v0.21.0** and `forfait` **v0.1.4** (its `go.mod` only) on one commit;
+`mcpauth` **v0.3.2** on the next (its `go.mod` only, so apps that take porte through `mcpauth`
+get the security fix);
 `directory` unchanged at v0.5.0. Additive, apart from the security fix below. No migration, no
 route, CSRF or `pg.Schema` change, and no change to the notice Registre sends or to what
 `directory.Deletions.Handler` answers.
@@ -108,9 +109,10 @@ until the person signs in again. See Security.
   recorded under v0.18.0 and for `forfait`: a replace is invisible to consumers, but it also
   hides a floor that no longer compiles. What it gave, one module's change tested against the
   others before a tag, is now a CI step that builds a `go.work` over all four modules.
-- `mcpauth` requires porte v0.21.0, forfait v0.1.4 and tronc v0.21.0. Its replaces go in a
-  second commit once those tags exist, since a module without a replace cannot require a
-  version that is not published yet.
+- `mcpauth` requires porte v0.21.0, forfait v0.1.4 and tronc v0.21.0, and drops its three
+  replaces too. That is a second commit, tagged `mcpauth/v0.3.2`, made after the root and
+  `forfait` tags: a module without a replace cannot require a version that is not published
+  yet. So a release that changes the root and `mcpauth` together is now two pull requests.
 
 ## v0.20.2 — 2026-11-14
 
